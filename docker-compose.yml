@@ -1,0 +1,138 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: exhibition-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: exhibition_db
+      MYSQL_USER: exhibition_user
+      MYSQL_PASSWORD: exhibition_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - exhibition-network
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: exhibition-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_DATABASE: exhibition_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - exhibition-network
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - exhibition-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    networks:
+      - exhibition-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - exhibition-network
+
+  # Admin Backend API
+  api:
+    build: .
+    container_name: exhibition-api
+    depends_on:
+      - mysql
+      - mongodb
+      - kafka
+      - redis
+    environment:
+      NODE_ENV: development
+      DB_TYPE: both
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: exhibition_db
+      MYSQL_USER: exhibition_user
+      MYSQL_PASSWORD: exhibition_pass
+      MONGO_URI: mongodb://admin:admin123@mongodb:27017/exhibition_db?authSource=admin
+      KAFKA_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    networks:
+      - exhibition-network
+    restart: unless-stopped
+
+  # Monitoring (Optional)
+  adminer:
+    image: adminer
+    container_name: adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - exhibition-network
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: admin123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:admin123@mongodb:27017/
+    ports:
+      - "8081:8081"
+    networks:
+      - exhibition-network
+
+networks:
+  exhibition-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  mongodb_data:
+  redis_data:
