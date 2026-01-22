@@ -33,6 +33,8 @@ const invoiceRoutes = require('./routes/invoices');
 const revenueRoutes = require('./routes/revenue');
 const mediaRoutes = require('./routes/media');
 const monitoringRoutes = require('./routes/monitoring');
+const exhibitorAuthRoutes = require('./routes/exhibitorAuth');
+const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -88,7 +90,8 @@ app.use(express.urlencoded({
   extended: true, 
   limit: process.env.MAX_REQUEST_SIZE || '10mb'
 }));
-
+app.use('/api/exhibitor/auth', exhibitorAuthRoutes);
+app.use('/api/exhibitor/dashboard', exhibitorDashboardRoutes);
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
 
