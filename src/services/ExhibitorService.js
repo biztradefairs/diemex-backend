@@ -208,7 +208,105 @@ class ExhibitorService {
       throw new Error(`Failed to delete exhibitor: ${error.message}`);
     }
   }
+  // src/services/ExhibitorService.js (update createExhibitor method)
+async createExhibitor(exhibitorData) {
+  try {
+    // Generate random password if not provided
+    if (!exhibitorData.password) {
+      exhibitorData.password = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+    }
+    
+    // Hash password
+    exhibitorData.password = await bcrypt.hash(exhibitorData.password, 10);
+    
+    // Set default status
+    if (!exhibitorData.status) {
+      exhibitorData.status = 'active';
+    }
+    
+    const exhibitor = await this.Exhibitor.create(exhibitorData);
+    
+    // Send welcome email with password
+    try {
+      const emailService = require('../services/EmailService');
+      await emailService.sendExhibitorWelcome(exhibitor, exhibitorData.password);
+    } catch (emailError) {
+      console.warn('Failed to send welcome email:', emailError.message);
+    }
+    
+    // Generate initial invoice
+    try {
+      await this.generateInitialInvoice(exhibitor);
+    } catch (invoiceError) {
+      console.warn('Failed to generate initial invoice:', invoiceError.message);
+    }
+    
+    // Send notifications
+    try {
+      const kafkaProducer = require('../kafka/producer');
+      await kafkaProducer.sendNotification('EXHIBITOR_REGISTERED', null, {
+        exhibitorId: exhibitor.id,
+        company: exhibitor.company,
+        email: exhibitor.email
+      });
+      
+      await kafkaProducer.sendAuditLog('EXHIBITOR_CREATED', null, {
+        company: exhibitor.company,
+        email: exhibitor.email,
+        boothNumber: exhibitor.boothNumber
+      });
+    } catch (kafkaError) {
+      console.warn('Kafka not available:', kafkaError.message);
+    }
 
+    return exhibitor;
+  } catch (error) {
+    throw new Error(`Failed to create exhibitor: ${error.message}`);
+  }
+}
+
+async generateInitialInvoice(exhibitor) {
+  try {
+    const invoiceService = require('./InvoiceService');
+    
+    // Generate invoice based on booth type/price
+    const invoiceData = {
+      exhibitorId: exhibitor.id,
+      company: exhibitor.company,
+      amount: 4500, // Default amount, can be configurable
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      items: [
+        {
+          description: 'Exhibition Booth Booking',
+          quantity: 1,
+          unitPrice: 4000,
+          total: 4000
+        },
+        {
+          description: 'Registration Fee',
+          quantity: 1,
+          unitPrice: 500,
+          total: 500
+        }
+      ],
+      notes: 'Initial booking invoice'
+    };
+    
+    const invoice = await invoiceService.createInvoice(invoiceData);
+    
+    // Send invoice email
+    try {
+      const emailService = require('../services/EmailService');
+      await emailService.sendInvoiceEmail(exhibitor, invoice);
+    } catch (emailError) {
+      console.warn('Failed to send invoice email:', emailError.message);
+    }
+    
+    return invoice;
+  } catch (error) {
+    throw new Error(`Failed to generate initial invoice: ${error.message}`);
+  }
+}
   async getExhibitorStats() {
     try {
       if (process.env.DB_TYPE === 'mysql') {

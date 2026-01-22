@@ -202,6 +202,106 @@ class EmailService {
     return this.sendEmail(user.email, subject, html);
   }
 
+  // src/services/EmailService.js (add these methods)
+async sendExhibitorWelcome(exhibitor, password) {
+  const subject = 'Welcome to Exhibition Portal';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">Welcome ${exhibitor.name}!</h2>
+      
+      <p>Your exhibitor account has been created successfully.</p>
+      
+      <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        <p><strong>Account Details:</strong></p>
+        <p>Company: ${exhibitor.company}</p>
+        <p>Email: ${exhibitor.email}</p>
+        <p>Booth Number: ${exhibitor.boothNumber || 'To be assigned'}</p>
+        <p>Temporary Password: <strong>${password}</strong></p>
+      </div>
+      
+      <div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        <p><strong>Important:</strong> You must reset your password on first login.</p>
+        <p>Login URL: <a href="${process.env.FRONTEND_URL}/login">${process.env.FRONTEND_URL}/login</a></p>
+      </div>
+      
+      <p>You can now access your exhibitor dashboard to:</p>
+      <ul>
+        <li>View your stall layout</li>
+        <li>Access exhibitor manual</li>
+        <li>Submit extra requirements</li>
+        <li>View and pay invoices</li>
+        <li>Update company profile</li>
+      </ul>
+      
+      <p>If you have any questions, please contact exhibition support.</p>
+      
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
+        <p>Thank you,</p>
+        <p><strong>The Exhibition Management Team</strong></p>
+      </div>
+    </div>
+  `;
+
+  return this.sendEmail(exhibitor.email, subject, html);
+}
+
+async sendPasswordResetExhibitor(exhibitor, resetUrl) {
+  const subject = 'Password Reset Request - Exhibition Portal';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <h2 style="color: #333; border-bottom: 2px solid #ff9800; padding-bottom: 10px;">Password Reset</h2>
+      
+      <p>You requested a password reset for your Exhibition Portal account.</p>
+      
+      <div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center;">
+        <p><strong>Click the button below to reset your password:</strong></p>
+        <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #ff9800; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px 0;">
+          Reset Password
+        </a>
+        <p style="font-size: 12px; color: #666; margin-top: 10px;">
+          This link will expire in 1 hour.
+        </p>
+      </div>
+      
+      <p>If you didn't request this password reset, please ignore this email.</p>
+      
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
+        <p>Thank you,</p>
+        <p><strong>The Exhibition Management Team</strong></p>
+      </div>
+    </div>
+  `;
+
+  return this.sendEmail(exhibitor.email, subject, html);
+}
+
+async sendPasswordResetConfirmation(exhibitor) {
+  const subject = 'Password Reset Successful - Exhibition Portal';
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">Password Reset Successful</h2>
+      
+      <p>Your password has been successfully reset.</p>
+      
+      <div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        <p><strong>If you did not make this change, please contact support immediately.</strong></p>
+        <p>Email: support@exhibition.com</p>
+        <p>Phone: +1 (555) 123-4567</p>
+      </div>
+      
+      <p>You can now login with your new password:</p>
+      <p><a href="${process.env.FRONTEND_URL}/login">${process.env.FRONTEND_URL}/login</a></p>
+      
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
+        <p>Thank you,</p>
+        <p><strong>The Exhibition Management Team</strong></p>
+      </div>
+    </div>
+  `;
+
+  return this.sendEmail(exhibitor.email, subject, html);
+}
+
   async sendSystemAlert(subject, message, priority = 'medium') {
     const adminEmail = process.env.ADMIN_EMAIL;
     if (!adminEmail) {
