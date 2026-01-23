@@ -11,63 +11,76 @@ class Database {
   }
 
   async connectMySQL() {
-  let retries = 0;
+    let retries = 0;
 
-  while (retries < this.maxRetries) {
-    try {
-      const sequelize = new Sequelize(
-        process.env.MYSQL_DATABASE,
-        process.env.MYSQL_USER,
-        process.env.MYSQL_PASSWORD,
-        {
-          host: process.env.MYSQL_HOST,
+    // 👉 Detect LOCAL Docker MySQL vs Cloud MySQL (TiDB/PlanetScale)
+    const isLocalMySQL =
+      process.env.MYSQL_HOST === 'mysql' ||               // docker-compose service
+      process.env.MYSQL_HOST === 'localhost' ||           // local machine
+      process.env.NODE_ENV === 'development';
 
-          // 🔴 TiDB Serverless ALWAYS uses 4000
-          port: Number(process.env.MYSQL_PORT) || 4000,
+    while (retries < this.maxRetries) {
+      try {
+        const sequelize = new Sequelize(
+          process.env.MYSQL_DATABASE,
+          process.env.MYSQL_USER,
+          process.env.MYSQL_PASSWORD,
+          {
+            host: process.env.MYSQL_HOST,
 
-          dialect: 'mysql',
+            // 🔹 Docker MySQL → 3306
+            // 🔹 TiDB Cloud → 4000
+            port: Number(process.env.MYSQL_PORT) || (isLocalMySQL ? 3306 : 4000),
 
-          logging: process.env.NODE_ENV === 'development' ? console.log : false,
+            dialect: 'mysql',
+            logging: process.env.NODE_ENV === 'development' ? console.log : false,
 
-          // 🔥 REQUIRED FOR TiDB CLOUD
-          ssl: true,
+            // 🔐 SSL ONLY for Cloud MySQL
+            ...(isLocalMySQL
+              ? {}
+              : {
+                  ssl: true,
+                  dialectOptions: {
+                    ssl: {
+                      require: true,
+                      rejectUnauthorized: true
+                    }
+                  }
+                }),
 
-          dialectOptions: {
-            ssl: {
-              require: true,
-              rejectUnauthorized: true
+            pool: {
+              max: 10,
+              min: 0,
+              acquire: 30000,
+              idle: 10000
             }
-          },
-
-          pool: {
-            max: 10,
-            min: 0,
-            acquire: 30000,
-            idle: 10000
           }
+        );
+
+        await sequelize.authenticate();
+
+        console.log(
+          isLocalMySQL
+            ? '✅ MySQL connected (local / no SSL)'
+            : '✅ MySQL connected (TLS enforced)'
+        );
+
+        this.connections.mysql = sequelize;
+        return sequelize;
+
+      } catch (error) {
+        retries++;
+        console.warn(`MySQL connection attempt ${retries} failed: ${error.message}`);
+
+        if (retries >= this.maxRetries) {
+          console.error('❌ MySQL connection failed after maximum retries');
+          throw error;
         }
-      );
 
-      await sequelize.authenticate();
-      console.log('✅ MySQL connected (TLS enforced)');
-
-      this.connections.mysql = sequelize;
-      return sequelize;
-
-    } catch (error) {
-      retries++;
-      console.warn(`MySQL connection attempt ${retries} failed: ${error.message}`);
-
-      if (retries >= this.maxRetries) {
-        console.error('❌ MySQL connection failed after maximum retries');
-        throw error;
+        await new Promise(res => setTimeout(res, this.retryDelay));
       }
-
-      await new Promise(res => setTimeout(res, this.retryDelay));
     }
   }
-}
-
 
   async connectMongoDB() {
     try {
@@ -76,10 +89,10 @@ class Database {
         useUnifiedTopology: true,
         maxPoolSize: 10
       });
-      
+
       console.log('✅ MongoDB connected');
       this.connections.mongodb = mongoose.connection;
-      
+
     } catch (error) {
       console.error('❌ MongoDB connection failed:', error.message);
       throw error;
@@ -97,7 +110,7 @@ class Database {
       }
 
       this._connected = true;
-      
+
     } catch (error) {
       console.error('❌ Database connection failed:', error.message);
       throw error;
