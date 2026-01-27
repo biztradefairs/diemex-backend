@@ -1,4 +1,4 @@
-// src/routes/payments.js
+// src/routes/payments.js - UPDATED
 const express = require('express');
 const router = express.Router();
 const paymentController = require('../controllers/PaymentController');
@@ -7,9 +7,16 @@ const { body } = require('express-validator');
 
 // Validation middleware
 const validatePayment = [
+  body('invoiceNumber').optional().isString(),
   body('amount').isFloat({ min: 0 }),
-  body('method').isIn(['credit_card', 'bank_transfer', 'check', 'cash']),
+  body('method').isIn(['credit_card', 'bank_transfer', 'check', 'cash', 'online']),
   body('status').optional().isIn(['pending', 'completed', 'failed', 'refunded'])
+];
+
+const validateBulkPayments = [
+  body('payments').isArray().withMessage('Payments must be an array'),
+  body('payments.*.amount').isFloat({ min: 0 }),
+  body('payments.*.method').isIn(['credit_card', 'bank_transfer', 'check', 'cash', 'online'])
 ];
 
 // All routes require authentication
@@ -24,6 +31,12 @@ router.get('/stats', authorize(['admin']), paymentController.getPaymentStats);
 // Get single payment
 router.get('/:id', authorize(['admin']), paymentController.getPayment);
 
+// Get payments by invoice
+router.get('/invoice/:invoiceId', authorize(['admin']), paymentController.getPaymentsByInvoice);
+
+// Get recent payments
+router.get('/recent/latest', authorize(['admin']), paymentController.getRecentPayments);
+
 // Create payment (admin only)
 router.post('/', authorize(['admin']), validatePayment, paymentController.createPayment);
 
@@ -34,6 +47,6 @@ router.patch('/:id/status', authorize(['admin']), paymentController.updatePaymen
 router.post('/:id/refund', authorize(['admin']), paymentController.refundPayment);
 
 // Bulk operations
-router.post('/bulk/process', authorize(['admin']), paymentController.processBulkPayments);
+router.post('/bulk/process', authorize(['admin']), validateBulkPayments, paymentController.processBulkPayments);
 
 module.exports = router;

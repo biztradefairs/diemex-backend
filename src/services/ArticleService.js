@@ -1,4 +1,3 @@
-// src/services/ArticleService.js
 const { Op } = require('sequelize');
 
 class ArticleService {
@@ -6,11 +5,13 @@ class ArticleService {
     this._articleModel = null;
   }
 
-  // Lazy getter for Article model
   get Article() {
     if (!this._articleModel) {
       const modelFactory = require('../models');
       this._articleModel = modelFactory.getModel('Article');
+      if (!this._articleModel) {
+        throw new Error('Article model not found. Make sure models are initialized.');
+      }
     }
     return this._articleModel;
   }
@@ -23,22 +24,11 @@ class ArticleService {
       }
 
       const article = await this.Article.create(articleData);
-      
-      // Send notification for new article
-      if (article.status === 'published') {
-        try {
-          const kafkaProducer = require('../kafka/producer');
-          await kafkaProducer.sendNotification('ARTICLE_PUBLISHED', null, {
-            articleId: article.id,
-            title: article.title
-          });
-        } catch (kafkaError) {
-          console.warn('Kafka not available for notification:', kafkaError.message);
-        }
-      }
-
       return article;
     } catch (error) {
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        throw new Error('Slug already exists');
+      }
       throw new Error(`Failed to create article: ${error.message}`);
     }
   }
@@ -47,58 +37,40 @@ class ArticleService {
     try {
       const offset = (page - 1) * limit;
       
-      let query = {};
+      let where = {};
       
+      // Search filter
       if (filters.search) {
-        if (process.env.DB_TYPE === 'mysql') {
-          query[Op.or] = [
-            { title: { [Op.like]: `%${filters.search}%` } },
-            { excerpt: { [Op.like]: `%${filters.search}%` } },
-            { content: { [Op.like]: `%${filters.search}%` } }
-          ];
-        } else {
-          query.$or = [
-            { title: { $regex: filters.search, $options: 'i' } },
-            { excerpt: { $regex: filters.search, $options: 'i' } },
-            { content: { $regex: filters.search, $options: 'i' } }
-          ];
-        }
+        where[Op.or] = [
+          { title: { [Op.like]: `%${filters.search}%` } },
+          { excerpt: { [Op.like]: `%${filters.search}%` } },
+          { content: { [Op.like]: `%${filters.search}%` } }
+        ];
       }
       
+      // Category filter
       if (filters.category && filters.category !== 'all') {
-        query.category = filters.category;
+        where.category = filters.category;
       }
       
+      // Status filter
       if (filters.status && filters.status !== 'all') {
-        query.status = filters.status;
+        where.status = filters.status;
       }
 
-      let articles, total;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        const result = await this.Article.findAndCountAll({
-          where: query,
-          limit,
-          offset,
-          order: [['createdAt', 'DESC']]
-        });
-        
-        articles = result.rows;
-        total = result.count;
-      } else {
-        articles = await this.Article.find(query)
-          .skip(offset)
-          .limit(limit)
-          .sort({ createdAt: -1 });
-        
-        total = await this.Article.countDocuments(query);
-      }
+      // Use Sequelize findAndCountAll
+      const result = await this.Article.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']]
+      });
 
       return {
-        articles,
-        total,
+        articles: result.rows,
+        total: result.count,
         page,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(result.count / limit)
       };
     } catch (error) {
       throw new Error(`Failed to fetch articles: ${error.message}`);
@@ -107,13 +79,7 @@ class ArticleService {
 
   async getArticleById(id) {
     try {
-      let article;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        article = await this.Article.findByPk(id);
-      } else {
-        article = await this.Article.findById(id);
-      }
+      const article = await this.Article.findByPk(id);
       
       if (!article) {
         throw new Error('Article not found');
@@ -136,51 +102,10 @@ class ArticleService {
         updateData.slug = this.generateSlug(updateData.title);
       }
 
-      let article;
+      const article = await this.Article.findByPk(id);
+      if (!article) throw new Error('Article not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        article = await this.Article.findByPk(id);
-        if (!article) throw new Error('Article not found');
-        
-        // Send notification if status changed to published
-        if (updateData.status === 'published' && article.status !== 'published') {
-          try {
-            const kafkaProducer = require('../kafka/producer');
-            await kafkaProducer.sendNotification('ARTICLE_PUBLISHED', null, {
-              articleId: id,
-              title: updateData.title || article.title
-            });
-          } catch (kafkaError) {
-            console.warn('Kafka not available for notification:', kafkaError.message);
-          }
-        }
-        
-        await article.update(updateData);
-      } else {
-        // Check if status is being changed to published
-        if (updateData.status === 'published') {
-          const current = await this.Article.findById(id);
-          if (current && current.status !== 'published') {
-            try {
-              const kafkaProducer = require('../kafka/producer');
-              await kafkaProducer.sendNotification('ARTICLE_PUBLISHED', null, {
-                articleId: id,
-                title: updateData.title || current.title
-              });
-            } catch (kafkaError) {
-              console.warn('Kafka not available for notification:', kafkaError.message);
-            }
-          }
-        }
-        
-        article = await this.Article.findByIdAndUpdate(
-          id,
-          updateData,
-          { new: true, runValidators: true }
-        );
-        if (!article) throw new Error('Article not found');
-      }
-
+      await article.update(updateData);
       return article;
     } catch (error) {
       throw new Error(`Failed to update article: ${error.message}`);
@@ -189,19 +114,11 @@ class ArticleService {
 
   async deleteArticle(id) {
     try {
-      let result;
+      const article = await this.Article.findByPk(id);
+      if (!article) throw new Error('Article not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const article = await this.Article.findByPk(id);
-        if (!article) throw new Error('Article not found');
-        await article.destroy();
-        result = { success: true };
-      } else {
-        result = await this.Article.findByIdAndDelete(id);
-        if (!result) throw new Error('Article not found');
-      }
-
-      return result;
+      await article.destroy();
+      return { success: true };
     } catch (error) {
       throw new Error(`Failed to delete article: ${error.message}`);
     }
@@ -218,13 +135,7 @@ class ArticleService {
 
   async getArticleBySlug(slug) {
     try {
-      let article;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        article = await this.Article.findOne({ where: { slug } });
-      } else {
-        article = await this.Article.findOne({ slug });
-      }
+      const article = await this.Article.findOne({ where: { slug } });
       
       if (!article) {
         throw new Error('Article not found');
@@ -242,25 +153,14 @@ class ArticleService {
 
   async getArticlesByCategory(category, limit = 10) {
     try {
-      let articles;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        articles = await this.Article.findAll({
-          where: { 
-            category,
-            status: 'published'
-          },
-          limit,
-          order: [['createdAt', 'DESC']]
-        });
-      } else {
-        articles = await this.Article.find({ 
+      const articles = await this.Article.findAll({
+        where: { 
           category,
           status: 'published'
-        })
-        .limit(limit)
-        .sort({ createdAt: -1 });
-      }
+        },
+        limit,
+        order: [['createdAt', 'DESC']]
+      });
       
       return articles;
     } catch (error) {
@@ -270,19 +170,11 @@ class ArticleService {
 
   async getPopularArticles(limit = 5) {
     try {
-      let articles;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        articles = await this.Article.findAll({
-          where: { status: 'published' },
-          limit,
-          order: [['views', 'DESC']]
-        });
-      } else {
-        articles = await this.Article.find({ status: 'published' })
-          .limit(limit)
-          .sort({ views: -1 });
-      }
+      const articles = await this.Article.findAll({
+        where: { status: 'published' },
+        limit,
+        order: [['views', 'DESC']]
+      });
       
       return articles;
     } catch (error) {

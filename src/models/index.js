@@ -1,14 +1,9 @@
-/**
- * src/models/index.js
- * Fixed Model Factory with lazy initialization
- */
-
 const database = require('../config/database');
 
 let models = {};
 let initialized = false;
 
-// Model factory functions (lazy loading)
+// Model factory functions
 const modelFactories = {
   // MySQL/Sequelize models
   User: () => {
@@ -23,8 +18,9 @@ const modelFactories = {
   },
   
   Exhibitor: () => {
-    const Exhibitor = require('./mysql/Exhibitor');
-    return Exhibitor;
+    const ExhibitorFactory = require('./mysql/Exhibitor');
+    const sequelize = database.getConnection('mysql');
+    return ExhibitorFactory(sequelize);
   },
   
   Invoice: () => {
@@ -42,78 +38,101 @@ const modelFactories = {
     return Media;
   },
   
-  // MongoDB models
-  MongoUser: () => {
-    const MongoUser = require('./mongodb/User');
-    return MongoUser;
+  // Add FloorPlan model factory
+  FloorPlan: () => {
+    const FloorPlanFactory = require('./mysql/FloorPlan');
+    const sequelize = database.getConnection('mysql');
+    return FloorPlanFactory(sequelize);
   },
   
-  MongoAuditLog: () => {
-    const MongoAuditLog = require('./mongodb/AuditLog');
-    return MongoAuditLog;
-  },
-  
-  MongoNotification: () => {
-    const MongoNotification = require('./mongodb/Notification');
-    return MongoNotification;
-  }
+  // MongoDB models (will be loaded separately)
 };
 
 /**
- * Initialize all models AFTER database.connect()
+ * Initialize all models
  */
-function init() {
+async function init() {
   if (initialized) {
+    console.log('⚠️ Models already initialized');
     return models;
   }
 
   const dbType = process.env.DB_TYPE || 'mysql';
+  console.log(`📦 Initializing models for database type: ${dbType}`);
 
-  // Initialize models based on database type
-  if (dbType === 'mysql' || dbType === 'both') {
-    const sequelize = database.getConnection('mysql');
-    
-    if (!sequelize) {
-      throw new Error('MySQL connection not available');
-    }
+  try {
+    // Initialize models based on database type
+    if (dbType === 'mysql' || dbType === 'both') {
+      const sequelize = database.getConnection('mysql');
+      
+      if (!sequelize) {
+        throw new Error('MySQL connection not available');
+      }
 
-    // Load Sequelize models
-    Object.keys(modelFactories).forEach(modelName => {
-      if (!modelName.startsWith('Mongo')) { // Skip MongoDB models for MySQL
+      console.log('🔧 Loading MySQL models...');
+      
+      // Load Sequelize models
+      Object.keys(modelFactories).forEach(modelName => {
+        if (!modelName.startsWith('Mongo')) {
+          try {
+            models[modelName] = modelFactories[modelName]();
+            console.log(`   ✅ ${modelName} model loaded`);
+          } catch (error) {
+            console.error(`   ❌ Failed to load model ${modelName}:`, error.message);
+          }
+        }
+      });
+
+      // Set up associations after all models are loaded
+      console.log('🔗 Setting up model associations...');
+      Object.keys(models).forEach(modelName => {
+        if (models[modelName].associate) {
+          models[modelName].associate(models);
+        }
+      });
+      console.log('✅ Model associations set up');
+
+      // Sync models in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Syncing MySQL models...');
         try {
-          models[modelName] = modelFactories[modelName]();
-        } catch (error) {
-          console.warn(`Failed to load model ${modelName}:`, error.message);
+          await sequelize.sync({ alter: false });
+          console.log('✅ MySQL models synced');
+        } catch (err) {
+          console.error('❌ MySQL sync failed:', err.message);
         }
       }
-    });
-
-    // Sync models in development
-    if (process.env.NODE_ENV === 'development') {
-      sequelize.sync({ alter: false })
-        .then(() => console.log('✅ MySQL models synced'))
-        .catch((err) => console.error('❌ MySQL sync failed:', err));
     }
-  }
 
-  // MongoDB models
-  if (dbType === 'mongodb' || dbType === 'both') {
-    models.MongoUser = require('./mongodb/User');
-    models.MongoAuditLog = require('./mongodb/AuditLog');
-    models.MongoNotification = require('./mongodb/Notification');
-    models.MongoFloorPlan = require('./mongodb/FloorPlan');
-    models.MongoInvoice = require('./mongodb/Invoice');
-    models.MongoPayment = require('./mongodb/Payment');
-    models.MongoMedia = require('./mongodb/Media');
-    models.MongoAlert = require('./mongodb/Alert');
-  }
+    // MongoDB models (separate initialization)
+    if (dbType === 'mongodb' || dbType === 'both') {
+      console.log('🔧 Loading MongoDB models...');
+      try {
+        models.MongoUser = require('./mongodb/User');
+        models.MongoAuditLog = require('./mongodb/AuditLog');
+        models.MongoNotification = require('./mongodb/Notification');
+        models.MongoFloorPlan = require('./mongodb/FloorPlan');
+        models.MongoInvoice = require('./mongodb/Invoice');
+        models.MongoPayment = require('./mongodb/Payment');
+        models.MongoMedia = require('./mongodb/Media');
+        models.MongoAlert = require('./mongodb/Alert');
+        console.log('✅ MongoDB models loaded');
+      } catch (error) {
+        console.error('❌ MongoDB models loading failed:', error.message);
+      }
+    }
 
-  initialized = true;
-  return models;
+    initialized = true;
+    console.log('🎉 All models initialized successfully');
+    return models;
+  } catch (error) {
+    console.error('❌ Model initialization failed:', error);
+    throw error;
+  }
 }
 
 /**
- * Get a single model safely (lazy loading)
+ * Get a single model safely
  */
 function getModel(name) {
   // Check if model is already loaded
@@ -121,7 +140,7 @@ function getModel(name) {
     return models[name];
   }
   
-  // Check if model factory exists
+  // Try to load from factory
   if (modelFactories[name]) {
     models[name] = modelFactories[name]();
     return models[name];
@@ -138,7 +157,26 @@ function getModel(name) {
     }
   }
   
-  throw new Error(`Model "${name}" not found. Call init() first or check if model exists.`);
+  // Try to load directly from MySQL directory
+  if (!name.startsWith('Mongo')) {
+    try {
+      const modelPath = `./mysql/${name}`;
+      const modelFactory = require(modelPath);
+      const sequelize = database.getConnection('mysql');
+      models[name] = modelFactory(sequelize);
+      
+      // Set up associations
+      if (models[name].associate) {
+        models[name].associate(models);
+      }
+      
+      return models[name];
+    } catch (error) {
+      // Model not found
+    }
+  }
+  
+  throw new Error(`Model "${name}" not found. Make sure to call init() first.`);
 }
 
 /**

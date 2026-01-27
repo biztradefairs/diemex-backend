@@ -1,39 +1,29 @@
-// src/services/InvoiceService.js
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const PDFDocument = require('pdfkit');
 
 class InvoiceService {
   constructor() {
     this._invoiceModel = null;
     this._exhibitorModel = null;
-    this._paymentModel = null;
   }
 
-  // Lazy getter for Invoice model
   get Invoice() {
     if (!this._invoiceModel) {
       const modelFactory = require('../models');
       this._invoiceModel = modelFactory.getModel('Invoice');
+      if (!this._invoiceModel) {
+        throw new Error('Invoice model not found. Make sure models are initialized.');
+      }
     }
     return this._invoiceModel;
   }
 
-  // Lazy getter for Exhibitor model
   get Exhibitor() {
     if (!this._exhibitorModel) {
       const modelFactory = require('../models');
       this._exhibitorModel = modelFactory.getModel('Exhibitor');
     }
     return this._exhibitorModel;
-  }
-
-  // Lazy getter for Payment model
-  get Payment() {
-    if (!this._paymentModel) {
-      const modelFactory = require('../models');
-      this._paymentModel = modelFactory.getModel('Payment');
-    }
-    return this._paymentModel;
   }
 
   async createInvoice(invoiceData) {
@@ -48,36 +38,6 @@ class InvoiceService {
         issueDate: new Date()
       });
       
-      // Send notification
-      if (invoice.exhibitorId) {
-        try {
-          const kafkaProducer = require('../kafka/producer');
-          const exhibitor = await this.Exhibitor.findByPk(invoice.exhibitorId);
-          if (exhibitor) {
-            await kafkaProducer.sendNotification('INVOICE_CREATED', null, {
-              invoiceId: invoice.id,
-              invoiceNumber: invoiceNumber,
-              company: exhibitor.company,
-              amount: invoice.amount
-            });
-          }
-        } catch (kafkaError) {
-          console.warn('Kafka not available for notification:', kafkaError.message);
-        }
-      }
-      
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('INVOICE_CREATED', null, {
-          invoiceId: invoice.id,
-          invoiceNumber: invoiceNumber,
-          amount: invoice.amount
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
-      }
-
       return invoice;
     } catch (error) {
       throw new Error(`Failed to create invoice: ${error.message}`);
@@ -90,36 +50,22 @@ class InvoiceService {
       const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
       const prefix = `INV-${year}${month}-`;
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const lastInvoice = await this.Invoice.findOne({
-          where: {
-            invoiceNumber: {
-              [Op.like]: `${prefix}%`
-            }
-          },
-          order: [['createdAt', 'DESC']]
-        });
-        
-        let nextNumber = 1;
-        if (lastInvoice) {
-          const lastNumber = parseInt(lastInvoice.invoiceNumber.replace(prefix, ''));
-          nextNumber = lastNumber + 1;
-        }
-        
-        return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
-      } else {
-        const lastInvoice = await this.Invoice.findOne({
-          invoiceNumber: { $regex: `^${prefix}` }
-        }).sort({ createdAt: -1 });
-        
-        let nextNumber = 1;
-        if (lastInvoice) {
-          const lastNumber = parseInt(lastInvoice.invoiceNumber.replace(prefix, ''));
-          nextNumber = lastNumber + 1;
-        }
-        
-        return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
+      const lastInvoice = await this.Invoice.findOne({
+        where: {
+          invoiceNumber: {
+            [Op.like]: `${prefix}%`
+          }
+        },
+        order: [['createdAt', 'DESC']]
+      });
+      
+      let nextNumber = 1;
+      if (lastInvoice) {
+        const lastNumber = parseInt(lastInvoice.invoiceNumber.replace(prefix, ''));
+        nextNumber = lastNumber + 1;
       }
+      
+      return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
     } catch (error) {
       // Fallback to timestamp-based number
       const timestamp = Date.now();
@@ -131,69 +77,46 @@ class InvoiceService {
     try {
       const offset = (page - 1) * limit;
       
-      let query = {};
+      let where = {};
       
+      // Search filter
       if (filters.search) {
-        if (process.env.DB_TYPE === 'mysql') {
-          query[Op.or] = [
-            { invoiceNumber: { [Op.like]: `%${filters.search}%` } },
-            { company: { [Op.like]: `%${filters.search}%` } }
-          ];
-        } else {
-          query.$or = [
-            { invoiceNumber: { $regex: filters.search, $options: 'i' } },
-            { company: { $regex: filters.search, $options: 'i' } }
-          ];
-        }
+        where[Op.or] = [
+          { invoiceNumber: { [Op.like]: `%${filters.search}%` } },
+          { company: { [Op.like]: `%${filters.search}%` } }
+        ];
       }
       
+      // Status filter
       if (filters.status && filters.status !== 'all') {
-        query.status = filters.status;
+        where.status = filters.status;
       }
       
+      // Exhibitor filter
       if (filters.exhibitorId) {
-        query.exhibitorId = filters.exhibitorId;
+        where.exhibitorId = filters.exhibitorId;
       }
       
+      // Date range filter
       if (filters.startDate && filters.endDate) {
-        if (process.env.DB_TYPE === 'mysql') {
-          query.dueDate = {
-            [Op.between]: [new Date(filters.startDate), new Date(filters.endDate)]
-          };
-        } else {
-          query.dueDate = {
-            $gte: new Date(filters.startDate),
-            $lte: new Date(filters.endDate)
-          };
-        }
+        where.dueDate = {
+          [Op.between]: [new Date(filters.startDate), new Date(filters.endDate)]
+        };
       }
 
-      let invoices, total;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        const result = await this.Invoice.findAndCountAll({
-          where: query,
-          limit,
-          offset,
-          order: [['dueDate', 'ASC']]
-        });
-        
-        invoices = result.rows;
-        total = result.count;
-      } else {
-        invoices = await this.Invoice.find(query)
-          .skip(offset)
-          .limit(limit)
-          .sort({ dueDate: 1 });
-        
-        total = await this.Invoice.countDocuments(query);
-      }
+      // Use Sequelize findAndCountAll
+      const result = await this.Invoice.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['dueDate', 'ASC']]
+      });
 
       return {
-        invoices,
-        total,
+        invoices: result.rows,
+        total: result.count,
         page,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(result.count / limit)
       };
     } catch (error) {
       throw new Error(`Failed to fetch invoices: ${error.message}`);
@@ -202,13 +125,7 @@ class InvoiceService {
 
   async getInvoiceById(id) {
     try {
-      let invoice;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        invoice = await this.Invoice.findByPk(id);
-      } else {
-        invoice = await this.Invoice.findById(id);
-      }
+      const invoice = await this.Invoice.findByPk(id);
       
       if (!invoice) {
         throw new Error('Invoice not found');
@@ -222,32 +139,10 @@ class InvoiceService {
 
   async updateInvoice(id, updateData) {
     try {
-      let invoice;
+      const invoice = await this.Invoice.findByPk(id);
+      if (!invoice) throw new Error('Invoice not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        invoice = await this.Invoice.findByPk(id);
-        if (!invoice) throw new Error('Invoice not found');
-        await invoice.update(updateData);
-      } else {
-        invoice = await this.Invoice.findByIdAndUpdate(
-          id,
-          updateData,
-          { new: true, runValidators: true }
-        );
-        if (!invoice) throw new Error('Invoice not found');
-      }
-
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('INVOICE_UPDATED', null, {
-          invoiceId: id,
-          invoiceNumber: invoice.invoiceNumber
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
-      }
-
+      await invoice.update(updateData);
       return invoice;
     } catch (error) {
       throw new Error(`Failed to update invoice: ${error.message}`);
@@ -256,29 +151,11 @@ class InvoiceService {
 
   async deleteInvoice(id) {
     try {
-      let result;
+      const invoice = await this.Invoice.findByPk(id);
+      if (!invoice) throw new Error('Invoice not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const invoice = await this.Invoice.findByPk(id);
-        if (!invoice) throw new Error('Invoice not found');
-        await invoice.destroy();
-        result = { success: true };
-      } else {
-        result = await this.Invoice.findByIdAndDelete(id);
-        if (!result) throw new Error('Invoice not found');
-      }
-
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('INVOICE_DELETED', null, {
-          invoiceId: id
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
-      }
-
-      return result;
+      await invoice.destroy();
+      return { success: true };
     } catch (error) {
       throw new Error(`Failed to delete invoice: ${error.message}`);
     }
@@ -288,14 +165,10 @@ class InvoiceService {
     try {
       const invoice = await this.getInvoiceById(invoiceId);
       
-      // Get exhibitor info
+      // Get exhibitor info if exists
       let exhibitor = null;
       if (invoice.exhibitorId) {
-        if (process.env.DB_TYPE === 'mysql') {
-          exhibitor = await this.Exhibitor.findByPk(invoice.exhibitorId);
-        } else {
-          exhibitor = await this.Exhibitor.findById(invoice.exhibitorId);
-        }
+        exhibitor = await this.Exhibitor.findByPk(invoice.exhibitorId);
       }
       
       // Create PDF document
@@ -348,7 +221,7 @@ class InvoiceService {
       doc.fontSize(10).fillColor('#2c3e50');
       let totalAmount = 0;
       
-      if (invoice.items && invoice.items.length > 0) {
+      if (invoice.items && Array.isArray(invoice.items)) {
         invoice.items.forEach((item) => {
           const amount = item.amount * (item.quantity || 1);
           totalAmount += amount;
@@ -402,105 +275,40 @@ class InvoiceService {
 
   async getInvoiceStats() {
     try {
-      if (process.env.DB_TYPE === 'mysql') {
-        const { Sequelize } = require('sequelize');
-        
-        const totalAmount = await this.Invoice.sum('amount', {
-          where: { status: 'paid' }
-        });
-        
-        const pendingAmount = await this.Invoice.sum('amount', {
-          where: { status: 'pending' }
-        });
-        
-        const overdueAmount = await this.Invoice.sum('amount', {
-          where: {
-            status: 'pending',
-            dueDate: { [Op.lt]: new Date() }
-          }
-        });
-        
-        const byStatus = await this.Invoice.findAll({
-          attributes: [
-            'status',
-            [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
-            [Sequelize.fn('SUM', Sequelize.col('amount')), 'total']
-          ],
-          group: ['status']
-        });
-        
-        // Get monthly invoice totals
-        const monthlyInvoices = await this.Invoice.findAll({
-          attributes: [
-            [Sequelize.fn('DATE_FORMAT', Sequelize.col('issueDate'), '%Y-%m'), 'month'],
-            [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
-            [Sequelize.fn('SUM', Sequelize.col('amount')), 'total']
-          ],
-          where: {
-            issueDate: { [Op.gte]: new Date(new Date().setMonth(new Date().getMonth() - 6)) }
-          },
-          group: [Sequelize.fn('DATE_FORMAT', Sequelize.col('issueDate'), '%Y-%m')],
-          order: [[Sequelize.fn('DATE_FORMAT', Sequelize.col('issueDate'), '%Y-%m'), 'ASC']]
-        });
-        
-        return {
-          totalAmount: totalAmount || 0,
-          pendingAmount: pendingAmount || 0,
-          overdueAmount: overdueAmount || 0,
-          byStatus,
-          monthlyInvoices
-        };
-      } else {
-        const totalAmount = await this.Invoice.aggregate([
-          { $match: { status: 'paid' } },
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        
-        const pendingAmount = await this.Invoice.aggregate([
-          { $match: { status: 'pending' } },
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        
-        const overdueAmount = await this.Invoice.aggregate([
-          { $match: { 
-            status: 'pending',
-            dueDate: { $lt: new Date() }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        
-        const byStatus = await this.Invoice.aggregate([
-          { $group: { 
-            _id: '$status',
-            count: { $sum: 1 },
-            total: { $sum: '$amount' }
-          }}
-        ]);
-        
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        
-        const monthlyInvoices = await this.Invoice.aggregate([
-          { $match: { issueDate: { $gte: sixMonthsAgo } } },
-          { $group: { 
-            _id: { 
-              year: { $year: '$issueDate' },
-              month: { $month: '$issueDate' }
-            },
-            count: { $sum: 1 },
-            total: { $sum: '$amount' }
-          }},
-          { $sort: { '_id.year': 1, '_id.month': 1 } }
-        ]);
-        
-        return {
-          totalAmount: totalAmount[0]?.total || 0,
-          pendingAmount: pendingAmount[0]?.total || 0,
-          overdueAmount: overdueAmount[0]?.total || 0,
-          byStatus,
-          monthlyInvoices
-        };
-      }
+      // Get total amount for paid invoices
+      const totalAmount = await this.Invoice.sum('amount', {
+        where: { status: 'paid' }
+      });
+      
+      // Get pending amount
+      const pendingAmount = await this.Invoice.sum('amount', {
+        where: { status: 'pending' }
+      });
+      
+      // Get overdue amount
+      const overdueAmount = await this.Invoice.sum('amount', {
+        where: {
+          status: 'pending',
+          dueDate: { [Op.lt]: new Date() }
+        }
+      });
+      
+      // Get counts by status
+      const byStatus = await this.Invoice.findAll({
+        attributes: [
+          'status',
+          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+          [Sequelize.fn('SUM', Sequelize.col('amount')), 'total']
+        ],
+        group: ['status']
+      });
+      
+      return {
+        totalAmount: totalAmount || 0,
+        pendingAmount: pendingAmount || 0,
+        overdueAmount: overdueAmount || 0,
+        byStatus
+      };
     } catch (error) {
       throw new Error(`Failed to get invoice stats: ${error.message}`);
     }
@@ -509,22 +317,13 @@ class InvoiceService {
   async getOverdueInvoices() {
     try {
       const now = new Date();
-      let overdueInvoices;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        overdueInvoices = await this.Invoice.findAll({
-          where: {
-            status: 'pending',
-            dueDate: { [Op.lt]: now }
-          },
-          order: [['dueDate', 'ASC']]
-        });
-      } else {
-        overdueInvoices = await this.Invoice.find({
+      const overdueInvoices = await this.Invoice.findAll({
+        where: {
           status: 'pending',
-          dueDate: { $lt: now }
-        }).sort({ dueDate: 1 });
-      }
+          dueDate: { [Op.lt]: now }
+        },
+        order: [['dueDate', 'ASC']]
+      });
       
       return overdueInvoices;
     } catch (error) {
@@ -534,13 +333,7 @@ class InvoiceService {
 
   async getInvoiceByNumber(invoiceNumber) {
     try {
-      let invoice;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        invoice = await this.Invoice.findOne({ where: { invoiceNumber } });
-      } else {
-        invoice = await this.Invoice.findOne({ invoiceNumber });
-      }
+      const invoice = await this.Invoice.findOne({ where: { invoiceNumber } });
       
       if (!invoice) {
         throw new Error('Invoice not found');
@@ -566,16 +359,10 @@ class InvoiceService {
 
   async getInvoicesByExhibitor(exhibitorId) {
     try {
-      let invoices;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        invoices = await this.Invoice.findAll({
-          where: { exhibitorId },
-          order: [['dueDate', 'DESC']]
-        });
-      } else {
-        invoices = await this.Invoice.find({ exhibitorId }).sort({ dueDate: -1 });
-      }
+      const invoices = await this.Invoice.findAll({
+        where: { exhibitorId },
+        order: [['dueDate', 'DESC']]
+      });
       
       return invoices;
     } catch (error) {
