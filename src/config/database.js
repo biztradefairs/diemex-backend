@@ -6,112 +6,94 @@ class Database {
     this.dbType = process.env.DB_TYPE || 'mysql';
     this.connections = {};
     this._connected = false;
-    this.maxRetries = 5;
-    this.retryDelay = 3000;
+
+    this.maxRetries = 3;
+    this.retryDelay = 2000;
   }
 
   async connectMySQL() {
-    let retries = 0;
+    // 🔍 Detect TiDB Cloud vs Local MySQL
+    const isCloudMySQL =
+      typeof process.env.MYSQL_HOST === 'string' &&
+      process.env.MYSQL_HOST.includes('tidbcloud.com');
 
-    // 👉 Detect LOCAL Docker MySQL vs Cloud MySQL (TiDB/PlanetScale)
-    const isLocalMySQL =
-      process.env.MYSQL_HOST === 'mysql' ||               // docker-compose service
-      process.env.MYSQL_HOST === 'localhost' ||           // local machine
-      process.env.NODE_ENV === 'development';
+    const port = Number(process.env.MYSQL_PORT) || (isCloudMySQL ? 4000 : 3306);
 
-    while (retries < this.maxRetries) {
-      try {
-        const sequelize = new Sequelize(
-          process.env.MYSQL_DATABASE,
-          process.env.MYSQL_USER,
-          process.env.MYSQL_PASSWORD,
-          {
-            host: process.env.MYSQL_HOST,
+    try {
+      console.log(
+        `🔍 Connecting to MySQL at ${process.env.MYSQL_HOST}:${port} ` +
+        (isCloudMySQL ? '(TiDB Cloud)' : '(Local)')
+      );
 
-            // 🔹 Docker MySQL → 3306
-            // 🔹 TiDB Cloud → 4000
-            port: Number(process.env.MYSQL_PORT) || (isLocalMySQL ? 3306 : 4000),
+      const sequelize = new Sequelize(
+        process.env.MYSQL_DATABASE,
+        process.env.MYSQL_USER,
+        process.env.MYSQL_PASSWORD,
+        {
+          host: process.env.MYSQL_HOST,
+          port: port,
+          dialect: 'mysql',
 
-            dialect: 'mysql',
-            logging: process.env.NODE_ENV === 'development' ? console.log : false,
+          logging:
+            process.env.NODE_ENV === 'development'
+              ? false  // Changed from console.log to false to reduce logs
+              : false,
 
-            // 🔐 SSL ONLY for Cloud MySQL
-            ...(isLocalMySQL
-              ? {}
-              : {
-                  ssl: true,
-                  dialectOptions: {
-                    ssl: {
-                      require: true,
-                      rejectUnauthorized: true
-                    }
-                  }
-                }),
+          // 🔐 TLS REQUIRED for TiDB Cloud
+          dialectOptions: isCloudMySQL
+            ? {
+                ssl: {
+                  minVersion: 'TLSv1.2',
+                  rejectUnauthorized: true
+                }
+              }
+            : {},
 
-            pool: {
-              max: 10,
-              min: 0,
-              acquire: 30000,
-              idle: 10000
-            }
+          pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
           }
-        );
-
-        await sequelize.authenticate();
-
-        console.log(
-          isLocalMySQL
-            ? '✅ MySQL connected (local / no SSL)'
-            : '✅ MySQL connected (TLS enforced)'
-        );
-
-        this.connections.mysql = sequelize;
-        return sequelize;
-
-      } catch (error) {
-        retries++;
-        console.warn(`MySQL connection attempt ${retries} failed: ${error.message}`);
-
-        if (retries >= this.maxRetries) {
-          console.error('❌ MySQL connection failed after maximum retries');
-          throw error;
         }
+      );
 
-        await new Promise(res => setTimeout(res, this.retryDelay));
-      }
+      await sequelize.authenticate();
+
+      console.log(
+        isCloudMySQL
+          ? '✅ MySQL connected to TiDB Cloud'
+          : `✅ MySQL connected to ${process.env.MYSQL_HOST}:${port}`
+      );
+
+      this.connections.mysql = sequelize;
+      return sequelize;
+
+    } catch (error) {
+      console.error(`❌ MySQL connection failed: ${error.message}`);
+      throw error;
     }
   }
 
   async connectMongoDB() {
     try {
+      console.log('🔍 Connecting to MongoDB...');
+      
       await mongoose.connect(process.env.MONGO_URI, {
         useNewUrlParser: true,
-        useUnifiedTopology: true,
-        maxPoolSize: 10
+        useUnifiedTopology: true
       });
 
-        console.log('✅ MongoDB connected successfully');
-        this.connections.mongodb = mongoose.connection;
-        return;
+      console.log('✅ MongoDB connected');
+      this.connections.mongodb = mongoose.connection;
 
-      } catch (error) {
-        retries++;
-        console.warn(`MongoDB connection failed (attempt ${retries}): ${error.message}`);
-        
-        if (retries >= this.maxRetries) {
-          console.error('❌ MongoDB connection failed after maximum retries');
-          throw error;
-        }
-        
-        console.log(`Waiting ${this.retryDelay/1000} seconds before retry...`);
-        await new Promise(res => setTimeout(res, this.retryDelay));
-      }
+    } catch (error) {
+      console.error('❌ MongoDB connection failed:', error.message);
+      throw error;
     }
   }
 
   async connect() {
-    console.log(`🗄️ Database type: ${this.dbType}`);
-    
     try {
       if (this.dbType === 'mysql' || this.dbType === 'both') {
         await this.connectMySQL();
@@ -122,6 +104,7 @@ class Database {
       }
 
       this._connected = true;
+      console.log('🚀 Database layer ready');
 
     } catch (error) {
       console.error('❌ Database connection failed:', error.message);

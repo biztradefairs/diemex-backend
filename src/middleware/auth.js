@@ -140,8 +140,17 @@ const authenticateExhibitor = async (req, res, next) => {
   }
 };
 
+// Combined authentication and authorization middleware
+const authMiddleware = (roles = []) => {
+  return [
+    authenticate,
+    authorize(roles)
+  ];
+};
+
 module.exports = {
   authenticate,
   authorize,
-  authenticateExhibitor
+  authenticateExhibitor,
+  authMiddleware
 };
