@@ -1,45 +1,77 @@
-// src/services/PaymentService.js
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 
 class PaymentService {
   constructor() {
+    this.dbType = process.env.DB_TYPE || 'mysql';
+    this.initialized = false;
     this._paymentModel = null;
     this._invoiceModel = null;
   }
 
-  // Lazy getter for Payment model
+  async ensureInitialized() {
+    if (this.initialized) return;
+    
+    console.log('🔧 PaymentService: Initializing...');
+    
+    try {
+      // Initialize model factory
+      const modelFactory = require('../models');
+      
+      // Ensure models are initialized
+      if (modelFactory.getModel('Payment') === undefined) {
+        console.log('⚠️ Models not initialized, initializing now...');
+        await modelFactory.init();
+      }
+      
+      // Get models
+      this._paymentModel = modelFactory.getModel('Payment');
+      this._invoiceModel = modelFactory.getModel('Invoice');
+      
+      if (!this._paymentModel) {
+        throw new Error('Payment model not found');
+      }
+      
+      if (!this._invoiceModel) {
+        console.warn('⚠️ Invoice model not found, continuing without it');
+      }
+      
+      this.initialized = true;
+      console.log('✅ PaymentService: Initialized successfully');
+    } catch (error) {
+      console.error('❌ PaymentService: Initialization failed:', error);
+      throw error;
+    }
+  }
+
   get Payment() {
     if (!this._paymentModel) {
-      const modelFactory = require('../models');
-      this._paymentModel = modelFactory.getModel('Payment');
+      throw new Error('Payment model not initialized. Call ensureInitialized() first.');
     }
     return this._paymentModel;
   }
 
-  // Lazy getter for Invoice model
   get Invoice() {
     if (!this._invoiceModel) {
-      const modelFactory = require('../models');
-      this._invoiceModel = modelFactory.getModel('Invoice');
+      throw new Error('Invoice model not initialized.');
     }
     return this._invoiceModel;
   }
 
   async createPayment(paymentData) {
+    await this.ensureInitialized();
+    
     try {
-      // Generate transaction ID if not provided
+      console.log('💳 Creating payment...');
+      
       if (!paymentData.transactionId) {
         paymentData.transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       }
 
+      // Use Sequelize method
       const payment = await this.Payment.create(paymentData);
+      console.log(`✅ Payment created with ID: ${payment.id}`);
       
-      // Update invoice status if payment is successful
-      if (payment.status === 'completed' && payment.invoiceId) {
-        await this.updateInvoiceStatus(payment.invoiceId, 'paid', payment.id);
-      }
-      
-      // Send notification
+      // Try Kafka notifications
       try {
         const kafkaProducer = require('../kafka/producer');
         await kafkaProducer.sendNotification('PAYMENT_RECEIVED', payment.userId, {
@@ -47,189 +79,133 @@ class PaymentService {
           amount: payment.amount,
           status: payment.status
         });
-        await kafkaProducer.sendAuditLog('PAYMENT_CREATED', payment.userId, {
-          paymentId: payment.id,
-          amount: payment.amount,
-          method: payment.method
-        });
       } catch (kafkaError) {
-        console.warn('Kafka not available:', kafkaError.message);
+        console.warn('⚠️ Kafka not available for notification');
       }
 
       return payment;
     } catch (error) {
+      console.error('❌ Error creating payment:', error);
       throw new Error(`Failed to create payment: ${error.message}`);
     }
   }
 
   async getAllPayments(filters = {}, page = 1, limit = 10) {
+    await this.ensureInitialized();
+    
     try {
+      console.log('📋 Fetching all payments...');
       const offset = (page - 1) * limit;
       
-      let query = {};
+      let where = {};
       
+      // Search filter
       if (filters.search) {
-        if (process.env.DB_TYPE === 'mysql') {
-          query[Op.or] = [
-            { invoiceNumber: { [Op.like]: `%${filters.search}%` } },
-            { transactionId: { [Op.like]: `%${filters.search}%` } }
-          ];
-        } else {
-          query.$or = [
-            { invoiceNumber: { $regex: filters.search, $options: 'i' } },
-            { transactionId: { $regex: filters.search, $options: 'i' } }
-          ];
-        }
+        where[Op.or] = [
+          { invoiceNumber: { [Op.like]: `%${filters.search}%` } },
+          { transactionId: { [Op.like]: `%${filters.search}%` } }
+        ];
       }
       
+      // Status filter
       if (filters.status && filters.status !== 'all') {
-        query.status = filters.status;
+        where.status = filters.status;
       }
       
+      // Method filter
       if (filters.method && filters.method !== 'all') {
-        query.method = filters.method;
+        where.method = filters.method;
       }
       
+      // Date range filter
       if (filters.startDate && filters.endDate) {
-        if (process.env.DB_TYPE === 'mysql') {
-          query.date = {
-            [Op.between]: [new Date(filters.startDate), new Date(filters.endDate)]
-          };
-        } else {
-          query.date = {
-            $gte: new Date(filters.startDate),
-            $lte: new Date(filters.endDate)
-          };
-        }
+        where.date = {
+          [Op.between]: [new Date(filters.startDate), new Date(filters.endDate)]
+        };
       }
 
-      let payments, total;
+      // Use Sequelize's findAndCountAll method
+      const result = await this.Payment.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['date', 'DESC']]
+      });
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const result = await this.Payment.findAndCountAll({
-          where: query,
-          limit,
-          offset,
-          order: [['date', 'DESC']]
-        });
-        
-        payments = result.rows;
-        total = result.count;
-      } else {
-        payments = await this.Payment.find(query)
-          .skip(offset)
-          .limit(limit)
-          .sort({ date: -1 });
-        
-        total = await this.Payment.countDocuments(query);
-      }
-
+      console.log(`✅ Found ${result.count} payments`);
+      
       return {
-        payments,
-        total,
+        payments: result.rows,
+        total: result.count,
         page,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(result.count / limit)
       };
     } catch (error) {
+      console.error('❌ Error fetching payments:', error);
       throw new Error(`Failed to fetch payments: ${error.message}`);
     }
   }
 
   async getPaymentById(id) {
+    await this.ensureInitialized();
+    
     try {
-      let payment;
+      console.log(`🔍 Fetching payment by ID: ${id}`);
       
-      if (process.env.DB_TYPE === 'mysql') {
-        payment = await this.Payment.findByPk(id);
-      } else {
-        payment = await this.Payment.findById(id);
-      }
+      // Use Sequelize's findByPk method
+      const payment = await this.Payment.findByPk(id);
       
       if (!payment) {
         throw new Error('Payment not found');
       }
       
+      console.log(`✅ Payment found: ${payment.invoiceNumber}`);
       return payment;
     } catch (error) {
+      console.error(`❌ Error fetching payment ${id}:`, error);
       throw new Error(`Failed to fetch payment: ${error.message}`);
     }
   }
 
   async updatePaymentStatus(id, status, notes = '') {
+    await this.ensureInitialized();
+    
     try {
-      let payment;
+      console.log(`🔄 Updating payment ${id} status to ${status}`);
       
-      if (process.env.DB_TYPE === 'mysql') {
-        payment = await this.Payment.findByPk(id);
-        if (!payment) throw new Error('Payment not found');
-        
-        const oldStatus = payment.status;
-        await payment.update({ 
-          status,
-          notes: payment.notes ? `${payment.notes}\n${notes}` : notes
-        });
-        
-        // Send notification if status changed
-        if (oldStatus !== status) {
-          try {
-            const kafkaProducer = require('../kafka/producer');
-            await kafkaProducer.sendNotification('PAYMENT_STATUS_CHANGED', payment.userId, {
-              paymentId: payment.id,
-              oldStatus,
-              newStatus: status,
-              amount: payment.amount
-            });
-          } catch (kafkaError) {
-            console.warn('Kafka not available for notification:', kafkaError.message);
-          }
-        }
-        
-        // Update invoice status if payment is completed
-        if (status === 'completed' && payment.invoiceId) {
-          await this.updateInvoiceStatus(payment.invoiceId, 'paid', payment.id);
-        }
-      } else {
-        const updateData = { 
-          status,
-          $push: { 
-            notes: { 
-              text: notes,
-              timestamp: new Date()
-            }
-          }
-        };
-        
-        payment = await this.Payment.findByIdAndUpdate(
-          id,
-          updateData,
-          { new: true, runValidators: true }
-        );
-        if (!payment) throw new Error('Payment not found');
+      // Find payment using Sequelize
+      const payment = await this.Payment.findByPk(id);
+      if (!payment) {
+        throw new Error('Payment not found');
       }
-
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('PAYMENT_STATUS_UPDATED', null, {
-          paymentId: id,
-          oldStatus: payment.previous?.status || 'unknown',
-          newStatus: status
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
-      }
-
+      
+      const oldStatus = payment.status;
+      
+      // Update payment
+      await payment.update({ 
+        status,
+        notes: payment.notes ? `${payment.notes}\n${notes}` : notes
+      });
+      
+      console.log(`✅ Payment ${id} updated from ${oldStatus} to ${status}`);
+      
       return payment;
     } catch (error) {
+      console.error(`❌ Error updating payment ${id}:`, error);
       throw new Error(`Failed to update payment status: ${error.message}`);
     }
   }
 
   async getPaymentStats(timeRange = 'month') {
+    await this.ensureInitialized();
+    
     try {
+      console.log(`📊 Getting payment stats for ${timeRange}`);
+      
       const now = new Date();
       let startDate;
       
+      // Calculate start date based on time range
       switch (timeRange) {
         case 'day':
           startDate = new Date(now.setDate(now.getDate() - 1));
@@ -247,161 +223,131 @@ class PaymentService {
           startDate = new Date(0);
       }
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const { Sequelize } = require('sequelize');
-        
-        const totalRevenue = await this.Payment.sum('amount', {
-          where: {
-            status: 'completed',
-            date: { [Op.gte]: startDate }
-          }
-        });
-        
-        const totalPayments = await this.Payment.count({
-          where: {
-            status: 'completed',
-            date: { [Op.gte]: startDate }
-          }
-        });
-        
-        const pendingAmount = await this.Payment.sum('amount', {
-          where: {
-            status: 'pending',
-            date: { [Op.gte]: startDate }
-          }
-        });
-        
-        const byMethod = await this.Payment.findAll({
-          attributes: [
-            'method',
-            [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
-            [Sequelize.fn('SUM', Sequelize.col('amount')), 'total']
-          ],
-          where: {
-            status: 'completed',
-            date: { [Op.gte]: startDate }
-          },
-          group: ['method']
-        });
-        
-        return {
-          totalRevenue: totalRevenue || 0,
-          totalPayments: totalPayments || 0,
-          pendingAmount: pendingAmount || 0,
-          byMethod
-        };
-      } else {
-        const totalRevenue = await this.Payment.aggregate([
-          { $match: { 
-            status: 'completed',
-            date: { $gte: startDate }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        
-        const totalPayments = await this.Payment.countDocuments({
+      // Get total revenue using Sequelize aggregate
+      const totalRevenue = await this.Payment.sum('amount', {
+        where: {
           status: 'completed',
-          date: { $gte: startDate }
-        });
-        
-        const pendingAmount = await this.Payment.aggregate([
-          { $match: { 
-            status: 'pending',
-            date: { $gte: startDate }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        
-        const byMethod = await this.Payment.aggregate([
-          { $match: { 
-            status: 'completed',
-            date: { $gte: startDate }
-          }},
-          { $group: { 
-            _id: '$method',
-            count: { $sum: 1 },
-            total: { $sum: '$amount' }
-          }}
-        ]);
-        
-        return {
-          totalRevenue: totalRevenue[0]?.total || 0,
-          totalPayments: totalPayments || 0,
-          pendingAmount: pendingAmount[0]?.total || 0,
-          byMethod
-        };
-      }
+          date: { [Op.gte]: startDate }
+        }
+      });
+      
+      // Get total completed payments count
+      const totalPayments = await this.Payment.count({
+        where: {
+          status: 'completed',
+          date: { [Op.gte]: startDate }
+        }
+      });
+      
+      // Get pending amount
+      const pendingAmount = await this.Payment.sum('amount', {
+        where: {
+          status: 'pending',
+          date: { [Op.gte]: startDate }
+        }
+      });
+      
+      // Get statistics by payment method
+      const byMethod = await this.Payment.findAll({
+        attributes: [
+          'method',
+          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
+          [Sequelize.fn('SUM', Sequelize.col('amount')), 'total']
+        ],
+        where: {
+          status: 'completed',
+          date: { [Op.gte]: startDate }
+        },
+        group: ['method']
+      });
+      
+      console.log(`✅ Stats calculated - Revenue: $${totalRevenue || 0}`);
+      
+      return {
+        totalRevenue: totalRevenue || 0,
+        totalPayments: totalPayments || 0,
+        pendingAmount: pendingAmount || 0,
+        byMethod: byMethod || []
+      };
     } catch (error) {
+      console.error('❌ Error getting payment stats:', error);
       throw new Error(`Failed to get payment stats: ${error.message}`);
     }
   }
 
-  async updateInvoiceStatus(invoiceId, status, paymentId = null) {
-    try {
-      const updateData = { 
-        status,
-        ...(status === 'paid' && paymentId ? { paidDate: new Date() } : {})
-      };
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        await this.Invoice.update(updateData, { where: { id: invoiceId } });
-      } else {
-        await this.Invoice.findByIdAndUpdate(invoiceId, updateData);
-      }
-      
-      // Send notification
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendNotification('INVOICE_STATUS_CHANGED', null, {
-          invoiceId,
-          status,
-          paymentId
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for notification:', kafkaError.message);
-      }
-    } catch (error) {
-      console.error('Failed to update invoice status:', error.message);
-    }
-  }
-
   async getPaymentsByInvoice(invoiceId) {
+    await this.ensureInitialized();
+    
     try {
-      let payments;
+      console.log(`🔍 Getting payments for invoice ${invoiceId}`);
       
-      if (process.env.DB_TYPE === 'mysql') {
-        payments = await this.Payment.findAll({
-          where: { invoiceId },
-          order: [['date', 'DESC']]
-        });
-      } else {
-        payments = await this.Payment.find({ invoiceId }).sort({ date: -1 });
-      }
+      const payments = await this.Payment.findAll({
+        where: { invoiceId },
+        order: [['date', 'DESC']]
+      });
       
+      console.log(`✅ Found ${payments.length} payments for invoice ${invoiceId}`);
       return payments;
     } catch (error) {
+      console.error(`❌ Error getting payments for invoice ${invoiceId}:`, error);
       throw new Error(`Failed to get payments by invoice: ${error.message}`);
     }
   }
 
   async getRecentPayments(limit = 10) {
+    await this.ensureInitialized();
+    
     try {
-      let payments;
+      console.log(`📋 Getting recent ${limit} payments`);
       
-      if (process.env.DB_TYPE === 'mysql') {
-        payments = await this.Payment.findAll({
-          limit,
-          order: [['date', 'DESC']]
-        });
-      } else {
-        payments = await this.Payment.find()
-          .limit(limit)
-          .sort({ date: -1 });
-      }
+      const payments = await this.Payment.findAll({
+        limit,
+        order: [['date', 'DESC']]
+      });
       
+      console.log(`✅ Found ${payments.length} recent payments`);
       return payments;
     } catch (error) {
+      console.error('❌ Error getting recent payments:', error);
       throw new Error(`Failed to get recent payments: ${error.message}`);
+    }
+  }
+
+  async refundPayment(id, reason) {
+    await this.ensureInitialized();
+    
+    try {
+      console.log(`💸 Processing refund for payment ${id}`);
+      
+      // Mark original payment as refunded
+      const payment = await this.updatePaymentStatus(
+        id, 
+        'refunded', 
+        `Refunded: ${reason}`
+      );
+      
+      // Create a negative payment for the refund
+      const refundPayment = await this.createPayment({
+        invoiceNumber: `REFUND-${payment.invoiceNumber}`,
+        invoiceId: payment.invoiceId,
+        exhibitorId: payment.exhibitorId,
+        userId: payment.userId,
+        amount: -payment.amount,
+        method: payment.method,
+        status: 'completed',
+        notes: `Refund for payment ${payment.id}: ${reason}`,
+        processedBy: 'system'
+      });
+      
+      console.log(`✅ Refund processed successfully`);
+      
+      return {
+        originalPayment: payment,
+        refundPayment
+      };
+    } catch (error) {
+      console.error(`❌ Error processing refund:`, error);
+      throw new Error(`Failed to refund payment: ${error.message}`);
     }
   }
 }
