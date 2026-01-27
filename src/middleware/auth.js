@@ -17,8 +17,9 @@ const authenticate = async (req, res, next) => {
     const modelFactory = require('../models');
     const User = modelFactory.getModel('User');
 
-    // ✅ ALWAYS Sequelize
-    const user = await User.findByPk(decoded.id);
+    const user = await User.findByPk(decoded.id, {
+      attributes: { exclude: ['password'] }
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -37,7 +38,8 @@ const authenticate = async (req, res, next) => {
     req.user = {
       id: user.id,
       email: user.email,
-      role: user.role
+      role: user.role,
+      name: user.name
     };
 
     next();
@@ -77,7 +79,7 @@ const authorize = (roles = []) => {
   };
 };
 
-// Exhibitor authentication (also Sequelize)
+// Exhibitor authentication
 const authenticateExhibitor = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -101,7 +103,6 @@ const authenticateExhibitor = async (req, res, next) => {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
 
-    // ✅ ALWAYS Sequelize
     const exhibitor = await Exhibitor.findByPk(decoded.id);
 
     if (!exhibitor) {
