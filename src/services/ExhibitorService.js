@@ -1,52 +1,51 @@
-const { Op, Sequelize } = require('sequelize');
-const bcrypt = require('bcryptjs');
+// src/services/ExhibitorService.js
+const { Op } = require('sequelize');
 
 class ExhibitorService {
   constructor() {
     this._exhibitorModel = null;
   }
 
+  // Get Exhibitor model with error handling
   get Exhibitor() {
     if (!this._exhibitorModel) {
       const modelFactory = require('../models');
       this._exhibitorModel = modelFactory.getModel('Exhibitor');
-      if (!this._exhibitorModel) {
-        throw new Error('Exhibitor model not found. Make sure models are initialized.');
-      }
     }
     return this._exhibitorModel;
   }
 
+  async testConnection() {
+    try {
+      const count = await this.Exhibitor.count();
+      console.log(`✅ Exhibitor model connection test: ${count} records found`);
+      return true;
+    } catch (error) {
+      console.error('❌ Exhibitor model connection test failed:', error.message);
+      return false;
+    }
+  }
+
   async createExhibitor(exhibitorData) {
     try {
-      // Generate random password if not provided
-      if (!exhibitorData.password) {
-        exhibitorData.password = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
-      }
-      
-      // Hash password
-      exhibitorData.password = await bcrypt.hash(exhibitorData.password, 10);
-      
-      // Set default status
-      if (!exhibitorData.status) {
-        exhibitorData.status = 'active';
-      }
-      
       const exhibitor = await this.Exhibitor.create(exhibitorData);
       
-      // Send welcome email
-      try {
-        const emailService = require('../services/EmailService');
-        await emailService.sendExhibitorWelcome(exhibitor, exhibitorData.password);
-      } catch (emailError) {
-        console.warn('Failed to send welcome email:', emailError.message);
-      }
-      
+      // Send notification for new exhibitor
+      const kafkaProducer = require('../kafka/producer');
+      await kafkaProducer.sendNotification('EXHIBITOR_REGISTERED', null, {
+        exhibitorId: exhibitor.id,
+        company: exhibitor.company,
+        status: exhibitor.status
+      });
+
+      // Send audit log
+      await kafkaProducer.sendAuditLog('EXHIBITOR_CREATED', null, {
+        company: exhibitor.company,
+        email: exhibitor.email
+      });
+
       return exhibitor;
     } catch (error) {
-      if (error.name === 'SequelizeUniqueConstraintError') {
-        throw new Error('Email already exists');
-      }
       throw new Error(`Failed to create exhibitor: ${error.message}`);
     }
   }
@@ -57,41 +56,61 @@ class ExhibitorService {
       
       let where = {};
       
-      // Search filter
       if (filters.search) {
-        where[Op.or] = [
-          { name: { [Op.like]: `%${filters.search}%` } },
-          { company: { [Op.like]: `%${filters.search}%` } },
-          { email: { [Op.like]: `%${filters.search}%` } }
-        ];
+        if (process.env.DB_TYPE === 'mysql') {
+          query[Op.or] = [
+            { name: { [Op.like]: `%${filters.search}%` } },
+            { company: { [Op.like]: `%${filters.search}%` } },
+            { email: { [Op.like]: `%${filters.search}%` } }
+          ];
+        } else {
+          query.$or = [
+            { name: { $regex: filters.search, $options: 'i' } },
+            { company: { $regex: filters.search, $options: 'i' } },
+            { email: { $regex: filters.search, $options: 'i' } }
+          ];
+        }
       }
       
-      // Sector filter
       if (filters.sector && filters.sector !== 'all') {
-        where.sector = filters.sector;
+        query.sector = filters.sector;
       }
       
-      // Status filter
       if (filters.status && filters.status !== 'all') {
-        where.status = filters.status;
+        query.status = filters.status;
       }
 
-      // Use Sequelize findAndCountAll
-      const result = await this.Exhibitor.findAndCountAll({
-        where,
-        limit,
-        offset,
-        order: [['createdAt', 'DESC']],
-        attributes: { exclude: ['password', 'resetPasswordToken', 'resetPasswordExpires'] }
-      });
+      let exhibitors, total;
+      
+      if (process.env.DB_TYPE === 'mysql') {
+        const result = await this.Exhibitor.findAndCountAll({
+          where: query,
+          limit,
+          offset,
+          order: [['createdAt', 'DESC']]
+        });
+        
+        exhibitors = result.rows;
+        total = result.count;
+      } else {
+        exhibitors = await this.Exhibitor.find(query)
+          .skip(offset)
+          .limit(limit)
+          .sort({ createdAt: -1 });
+        
+        total = await this.Exhibitor.countDocuments(query);
+      }
 
       return {
-        exhibitors: result.rows,
-        total: result.count,
+        exhibitors,
+        total,
         page,
-        totalPages: Math.ceil(result.count / limit)
+        totalPages: Math.ceil(total / limit)
       };
+      
     } catch (error) {
+      console.error('❌ Error fetching exhibitors:', error);
+      console.error('Error stack:', error.stack);
       throw new Error(`Failed to fetch exhibitors: ${error.message}`);
     }
   }
@@ -106,70 +125,172 @@ class ExhibitorService {
         throw new Error('Exhibitor not found');
       }
       
-      return exhibitor;
+      const exhibitorData = exhibitor.toJSON();
+      
+      // Map to frontend format
+      return {
+        id: exhibitorData.id,
+        name: exhibitorData.name,
+        email: exhibitorData.email,
+        phone: exhibitorData.phone,
+        company: exhibitorData.company,
+        sector: exhibitorData.sector,
+        booth: exhibitorData.boothNumber || '',
+        status: exhibitorData.status,
+        registrationDate: exhibitorData.registrationDate || exhibitorData.createdAt,
+        website: exhibitorData.website,
+        address: exhibitorData.address,
+        stallDetails: exhibitorData.stallDetails,
+        createdAt: exhibitorData.createdAt,
+        updatedAt: exhibitorData.updatedAt
+      };
+      
     } catch (error) {
+      console.error('❌ Error fetching exhibitor:', error);
       throw new Error(`Failed to fetch exhibitor: ${error.message}`);
     }
   }
 
   async updateExhibitor(id, updateData) {
     try {
-      const exhibitor = await this.Exhibitor.findByPk(id);
-      if (!exhibitor) throw new Error('Exhibitor not found');
+      let exhibitor;
       
-      // Don't update password here
-      delete updateData.password;
-      delete updateData.resetPasswordToken;
-      delete updateData.resetPasswordExpires;
-      
-      await exhibitor.update(updateData);
-      
+      if (process.env.DB_TYPE === 'mysql') {
+        exhibitor = await this.Exhibitor.findByPk(id);
+        if (!exhibitor) throw new Error('Exhibitor not found');
+        
+        const kafkaProducer = require('../kafka/producer');
+        // Send notification if status changed
+        if (updateData.status && updateData.status !== exhibitor.status) {
+          await kafkaProducer.sendNotification('EXHIBITOR_STATUS_CHANGED', null, {
+            exhibitorId: id,
+            company: exhibitor.company,
+            oldStatus: exhibitor.status,
+            newStatus: updateData.status
+          });
+        }
+        
+        await exhibitor.update(updateData);
+        
+        // Send audit log
+        await kafkaProducer.sendAuditLog('EXHIBITOR_UPDATED', null, {
+          exhibitorId: id,
+          updatedFields: Object.keys(updateData)
+        });
+      } else {
+        const kafkaProducer = require('../kafka/producer');
+        // Check if status is being changed
+        if (updateData.status) {
+          const current = await this.Exhibitor.findById(id);
+          if (current && updateData.status !== current.status) {
+            await kafkaProducer.sendNotification('EXHIBITOR_STATUS_CHANGED', null, {
+              exhibitorId: id,
+              company: current.company,
+              oldStatus: current.status,
+              newStatus: updateData.status
+            });
+          }
+        }
+        
+        exhibitor = await this.Exhibitor.findByIdAndUpdate(
+          id,
+          updateData,
+          { new: true, runValidators: true }
+        );
+        if (!exhibitor) throw new Error('Exhibitor not found');
+        
+        // Send audit log
+        await kafkaProducer.sendAuditLog('EXHIBITOR_UPDATED', null, {
+          exhibitorId: id,
+          updatedFields: Object.keys(updateData)
+        });
+      }
+
       return exhibitor;
     } catch (error) {
+      console.error('❌ Error updating exhibitor:', error);
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        throw new Error('Email already exists');
+      }
+      if (error.name === 'SequelizeValidationError') {
+        throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
+      }
       throw new Error(`Failed to update exhibitor: ${error.message}`);
     }
   }
 
   async deleteExhibitor(id) {
     try {
-      const exhibitor = await this.Exhibitor.findByPk(id);
-      if (!exhibitor) throw new Error('Exhibitor not found');
+      let result;
       
-      await exhibitor.destroy();
-      return { success: true };
+      const kafkaProducer = require('../kafka/producer');
+      
+      if (process.env.DB_TYPE === 'mysql') {
+        const exhibitor = await this.Exhibitor.findByPk(id);
+        if (!exhibitor) throw new Error('Exhibitor not found');
+        await exhibitor.destroy();
+        result = { success: true };
+      } else {
+        result = await this.Exhibitor.findByIdAndDelete(id);
+        if (!result) throw new Error('Exhibitor not found');
+      }
+
+      // Send audit log
+      await kafkaProducer.sendAuditLog('EXHIBITOR_DELETED', null, {
+        exhibitorId: id
+      });
+
+      return result;
     } catch (error) {
+      console.error('❌ Error deleting exhibitor:', error);
       throw new Error(`Failed to delete exhibitor: ${error.message}`);
     }
   }
 
   async getExhibitorStats() {
     try {
-      // Get count by status using Sequelize
-      const byStatus = await this.Exhibitor.findAll({
-        attributes: [
-          'status',
-          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
-        ],
-        group: ['status']
-      });
+      if (process.env.DB_TYPE === 'mysql') {
+        const { Sequelize } = require('sequelize');
+        const stats = await this.Exhibitor.findAll({
+          attributes: [
+            'status',
+            [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+          ],
+          group: ['status']
+        });
 
-      // Get count by sector
-      const bySector = await this.Exhibitor.findAll({
-        attributes: [
-          'sector',
-          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
-        ],
-        where: {
-          sector: { [Op.not]: null }
-        },
-        group: ['sector']
-      });
+        const sectors = await this.Exhibitor.findAll({
+          attributes: [
+            'sector',
+            [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+          ],
+          where: {
+            sector: { [Op.not]: null }
+          },
+          group: ['sector']
+        });
 
-      return {
-        byStatus,
-        bySector
-      };
+        return {
+          byStatus: stats,
+          bySector: sectors
+        };
+      } else {
+        const byStatus = await this.Exhibitor.aggregate([
+          { $group: { _id: '$status', count: { $sum: 1 } } }
+        ]);
+
+        const bySector = await this.Exhibitor.aggregate([
+          { $match: { sector: { $ne: null } } },
+          { $group: { _id: '$sector', count: { $sum: 1 } } }
+        ]);
+
+        return {
+          byStatus,
+          bySector
+        };
+      }
     } catch (error) {
+      console.error('❌ Error getting exhibitor stats:', error);
       throw new Error(`Failed to get exhibitor stats: ${error.message}`);
     }
   }

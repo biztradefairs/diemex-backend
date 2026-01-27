@@ -1,4 +1,3 @@
-// src/models/mysql/Media.js
 const { DataTypes } = require('sequelize');
 const database = require('../../config/database');
 
@@ -36,23 +35,16 @@ const Media = sequelize.define('Media', {
   metadata: {
     type: DataTypes.JSON,
     defaultValue: {}
-  },
-
-  // ✅ FIX
-  uploadedAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
   }
 
 }, {
+  timestamps: true, // This creates createdAt and updatedAt automatically
   indexes: [
     { fields: ['filename'] },
     { fields: ['type'] },
-    { fields: ['userId'] },
-    { fields: ['uploadedAt'] } // now VALID
+    { fields: ['userId'] }
+    // REMOVED: { fields: ['uploadedAt'] } - This was causing the error
   ]
 });
-
 
 module.exports = Media;
