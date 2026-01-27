@@ -1,42 +1,25 @@
-// src/routes/exhibitors.js
 const express = require('express');
 const router = express.Router();
 const exhibitorController = require('../controllers/ExhibitorController');
-const { authenticate, authorize } = require('../middleware/auth');
-const { body } = require('express-validator');
 
-// Validation middleware
-const validateExhibitor = [
-  body('name').notEmpty().trim(),
-  body('email').isEmail().normalizeEmail(),
-  body('company').notEmpty().trim()
-];
+// Import middleware correctly
+const { authenticate, authorize, authMiddleware } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(authenticate);
+// Admin routes (protected with authentication and admin role)
+router.post('/', authenticate, authorize(['admin']), exhibitorController.createExhibitor);
+router.get('/', authenticate, authorize(['admin', 'editor']), exhibitorController.getAllExhibitors);
+router.get('/stats', authenticate, authorize(['admin', 'editor']), exhibitorController.getExhibitorStats);
+router.get('/export', authenticate, authorize(['admin', 'editor']), exhibitorController.exportExhibitors);
+router.put('/bulk-status', authenticate, authorize(['admin']), exhibitorController.bulkUpdateStatus);
+router.get('/with-passwords', authenticate, authorize(['admin']), exhibitorController.getExhibitorsWithPasswords);
+// router.get('/admin/with-passwords', authenticate, authorize(['admin']), exhibitorController.getExhibitorsWithPasswords);
 
-// Get all exhibitors (admin/editor only)
-router.get('/', authorize(['admin', 'editor']), exhibitorController.getAllExhibitors);
+// Public routes (no authentication required for these)
+router.get('/:id', exhibitorController.getExhibitor); // Public access to exhibitor details
+router.put('/:id', authenticate, authorize(['admin']), exhibitorController.updateExhibitor);
+router.delete('/:id', authenticate, authorize(['admin']), exhibitorController.deleteExhibitor);
 
-// Get exhibitor stats
-router.get('/stats', authorize(['admin', 'editor']), exhibitorController.getExhibitorStats);
-
-// Get single exhibitor
-router.get('/:id', authorize(['admin', 'editor']), exhibitorController.getExhibitor);
-
-// Create exhibitor (admin only)
-router.post('/', authorize(['admin']), validateExhibitor, exhibitorController.createExhibitor);
-
-// Update exhibitor (admin/editor only)
-router.put('/:id', authorize(['admin', 'editor']), exhibitorController.updateExhibitor);
-
-// Delete exhibitor (admin only)
-router.delete('/:id', authorize(['admin']), exhibitorController.deleteExhibitor);
-
-// Bulk operations
-router.post('/bulk/update-status', authorize(['admin']), exhibitorController.bulkUpdateStatus);
-
-// Export exhibitors
-router.get('/export/data', authorize(['admin', 'editor']), exhibitorController.exportExhibitors);
+// Alternative: Using authMiddleware (combined authenticate + authorize)
+// router.get('/', authMiddleware(['admin', 'editor']), exhibitorController.getAllExhibitors);
 
 module.exports = router;

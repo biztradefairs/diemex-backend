@@ -3,33 +3,40 @@ const express = require('express');
 const router = express.Router();
 const floorPlanController = require('../controllers/FloorPlanController');
 const { authenticate, authorize } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
-// All routes require authentication
+// ======================
+// PUBLIC ENDPOINTS (for testing)
+// ======================
+router.get('/test', floorPlanController.testEndpoint);
+
+// ======================
+// PROTECTED ENDPOINTS
+// ======================
 router.use(authenticate);
 
-// Get all floor plans (admin/editor only)
-router.get('/', authorize(['admin', 'editor']), floorPlanController.getAllFloorPlans);
+// CRUD Operations
+router.get('/', authorize(['admin', 'editor', 'viewer']), floorPlanController.getAllFloorPlans);
+router.get('/statistics', authorize(['admin', 'editor', 'viewer']), floorPlanController.getStatistics);
+router.get('/analytics/booths', authorize(['admin', 'editor']), floorPlanController.getBoothAnalytics);
 
-// Get single floor plan
-router.get('/:id', authorize(['admin', 'editor']), floorPlanController.getFloorPlan);
-
-// Create floor plan (admin/editor only)
+router.get('/:id', authorize(['admin', 'editor', 'viewer']), floorPlanController.getFloorPlan);
 router.post('/', authorize(['admin', 'editor']), floorPlanController.createFloorPlan);
-
-// Update floor plan (admin/editor only)
 router.put('/:id', authorize(['admin', 'editor']), floorPlanController.updateFloorPlan);
-
-// Delete floor plan (admin only)
 router.delete('/:id', authorize(['admin']), floorPlanController.deleteFloorPlan);
 
-// Export floor plan
-router.get('/:id/export', authorize(['admin', 'editor']), floorPlanController.exportFloorPlan);
+// Image upload
+router.post('/upload-image', authorize(['admin', 'editor']), upload.single('image'), floorPlanController.uploadImage);
 
-// Duplicate floor plan
+// Booth operations
+router.patch('/:floorPlanId/booths/:shapeId/status', authorize(['admin', 'editor']), floorPlanController.updateBoothStatus);
+
+// Quick operations
+router.patch('/:id/quick-save', authorize(['admin', 'editor']), floorPlanController.quickSave);
 router.post('/:id/duplicate', authorize(['admin', 'editor']), floorPlanController.duplicateFloorPlan);
 
-// Upload floor plan image
-router.post('/:id/upload-image', authorize(['admin', 'editor']), upload.single('image'), floorPlanController.uploadFloorPlanImage);
+// Export
+router.get('/:id/export', authorize(['admin', 'editor', 'viewer']), floorPlanController.exportFloorPlan);
 
 module.exports = router;

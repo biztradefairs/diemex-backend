@@ -1,4 +1,4 @@
-// src/models/FloorPlan.js
+// src/models/mysql/FloorPlan.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -28,7 +28,7 @@ module.exports = (sequelize) => {
       defaultValue: '1.0'
     },
     image: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT('long'),
       allowNull: true
     },
     // Store shapes as JSON
@@ -55,6 +55,18 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: true
     },
+    // Store tags as JSON array
+    tags: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const rawValue = this.getDataValue('tags');
+        return rawValue ? JSON.parse(rawValue) : [];
+      },
+      set(value) {
+        this.setDataValue('tags', JSON.stringify(value || []));
+      }
+    },
     // Store metadata as JSON
     metadata: {
       type: DataTypes.TEXT('long'),
@@ -67,13 +79,23 @@ module.exports = (sequelize) => {
         this.setDataValue('metadata', JSON.stringify(value || {}));
       }
     },
+    isPublic: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    thumbnail: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     createdBy: {
       type: DataTypes.INTEGER,
-      allowNull: false
+      allowNull: true,
+      defaultValue: 1
     },
     updatedBy: {
       type: DataTypes.INTEGER,
-      allowNull: true
+      allowNull: true,
+      defaultValue: 1
     }
   }, {
     tableName: 'floor_plans',
@@ -98,6 +120,10 @@ module.exports = (sequelize) => {
         // Ensure shapes is an array
         if (!floorPlan.shapes) {
           floorPlan.shapes = [];
+        }
+        // Ensure tags is an array
+        if (!floorPlan.tags) {
+          floorPlan.tags = [];
         }
         // Ensure metadata is an object
         if (!floorPlan.metadata) {
@@ -155,52 +181,6 @@ module.exports = (sequelize) => {
     
     this.shapes = filteredShapes;
     return this.save();
-  };
-
-  // Class method for search
-  FloorPlan.search = function(query, floor = null) {
-    const where = {};
-    
-    if (query) {
-      where[sequelize.Op.or] = [
-        { name: { [sequelize.Op.like]: `%${query}%` } },
-        { description: { [sequelize.Op.like]: `%${query}%` } }
-      ];
-    }
-    
-    if (floor) {
-      where.floor = floor;
-    }
-    
-    return this.findAll({
-      where,
-      order: [['created_at', 'DESC']]
-    });
-  };
-
-  // Class method to find by floor
-  FloorPlan.findByFloor = function(floor) {
-    return this.findAll({
-      where: { floor },
-      order: [['name', 'ASC']]
-    });
-  };
-
-  // Class method to get floor statistics
-  FloorPlan.getFloorStats = async function() {
-    const results = await this.findAll({
-      attributes: [
-        'floor',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-      ],
-      group: ['floor'],
-      order: [[sequelize.fn('COUNT', sequelize.col('id')), 'DESC']]
-    });
-    
-    return results.map(result => ({
-      floor: result.floor,
-      count: parseInt(result.get('count'))
-    }));
   };
 
   return FloorPlan;
