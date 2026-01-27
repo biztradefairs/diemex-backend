@@ -1,4 +1,3 @@
-// src/models/mysql/Exhibitor.js (updated)
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -11,19 +10,29 @@ module.exports = (sequelize) => {
     name: DataTypes.STRING,
     email: {
       type: DataTypes.STRING,
-      unique: true
+      unique: true,
+      allowNull: false
     },
-    company: DataTypes.STRING,
-    password: DataTypes.STRING, // Added
-    resetPasswordToken: DataTypes.STRING, // Added
-    resetPasswordExpires: DataTypes.DATE, // Added
+    company: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    resetPasswordToken: DataTypes.STRING,
+    resetPasswordExpires: DataTypes.DATE,
     phone: DataTypes.STRING,
     address: DataTypes.TEXT,
     website: DataTypes.STRING,
     sector: DataTypes.STRING,
     boothNumber: DataTypes.STRING,
-    stallDetails: DataTypes.JSON, // Added for stall information
-    status: DataTypes.ENUM('pending', 'active', 'suspended', 'completed'),
+    stallDetails: DataTypes.JSON,
+    status: {
+      type: DataTypes.ENUM('pending', 'active', 'suspended', 'completed'),
+      defaultValue: 'pending'
+    },
     registrationDate: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -31,6 +40,10 @@ module.exports = (sequelize) => {
     lastLogin: DataTypes.DATE,
     metadata: DataTypes.JSON
   }, {
+    tableName: 'exhibitors',
+    timestamps: true,
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
     indexes: [
       {
         fields: ['email']
@@ -43,6 +56,9 @@ module.exports = (sequelize) => {
       },
       {
         fields: ['resetPasswordToken']
+      },
+      {
+        fields: ['sector']
       }
     ]
   });

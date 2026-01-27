@@ -1,13 +1,13 @@
-// src/routes/auth.js
 const express = require('express');
 const router = express.Router();
+const AuthController = require('../controllers/AuthController');
+const { authenticate } = require('../middleware/auth');
 const { body } = require('express-validator');
-const authController = require('../controllers/AuthController');
 
 // Validation middleware
 const validateLogin = [
   body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
+  body('password').notEmpty().trim()
 ];
 
 const validateRegister = [
@@ -16,10 +16,10 @@ const validateRegister = [
   body('password').isLength({ min: 6 })
 ];
 
-// Routes
-router.post('/login', validateLogin, authController.login);
-router.post('/register', validateRegister, authController.register);
-router.post('/logout', authController.logout);
-router.post('/refresh-token', authController.refreshToken);
+// Routes (these are now handled by users.js, but keeping for backward compatibility)
+router.post('/login', validateLogin, AuthController.login);
+router.post('/register', validateRegister, AuthController.register);
+router.post('/logout', authenticate, AuthController.logout);
+router.post('/refresh-token', authenticate, AuthController.refreshToken);
 
 module.exports = router;

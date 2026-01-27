@@ -1,4 +1,3 @@
-// src/services/UserService.js
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 
@@ -25,15 +24,17 @@ class UserService {
 
       const user = await this.User.create(userData);
 
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('USER_CREATED', user.id, {
-          email: user.email,
-          role: user.role
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
+      // Send audit log (only if Kafka is enabled)
+      if (process.env.ENABLE_KAFKA === 'true') {
+        try {
+          const kafkaProducer = require('../kafka/producer');
+          await kafkaProducer.sendAuditLog('USER_CREATED', user.id, {
+            email: user.email,
+            role: user.role
+          });
+        } catch (kafkaError) {
+          console.warn('Kafka not available for audit log:', kafkaError.message);
+        }
       }
 
       return user;
@@ -49,71 +50,36 @@ class UserService {
     try {
       const offset = (page - 1) * limit;
       
-      let query = {};
+      let where = {};
       
-      // Build query based on database type
-      if (process.env.DB_TYPE === 'mysql') {
-        // MySQL query
-        const where = {};
-        if (filters.search) {
-          where[Op.or] = [
-            { name: { [Op.like]: `%${filters.search}%` } },
-            { email: { [Op.like]: `%${filters.search}%` } }
-          ];
-        }
-        
-        if (filters.role) {
-          where.role = filters.role;
-        }
-        
-        if (filters.status) {
-          where.status = filters.status;
-        }
-
-        const { count, rows } = await this.User.findAndCountAll({
-          where,
-          limit,
-          offset,
-          order: [['createdAt', 'DESC']]
-        });
-
-        return {
-          users: rows,
-          total: count,
-          page,
-          totalPages: Math.ceil(count / limit)
-        };
-      } else {
-        // MongoDB query
-        if (filters.search) {
-          query.$or = [
-            { name: { $regex: filters.search, $options: 'i' } },
-            { email: { $regex: filters.search, $options: 'i' } }
-          ];
-        }
-        
-        if (filters.role) {
-          query.role = filters.role;
-        }
-        
-        if (filters.status) {
-          query.status = filters.status;
-        }
-
-        const users = await this.User.find(query)
-          .skip(offset)
-          .limit(limit)
-          .sort({ createdAt: -1 });
-
-        const total = await this.User.countDocuments(query);
-
-        return {
-          users,
-          total,
-          page,
-          totalPages: Math.ceil(total / limit)
-        };
+      if (filters.search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${filters.search}%` } },
+          { email: { [Op.like]: `%${filters.search}%` } }
+        ];
       }
+      
+      if (filters.role) {
+        where.role = filters.role;
+      }
+      
+      if (filters.status) {
+        where.status = filters.status;
+      }
+
+      const result = await this.User.findAndCountAll({
+        where,
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']]
+      });
+
+      return {
+        users: result.rows,
+        total: result.count,
+        page,
+        totalPages: Math.ceil(result.count / limit)
+      };
     } catch (error) {
       throw new Error(`Failed to fetch users: ${error.message}`);
     }
@@ -121,13 +87,9 @@ class UserService {
 
   async getUserById(id) {
     try {
-      let user;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        user = await this.User.findByPk(id);
-      } else {
-        user = await this.User.findById(id);
-      }
+      const user = await this.User.findByPk(id, {
+        attributes: { exclude: ['password'] }
+      });
       
       if (!user) {
         throw new Error('User not found');
@@ -146,29 +108,21 @@ class UserService {
         updateData.password = await bcrypt.hash(updateData.password, 10);
       }
 
-      let user;
+      const user = await this.User.findByPk(id);
+      if (!user) throw new Error('User not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        user = await this.User.findByPk(id);
-        if (!user) throw new Error('User not found');
-        await user.update(updateData);
-      } else {
-        user = await this.User.findByIdAndUpdate(
-          id,
-          updateData,
-          { new: true, runValidators: true }
-        );
-        if (!user) throw new Error('User not found');
-      }
+      await user.update(updateData);
 
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('USER_UPDATED', id, {
-          updatedFields: Object.keys(updateData)
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
+      // Send audit log (only if Kafka is enabled)
+      if (process.env.ENABLE_KAFKA === 'true') {
+        try {
+          const kafkaProducer = require('../kafka/producer');
+          await kafkaProducer.sendAuditLog('USER_UPDATED', id, {
+            updatedFields: Object.keys(updateData)
+          });
+        } catch (kafkaError) {
+          console.warn('Kafka not available for audit log:', kafkaError.message);
+        }
       }
 
       return user;
@@ -179,27 +133,22 @@ class UserService {
 
   async deleteUser(id) {
     try {
-      let result;
+      const user = await this.User.findByPk(id);
+      if (!user) throw new Error('User not found');
       
-      if (process.env.DB_TYPE === 'mysql') {
-        const user = await this.User.findByPk(id);
-        if (!user) throw new Error('User not found');
-        await user.destroy();
-        result = { success: true };
-      } else {
-        result = await this.User.findByIdAndDelete(id);
-        if (!result) throw new Error('User not found');
+      await user.destroy();
+
+      // Send audit log (only if Kafka is enabled)
+      if (process.env.ENABLE_KAFKA === 'true') {
+        try {
+          const kafkaProducer = require('../kafka/producer');
+          await kafkaProducer.sendAuditLog('USER_DELETED', id);
+        } catch (kafkaError) {
+          console.warn('Kafka not available for audit log:', kafkaError.message);
+        }
       }
 
-      // Send audit log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.sendAuditLog('USER_DELETED', id);
-      } catch (kafkaError) {
-        console.warn('Kafka not available for audit log:', kafkaError.message);
-      }
-
-      return result;
+      return { success: true };
     } catch (error) {
       throw new Error(`Failed to delete user: ${error.message}`);
     }
@@ -207,13 +156,9 @@ class UserService {
 
   async login(email, password) {
     try {
-      let user;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        user = await this.User.findOne({ where: { email } });
-      } else {
-        user = await this.User.findOne({ email });
-      }
+      const user = await this.User.findOne({ 
+        where: { email }
+      });
       
       if (!user) {
         throw new Error('Invalid credentials');
@@ -234,22 +179,28 @@ class UserService {
       user.lastLogin = new Date();
       await user.save();
 
-      // Send activity log
-      try {
-        const kafkaProducer = require('../kafka/producer');
-        await kafkaProducer.send('user-activity', {
-          key: user.id,
-          value: JSON.stringify({
-            userId: user.id,
-            action: 'LOGIN',
-            timestamp: new Date().toISOString()
-          })
-        });
-      } catch (kafkaError) {
-        console.warn('Kafka not available for activity log:', kafkaError.message);
+      // Send activity log (only if Kafka is enabled)
+      if (process.env.ENABLE_KAFKA === 'true') {
+        try {
+          const kafkaProducer = require('../kafka/producer');
+          await kafkaProducer.send('user-activity', {
+            key: user.id,
+            value: JSON.stringify({
+              userId: user.id,
+              action: 'LOGIN',
+              timestamp: new Date().toISOString()
+            })
+          });
+        } catch (kafkaError) {
+          console.warn('Kafka not available for activity log:', kafkaError.message);
+        }
       }
 
-      return user;
+      // Return user without password
+      const userData = user.toJSON();
+      delete userData.password;
+      
+      return userData;
     } catch (error) {
       throw new Error(`Login failed: ${error.message}`);
     }
@@ -257,11 +208,7 @@ class UserService {
 
   async getUsersCount() {
     try {
-      if (process.env.DB_TYPE === 'mysql') {
-        return await this.User.count();
-      } else {
-        return await this.User.countDocuments();
-      }
+      return await this.User.count();
     } catch (error) {
       throw new Error(`Failed to get users count: ${error.message}`);
     }
@@ -269,16 +216,10 @@ class UserService {
 
   async getUsersByRole(role) {
     try {
-      let users;
-      
-      if (process.env.DB_TYPE === 'mysql') {
-        users = await this.User.findAll({
-          where: { role },
-          order: [['createdAt', 'DESC']]
-        });
-      } else {
-        users = await this.User.find({ role }).sort({ createdAt: -1 });
-      }
+      const users = await this.User.findAll({
+        where: { role },
+        order: [['createdAt', 'DESC']]
+      });
       
       return users;
     } catch (error) {

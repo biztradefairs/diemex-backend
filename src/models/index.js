@@ -10,57 +10,60 @@ let initialized = false;
 
 // Model factory functions (lazy loading)
 const modelFactories = {
-  // MySQL/Sequelize models
+  // ======================
+  // MySQL / Sequelize
+  // ======================
   User: () => {
     const UserFactory = require('./mysql/User');
     const sequelize = database.getConnection('mysql');
     return UserFactory(sequelize);
   },
-  
+
   Article: () => {
-    const Article = require('./mysql/Article');
-    return Article;
+    const ArticleFactory = require('./mysql/Article');
+    const sequelize = database.getConnection('mysql');
+    return ArticleFactory(sequelize);
   },
-  
+
   Exhibitor: () => {
-    const Exhibitor = require('./mysql/Exhibitor');
-    return Exhibitor;
+    const ExhibitorFactory = require('./mysql/Exhibitor');
+    const sequelize = database.getConnection('mysql');
+    return ExhibitorFactory(sequelize);
   },
-  
+
   Invoice: () => {
-    const getInvoiceModel = require('./mysql/Invoice');
-    return getInvoiceModel();
+    const InvoiceFactory = require('./mysql/Invoice');
+    const sequelize = database.getConnection('mysql');
+    return InvoiceFactory(sequelize);
   },
-  
+
   Payment: () => {
-    const Payment = require('./mysql/Payment');
-    return Payment;
+    const PaymentFactory = require('./mysql/Payment');
+    const sequelize = database.getConnection('mysql');
+    return PaymentFactory(sequelize);
   },
-  
+
   Media: () => {
-    const Media = require('./mysql/Media');
-    return Media;
+    const MediaFactory = require('./mysql/Media');
+    const sequelize = database.getConnection('mysql');
+    return MediaFactory(sequelize);
   },
-  
-  // MongoDB models
-  MongoUser: () => {
-    const MongoUser = require('./mongodb/User');
-    return MongoUser;
-  },
-  
-  MongoAuditLog: () => {
-    const MongoAuditLog = require('./mongodb/AuditLog');
-    return MongoAuditLog;
-  },
-  
-  MongoNotification: () => {
-    const MongoNotification = require('./mongodb/Notification');
-    return MongoNotification;
-  }
+
+  // ======================
+  // MongoDB / Mongoose
+  // ======================
+  MongoUser: () => require('./mongodb/User'),
+  MongoAuditLog: () => require('./mongodb/AuditLog'),
+  MongoNotification: () => require('./mongodb/Notification'),
+  MongoFloorPlan: () => require('./mongodb/FloorPlan'),
+  MongoInvoice: () => require('./mongodb/Invoice'),
+  MongoPayment: () => require('./mongodb/Payment'),
+  MongoMedia: () => require('./mongodb/Media'),
+  MongoAlert: () => require('./mongodb/Alert')
 };
 
 /**
- * Initialize all models AFTER database.connect()
+ * Initialize models AFTER database.connect()
  */
 function init() {
   if (initialized) {
@@ -69,43 +72,47 @@ function init() {
 
   const dbType = process.env.DB_TYPE || 'mysql';
 
-  // Initialize models based on database type
+  // ======================
+  // MySQL Models
+  // ======================
   if (dbType === 'mysql' || dbType === 'both') {
     const sequelize = database.getConnection('mysql');
-    
+
     if (!sequelize) {
       throw new Error('MySQL connection not available');
     }
 
-    // Load Sequelize models
-    Object.keys(modelFactories).forEach(modelName => {
-      if (!modelName.startsWith('Mongo')) { // Skip MongoDB models for MySQL
+    Object.keys(modelFactories).forEach((modelName) => {
+      if (!modelName.startsWith('Mongo')) {
         try {
           models[modelName] = modelFactories[modelName]();
-        } catch (error) {
-          console.warn(`Failed to load model ${modelName}:`, error.message);
+        } catch (err) {
+          console.warn(`⚠️ Failed to load model ${modelName}: ${err.message}`);
         }
       }
     });
 
-    // Sync models in development
     if (process.env.NODE_ENV === 'development') {
-      sequelize.sync({ alter: false })
+      sequelize
+        .sync({ alter: false })
         .then(() => console.log('✅ MySQL models synced'))
-        .catch((err) => console.error('❌ MySQL sync failed:', err));
+        .catch(err => console.error('❌ MySQL sync failed:', err.message));
     }
   }
 
-  // MongoDB models
+  // ======================
+  // MongoDB Models
+  // ======================
   if (dbType === 'mongodb' || dbType === 'both') {
-    models.MongoUser = require('./mongodb/User');
-    models.MongoAuditLog = require('./mongodb/AuditLog');
-    models.MongoNotification = require('./mongodb/Notification');
-    models.MongoFloorPlan = require('./mongodb/FloorPlan');
-    models.MongoInvoice = require('./mongodb/Invoice');
-    models.MongoPayment = require('./mongodb/Payment');
-    models.MongoMedia = require('./mongodb/Media');
-    models.MongoAlert = require('./mongodb/Alert');
+    Object.keys(modelFactories).forEach((modelName) => {
+      if (modelName.startsWith('Mongo')) {
+        try {
+          models[modelName] = modelFactories[modelName]();
+        } catch (err) {
+          console.warn(`⚠️ Failed to load model ${modelName}: ${err.message}`);
+        }
+      }
+    });
   }
 
   initialized = true;
@@ -113,32 +120,18 @@ function init() {
 }
 
 /**
- * Get a single model safely (lazy loading)
+ * Get a single model safely
  */
 function getModel(name) {
-  // Check if model is already loaded
+  if (!initialized) {
+    throw new Error('Models not initialized. Call init() first.');
+  }
+
   if (models[name]) {
     return models[name];
   }
-  
-  // Check if model factory exists
-  if (modelFactories[name]) {
-    models[name] = modelFactories[name]();
-    return models[name];
-  }
-  
-  // Try to load MongoDB model
-  if (name.startsWith('Mongo')) {
-    try {
-      const modelPath = `./mongodb/${name.replace('Mongo', '')}`;
-      models[name] = require(modelPath);
-      return models[name];
-    } catch (error) {
-      // Model not found
-    }
-  }
-  
-  throw new Error(`Model "${name}" not found. Call init() first or check if model exists.`);
+
+  throw new Error(`Model "${name}" not found`);
 }
 
 /**
@@ -149,7 +142,7 @@ function getAllModels() {
 }
 
 /**
- * Clear all models (for testing)
+ * Clear models (testing)
  */
 function clear() {
   models = {};

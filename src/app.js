@@ -1,215 +1,738 @@
-// src/app.js
 require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
 const http = require('http');
-const socketIo = require('socket.io');
 const database = require('./config/database');
-const logger = require('./utils/logger');
+require('express-async-errors');
 
-async function createDefaultAdmin() {
-  try {
-    // Load models AFTER database connection
-    const modelFactory = require('./models');
-    const User = modelFactory.getModel('User');
+// Import routes
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const exhibitorRoutes = require('./routes/exhibitors');
+const articleRoutes = require('./routes/articles');
+const exhibitorAuthRoutes = require('./routes/exhibitorAuth');
+
+// Import services for initialization
+const emailService = require('./services/EmailService');
+
+class AppServer {
+  constructor() {
+    this.app = express();
+    this.server = http.createServer(this.app);
+    this.port = process.env.PORT || 5000;
+    this.env = process.env.NODE_ENV || 'development';
+    this.isShuttingDown = false;
     
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
+    // Bind methods
+    this.initialize = this.initialize.bind(this);
+    this.connectDatabase = this.connectDatabase.bind(this);
+    this.initializeModels = this.initializeModels.bind(this);
+    this.setupMiddleware = this.setupMiddleware.bind(this);
+    this.setupRoutes = this.setupRoutes.bind(this);
+    this.setupErrorHandling = this.setupErrorHandling.bind(this);
+    this.start = this.start.bind(this);
+    this.stop = this.stop.bind(this);
+    this.checkDefaultAdmin = this.checkDefaultAdmin.bind(this);
+    this.healthCheck = this.healthCheck.bind(this);
+    this.databaseTest = this.databaseTest.bind(this);
+    this.testExhibitorCreation = this.testExhibitorCreation.bind(this);
+    this.modelList = this.modelList.bind(this);
     
-    if (!adminEmail || !adminPassword) {
-      console.warn('⚠️ Admin credentials not set in environment variables');
-      return;
-    }
+    // Handle uncaught exceptions
+    process.on('uncaughtException', this.handleUncaughtException.bind(this));
+    process.on('unhandledRejection', this.handleUnhandledRejection.bind(this));
     
-    let adminUser;
-    
-    if (process.env.DB_TYPE === 'mysql') {
-      adminUser = await User.findOne({ where: { email: adminEmail } });
-    } else {
-      adminUser = await User.findOne({ email: adminEmail });
-    }
-    
-    if (!adminUser) {
-      const adminData = {
-        name: 'Administrator',
-        email: adminEmail,
-        password: adminPassword,
-        role: 'admin',
-        status: 'active',
-        phone: '+1234567890'
-      };
-      
-      await User.create(adminData);
-      console.log('✅ Default admin user created');
-      
-      // Send audit log
-      try {
-        const kafkaProducer = require('./kafka/producer');
-        await kafkaProducer.sendAuditLog('ADMIN_USER_CREATED', null, {
-          email: adminEmail,
-          action: 'initial_setup'
-        });
-      } catch (kafkaError) {
-        console.warn('⚠️ Kafka not available for audit log');
-      }
-    } else {
-      console.log('✅ Admin user already exists');
-    }
-  } catch (error) {
-    console.error('❌ Error creating admin user:', error.message);
-    logger.error(`Admin user creation failed: ${error.message}`);
+    this.initialize();
   }
-}
 
-async function startServer() {
-  try {
-    console.log('🚀 Starting Exhibition Admin Backend...');
-    console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
-    
-    // 1️⃣ FIRST connect to database
-    console.log('🔗 Connecting to database...');
-    await database.connect();
-    console.log('✅ Database connected successfully');
-    
-    // 2️⃣ Initialize models AFTER database connection
-    console.log('🗄️ Initializing models...');
-    const modelFactory = require('./models');
-    modelFactory.init();
-    console.log('✅ Models initialized successfully');
-    
-    // 3️⃣ Load app AFTER models are initialized
-    console.log('🚀 Loading Express app...');
-    const app = require('./appServer');
-    const PORT = process.env.PORT || 5000;
-    
-    // 4️⃣ Create default admin user
-    console.log('👤 Checking default admin user...');
-    await createDefaultAdmin();
-    console.log('✅ Admin user check completed');
-    
-    // 5️⃣ Connect to Kafka (optional - continue even if Kafka fails)
-    console.log('🔗 Connecting to Kafka...');
-    let kafkaConnected = false;
+  async initialize() {
     try {
-      const kafkaProducer = require('./kafka/producer');
-      const kafkaConsumer = require('./kafka/consumer');
-      await kafkaProducer.connect();
-      await kafkaConsumer.connect();
-      await kafkaConsumer.setupCommonSubscriptions();
-      kafkaConnected = true;
-      console.log('✅ Kafka connected successfully');
-    } catch (kafkaError) {
-      console.warn('⚠️ Kafka connection failed (continuing without Kafka):', kafkaError.message);
-    }
-    
-    // 6️⃣ Create HTTP server
-    const server = http.createServer(app);
-    
-    // 7️⃣ Initialize WebSocket
-    console.log('🔌 Initializing WebSocket...');
-    const io = socketIo(server, {
-      cors: {
-        origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : '*',
-        methods: ['GET', 'POST'],
-        credentials: true
-      },
-      transports: ['websocket', 'polling']
-    });
-    
-    const WebSocketService = require('./services/WebSocketService');
-    const webSocketService = new WebSocketService(io);
-    webSocketService.initialize();
-    console.log('✅ WebSocket service initialized');
-    
-    // 8️⃣ Start scheduler (optional)
-    console.log('⏰ Starting scheduler service...');
-    try {
-      const schedulerService = require('./services/SchedulerService');
-      schedulerService.start();
-      console.log('✅ Scheduler service started');
-    } catch (schedulerError) {
-      console.warn('⚠️ Scheduler service failed to start:', schedulerError.message);
-    }
-    
-    // 9️⃣ Start server
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log('='.repeat(50));
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
-      console.log(`🔌 WebSocket: Enabled`);
-      console.log(`📊 Health Check: http://localhost:${PORT}/health`);
-      console.log(`📡 Kafka: ${kafkaConnected ? 'Connected' : 'Disabled'}`);
+      console.log('='.repeat(60));
+      console.log('🚀 Starting Exhibition Admin Backend');
+      console.log('='.repeat(60));
+      console.log(`📁 Environment: ${this.env}`);
+      console.log(`🔧 Node Version: ${process.version}`);
+      console.log(`🗄️ Database Type: ${process.env.DB_TYPE || 'mysql'}`);
+      console.log(`🌐 Port: ${this.port}`);
+      console.log('='.repeat(60));
       
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`📚 API Docs: http://localhost:${PORT}/api-docs`);
+      // Step 1: Connect to database
+      await this.connectDatabase();
+      
+      // Step 2: Initialize models
+      await this.initializeModels();
+      
+      // Step 3: Setup middleware
+      this.setupMiddleware();
+      
+      // Step 4: Setup routes
+      this.setupRoutes();
+      
+      // Step 5: Setup error handling
+      this.setupErrorHandling();
+      
+      // Step 6: Start server
+      await this.start();
+      
+    } catch (error) {
+      console.error(`❌ Failed to initialize server: ${error.message}`);
+      console.error(error.stack);
+      process.exit(1);
+    }
+  }
+
+  async connectDatabase() {
+    console.log('\n🔗 Connecting to database...');
+    
+    try {
+      await database.connect();
+      console.log('✅ Database connected successfully');
+      
+      // Test database connection
+      const sequelize = database.getConnection('mysql');
+      if (sequelize) {
+        await sequelize.authenticate();
+        console.log('✅ Database authentication successful');
       }
       
-      console.log('='.repeat(50));
-    });
-    
-    // Store server reference
-    app.server = server;
-    
-    // Graceful shutdown
-    const gracefulShutdown = async (signal) => {
-      console.log(`\n${signal} received. Starting graceful shutdown...`);
+    } catch (error) {
+      console.error(`❌ Database connection failed: ${error.message}`);
       
-      try {
-        if (app.server) {
-          app.server.close(() => {
-            console.log('✅ HTTP server closed');
-          });
-        }
-        
-        try {
-          const schedulerService = require('./services/SchedulerService');
-          schedulerService.stop();
-          console.log('✅ Scheduler stopped');
-        } catch (error) {
-          console.warn('⚠️ Error stopping scheduler:', error.message);
-        }
-        
-        try {
-          const kafkaProducer = require('./kafka/producer');
-          const kafkaConsumer = require('./kafka/consumer');
-          await kafkaProducer.disconnect();
-          await kafkaConsumer.disconnect();
-          console.log('✅ Kafka disconnected');
-        } catch (error) {
-          console.warn('⚠️ Error disconnecting Kafka:', error.message);
-        }
-        
-        await database.disconnect();
-        console.log('✅ Database disconnected');
-        
-        console.log('✅ Graceful shutdown completed');
-        process.exit(0);
-        
-      } catch (error) {
-        console.error('❌ Error during shutdown:', error);
-        logger.error(`Graceful shutdown failed: ${error.message}`, { stack: error.stack });
-        process.exit(1);
+      // If in development, try to continue with mock data
+      if (this.env === 'development') {
+        console.warn('⚠️ Continuing in development mode with limited functionality');
+      } else {
+        throw error;
       }
+    }
+  }
+
+  async initializeModels() {
+    try {
+      console.log('\n📦 Initializing models...');
+      
+      const modelFactory = require('./models');
+      
+      // Initialize models
+      const models = modelFactory.init();
+      console.log(`✅ Models initialized: ${Object.keys(models).length} models loaded`);
+      
+      // Sync models with database (development only)
+      if (this.env === 'development') {
+        console.log('🔄 Syncing database models...');
+        const sequelize = database.getConnection('mysql');
+        if (sequelize) {
+          try {
+            // Use force: false to preserve existing data
+            await sequelize.sync({ alter: true, force: false });
+            console.log('✅ Database models synced successfully');
+          } catch (syncError) {
+            console.warn('⚠️ Database sync warning:', syncError.message);
+            console.log('ℹ️ Continuing without full sync...');
+          }
+        }
+      }
+      
+      // Test email service
+      console.log('\n📧 Testing email service...');
+      const emailTestResult = await emailService.testConnection();
+      if (emailTestResult) {
+        console.log('✅ Email service connected');
+      } else {
+        console.warn('⚠️ Email service not available');
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to initialize models: ${error.message}`);
+      
+      // If in development, log error but continue
+      if (this.env === 'development') {
+        console.warn('⚠️ Continuing in development mode with limited functionality');
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  setupMiddleware() {
+    console.log('\n⚙️ Setting up middleware...');
+    
+    // Security headers
+    this.app.use(helmet({
+      contentSecurityPolicy: false, // Disable for API server
+      crossOriginEmbedderPolicy: false
+    }));
+    
+    // CORS configuration
+    const corsOptions = {
+      origin: process.env.FRONTEND_URL ? 
+        process.env.FRONTEND_URL.split(',') : 
+        ['http://localhost:3000', 'http://localhost:3001'],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+      exposedHeaders: ['Content-Disposition']
     };
     
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      logger.error('Unhandled Rejection', { promise, reason });
-    });
-    process.on('uncaughtException', (error) => {
-      console.error('❌ Uncaught Exception:', error);
-      logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
-      gracefulShutdown('UNCAUGHT_EXCEPTION');
+    this.app.use(cors(corsOptions));
+    
+    // Pre-flight requests
+    this.app.options('*', cors(corsOptions));
+    
+    // HTTP request logging
+    this.app.use(morgan(this.env === 'development' ? 'dev' : 'combined'));
+    
+    // Body parsing
+    this.app.use(express.json({ 
+      limit: '50mb',
+      verify: (req, res, buf) => {
+        req.rawBody = buf.toString();
+      }
+    }));
+    
+    this.app.use(express.urlencoded({ 
+      extended: true, 
+      limit: '50mb' 
+    }));
+    
+    // Static files
+    const uploadsPath = path.join(__dirname, '../uploads');
+    const publicPath = path.join(__dirname, '../public');
+    
+    // Create directories if they don't exist
+    const fs = require('fs');
+    [uploadsPath, publicPath].forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`📁 Created directory: ${dir}`);
+      }
     });
     
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    logger.error(`Server startup failed: ${error.message}`, { stack: error.stack });
-    process.exit(1);
+    this.app.use('/uploads', express.static(uploadsPath));
+    this.app.use('/public', express.static(publicPath));
+    
+    // Request logging middleware
+    this.app.use((req, res, next) => {
+      const startTime = Date.now();
+      
+      // Log request details
+      if (this.env === 'development') {
+        console.log(`📨 ${req.method} ${req.originalUrl}`);
+        if (req.method === 'POST' || req.method === 'PUT') {
+          console.log('📦 Body:', JSON.stringify(req.body).substring(0, 200) + '...');
+        }
+      }
+      
+      // Add response logging
+      const originalSend = res.send;
+      res.send = function(body) {
+        const duration = Date.now() - startTime;
+        console.log(`✅ ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
+        originalSend.call(this, body);
+      };
+      
+      next();
+    });
+    
+    // Health check middleware
+    this.app.use((req, res, next) => {
+      if (this.isShuttingDown) {
+        return res.status(503).json({
+          success: false,
+          error: 'Server is shutting down',
+          message: 'Please try again later'
+        });
+      }
+      next();
+    });
+    
+    console.log('✅ Middleware setup complete');
+  }
+
+  setupRoutes() {
+    console.log('\n🚀 Loading API routes...');
+    
+    // ======================
+    // System Status Endpoints
+    // ======================
+    
+    // Health check
+    this.app.get('/health', this.healthCheck);
+    
+    // Database test
+    this.app.get('/api/db-test', this.databaseTest);
+    
+    // Model list
+    this.app.get('/api/models', this.modelList);
+    
+    // Test exhibitor creation
+    this.app.post('/api/test-exhibitor', this.testExhibitorCreation);
+    
+    // ======================
+    // API Routes
+    // ======================
+    
+    // Authentication routes
+    this.app.use('/api/auth', authRoutes);
+    this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
+    
+    // Protected API routes
+    this.app.use('/api/users', userRoutes);
+    this.app.use('/api/exhibitors', exhibitorRoutes);
+    this.app.use('/api/articles', articleRoutes);
+    
+    // ======================
+    // Documentation & Info
+    // ======================
+    
+    // API documentation
+    this.app.get('/api', (req, res) => {
+      res.json({
+        success: true,
+        message: 'Exhibition Admin API',
+        version: '1.0.0',
+        environment: this.env,
+        endpoints: {
+          auth: '/api/auth',
+          users: '/api/users',
+          exhibitors: '/api/exhibitors',
+          articles: '/api/articles'
+        },
+        documentation: 'See /api/docs for API documentation'
+      });
+    });
+    
+    // API documentation
+    this.app.get('/api/docs', (req, res) => {
+      const docs = {
+        api: {
+          version: '1.0.0',
+          baseUrl: '/api',
+          authentication: 'Bearer token required for protected routes'
+        },
+        endpoints: {
+          auth: {
+            login: 'POST /api/auth/login',
+            register: 'POST /api/auth/register',
+            profile: 'GET /api/auth/profile',
+            refresh: 'POST /api/auth/refresh'
+          },
+          users: {
+            getAll: 'GET /api/users',
+            getById: 'GET /api/users/:id',
+            create: 'POST /api/users',
+            update: 'PUT /api/users/:id',
+            delete: 'DELETE /api/users/:id'
+          },
+          exhibitors: {
+            getAll: 'GET /api/exhibitors?page=1&limit=10&search=&sector=&status=',
+            getStats: 'GET /api/exhibitors/stats',
+            create: 'POST /api/exhibitors',
+            update: 'PUT /api/exhibitors/:id',
+            delete: 'DELETE /api/exhibitors/:id',
+            bulkUpdate: 'POST /api/exhibitors/bulk/update-status',
+            export: 'GET /api/exhibitors/export/data?format=csv'
+          }
+        }
+      };
+      
+      res.json({
+        success: true,
+        data: docs
+      });
+    });
+    
+    console.log('✅ API routes loaded successfully');
+  }
+
+  // ======================
+  // Route Handlers
+  // ======================
+
+  async healthCheck(req, res) {
+    try {
+      const modelFactory = require('./models');
+      let dbStatus = 'unknown';
+      let exhibitorCount = 0;
+      
+      try {
+        const Exhibitor = modelFactory.getModel('Exhibitor');
+        exhibitorCount = await Exhibitor.count();
+        dbStatus = 'connected';
+      } catch (dbError) {
+        dbStatus = 'disconnected';
+      }
+      
+      const health = {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: this.env,
+        database: dbStatus,
+        exhibitorCount: exhibitorCount,
+        memory: process.memoryUsage(),
+        nodeVersion: process.version,
+        platform: process.platform
+      };
+      
+      res.json(health);
+    } catch (error) {
+      res.status(500).json({
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  async databaseTest(req, res) {
+    try {
+      const modelFactory = require('./models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      
+      // Test basic operations
+      const count = await Exhibitor.count();
+      
+      // Try to create and delete a test record
+      const testRecord = await Exhibitor.create({
+        name: 'Database Test',
+        email: `test-db-${Date.now()}@example.com`,
+        company: 'Test Company',
+        password: 'test123',
+        status: 'active'
+      });
+      
+      await testRecord.destroy();
+      
+      res.json({
+        success: true,
+        message: 'Database connection is working properly',
+        operations: {
+          count: 'success',
+          create: 'success',
+          delete: 'success'
+        },
+        exhibitorCount: count
+      });
+    } catch (error) {
+      console.error('Database test error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        stack: this.env === 'development' ? error.stack : undefined
+      });
+    }
+  }
+
+  async testExhibitorCreation(req, res) {
+    try {
+      const modelFactory = require('./models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      
+      const testData = {
+        name: 'Test Exhibitor ' + Date.now(),
+        email: `test-exhibitor-${Date.now()}@example.com`,
+        company: 'Test Company Inc',
+        password: 'testpassword123',
+        phone: '+1234567890',
+        sector: 'Technology',
+        boothNumber: 'TEST-' + Math.floor(Math.random() * 1000),
+        status: 'active'
+      };
+      
+      const exhibitor = await Exhibitor.create(testData);
+      
+      // Remove sensitive data
+      const responseData = exhibitor.toJSON();
+      delete responseData.password;
+      delete responseData.resetPasswordToken;
+      delete responseData.resetPasswordExpires;
+      
+      res.json({
+        success: true,
+        message: 'Test exhibitor created successfully',
+        data: responseData
+      });
+    } catch (error) {
+      console.error('Test exhibitor creation error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: error.errors ? error.errors.map(e => e.message) : undefined,
+        stack: this.env === 'development' ? error.stack : undefined
+      });
+    }
+  }
+
+  async modelList(req, res) {
+    try {
+      const modelFactory = require('./models');
+      const models = modelFactory.getAllModels();
+      
+      const modelInfo = {};
+      Object.keys(models).forEach(modelName => {
+        const model = models[modelName];
+        modelInfo[modelName] = {
+          tableName: model.tableName || model.collection?.name,
+          attributes: Object.keys(model.rawAttributes || {}),
+          associations: Object.keys(model.associations || {})
+        };
+      });
+      
+      res.json({
+        success: true,
+        count: Object.keys(models).length,
+        models: modelInfo
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  setupErrorHandling() {
+    console.log('\n⚠️ Setting up error handling...');
+    
+    // 404 Handler
+    this.app.use((req, res, next) => {
+      console.warn(`❌ 404 Not Found: ${req.method} ${req.originalUrl}`);
+      res.status(404).json({
+        success: false,
+        error: `Route ${req.method} ${req.url} not found`,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Global error handler
+    this.app.use((error, req, res, next) => {
+      console.error('🔥 Unhandled Error:', {
+        message: error.message,
+        stack: error.stack,
+        url: req.originalUrl,
+        method: req.method,
+        body: req.body
+      });
+      
+      // Default error status
+      const statusCode = error.statusCode || error.status || 500;
+      
+      // Prepare error response
+      const errorResponse = {
+        success: false,
+        error: error.message || 'Internal server error',
+        timestamp: new Date().toISOString()
+      };
+      
+      // Add stack trace in development
+      if (this.env === 'development') {
+        errorResponse.stack = error.stack;
+        errorResponse.details = error.errors ? error.errors.map(e => e.message) : undefined;
+      }
+      
+      // Handle specific error types
+      if (error.name === 'ValidationError') {
+        errorResponse.error = 'Validation failed';
+        errorResponse.details = error.errors || error.details;
+      } else if (error.name === 'JsonWebTokenError') {
+        errorResponse.error = 'Invalid token';
+      } else if (error.name === 'TokenExpiredError') {
+        errorResponse.error = 'Token expired';
+      } else if (error.name === 'SequelizeUniqueConstraintError') {
+        errorResponse.error = 'Duplicate entry';
+        errorResponse.details = error.errors ? error.errors.map(e => e.message) : undefined;
+      }
+      
+      res.status(statusCode).json(errorResponse);
+    });
+    
+    console.log('✅ Error handling setup complete');
+  }
+
+  async start() {
+    return new Promise((resolve, reject) => {
+      this.server.listen(this.port, async () => {
+        console.log('\n' + '='.repeat(60));
+        console.log(`✅ Server running on port ${this.port}`);
+        console.log(`🌐 Environment: ${this.env}`);
+        console.log(`📊 Health Check: http://localhost:${this.port}/health`);
+        console.log(`📚 API Docs: http://localhost:${this.port}/api/docs`);
+        console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
+        console.log('='.repeat(60));
+        console.log('\n📋 Available Endpoints:');
+        console.log('├── GET  /health              - Health check');
+        console.log('├── GET  /api                 - API info');
+        console.log('├── GET  /api/docs            - API documentation');
+        console.log('├── GET  /api/db-test         - Database test');
+        console.log('├── POST /api/test-exhibitor  - Test exhibitor creation');
+        console.log('├── POST /api/auth/login      - User login');
+        console.log('├── POST /api/auth/register   - User registration');
+        console.log('├── GET  /api/users           - List users (admin)');
+        console.log('├── GET  /api/exhibitors      - List exhibitors');
+        console.log('└── GET  /api/articles        - List articles');
+        console.log('\n💡 Default Admin Credentials:');
+        console.log('├── Email: admin@example.com');
+        console.log('└── Password: admin123');
+        console.log('='.repeat(60));
+        
+        // Check/create default admin user
+        await this.checkDefaultAdmin();
+        
+        resolve();
+      });
+
+      this.server.on('error', (error) => {
+        console.error(`❌ Server failed to start: ${error.message}`);
+        
+        // Handle specific port errors
+        if (error.code === 'EADDRINUSE') {
+          console.error(`💡 Port ${this.port} is already in use. Try a different port:`);
+          console.error(`   node server.js --port ${parseInt(this.port) + 1}`);
+          console.error(`   Or kill the process using port ${this.port}:`);
+          console.error(`   lsof -ti:${this.port} | xargs kill -9`);
+        }
+        
+        reject(error);
+      });
+    });
+  }
+
+  async checkDefaultAdmin() {
+    try {
+      console.log('\n👤 Checking default admin user...');
+      
+      const modelFactory = require('./models');
+      const User = modelFactory.getModel('User');
+      const bcrypt = require('bcryptjs');
+      
+      // Check if admin exists
+      let admin = await User.findOne({ where: { email: 'admin@example.com' } });
+      
+      if (!admin) {
+        console.log('👤 Creating default admin user...');
+        
+        // Create default admin
+        const hashedPassword = await bcrypt.hash('admin123', 10);
+        
+        admin = await User.create({
+          name: 'Administrator',
+          email: 'admin@example.com',
+          password: hashedPassword,
+          role: 'admin',
+          status: 'active',
+          phone: '+1234567890'
+        });
+        
+        console.log('✅ Default admin user created');
+        console.log(`   📧 Email: ${admin.email}`);
+        console.log(`   🔑 Password: admin123`);
+      } else {
+        console.log('✅ Admin user already exists');
+        
+        // Update password if needed
+        if (!admin.password || admin.password.length < 20) {
+          console.log('🔄 Updating admin password...');
+          const hashedPassword = await bcrypt.hash('admin123', 10);
+          await admin.update({ password: hashedPassword });
+          console.log('✅ Admin password updated');
+        }
+      }
+      
+      console.log('✅ Admin user check completed');
+      
+    } catch (error) {
+      console.error(`⚠️ Admin check failed: ${error.message}`);
+      console.log('ℹ️ Continuing without admin user...');
+    }
+  }
+
+  // ======================
+  // Error Handlers
+  // ======================
+
+  handleUncaughtException(error) {
+    console.error('💥 Uncaught Exception:', error);
+    console.error(error.stack);
+    
+    // Attempt graceful shutdown
+    if (!this.isShuttingDown) {
+      this.isShuttingDown = true;
+      this.stop().then(() => {
+        process.exit(1);
+      }).catch(() => {
+        process.exit(1);
+      });
+    }
+  }
+
+  handleUnhandledRejection(reason, promise) {
+    console.error('💥 Unhandled Rejection at:', promise);
+    console.error('Reason:', reason);
+    
+    // Log but don't exit for unhandled rejections
+    console.log('⚠️ Unhandled rejection logged, continuing...');
+  }
+
+  async stop() {
+    if (this.isShuttingDown) return;
+    
+    this.isShuttingDown = true;
+    console.log('\n🛑 Stopping server gracefully...');
+    
+    return new Promise((resolve) => {
+      // Close server
+      if (this.server) {
+        this.server.close(async () => {
+          console.log('✅ HTTP server closed');
+          
+          try {
+            // Close database connections
+            await database.disconnect();
+            console.log('✅ Database connections closed');
+          } catch (dbError) {
+            console.error('❌ Error closing database:', dbError.message);
+          }
+          
+          console.log('✅ Server stopped gracefully');
+          resolve();
+        });
+        
+        // Force close after 10 seconds
+        setTimeout(() => {
+          console.log('⚠️ Forcing server shutdown...');
+          process.exit(0);
+        }, 10000);
+      } else {
+        resolve();
+      }
+    });
   }
 }
 
-// Start the server
-startServer();
+// Handle graceful shutdown
+const signals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+signals.forEach(signal => {
+  process.on(signal, async () => {
+    console.log(`\n${signal} received, shutting down gracefully...`);
+    const server = global.appServer;
+    if (server) {
+      await server.stop();
+    }
+    process.exit(0);
+  });
+});
+
+// Create and export server instance
+const appServer = new AppServer();
+global.appServer = appServer;
+
+// Export for testing
+module.exports = { 
+  app: appServer.app, 
+  server: appServer.server,
+  AppServer 
+};
