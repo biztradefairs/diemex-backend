@@ -1,130 +1,273 @@
-// src/controllers/ExhibitorController.js
 const exhibitorService = require('../services/ExhibitorService');
 
 class ExhibitorController {
-  // Create new exhibitor
+  // Create exhibitor with password
   async createExhibitor(req, res) {
     try {
-      const exhibitor = await exhibitorService.createExhibitor(req.body);
+      console.log('\n🎯 CREATE EXHIBITOR REQUEST');
+      console.log('Data:', JSON.stringify(req.body, null, 2));
+      
+      const data = req.body;
+      
+      // Check required fields
+      const requiredFields = ['name', 'email', 'password', 'company'];
+      const missingFields = requiredFields.filter(field => !data[field]);
+      
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Missing required fields: ${missingFields.join(', ')}`
+        });
+      }
+      
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(data.email)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid email format'
+        });
+      }
+      
+      // Check if email already exists
+      const modelFactory = require('../models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      const existingExhibitor = await Exhibitor.findOne({
+        where: { email: data.email.toLowerCase().trim() }
+      });
+      
+      if (existingExhibitor) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email already exists'
+        });
+      }
+      
+      // Store original password before hashing
+      const originalPassword = data.password;
+      
+      // Prepare exhibitor data (password will be hashed by model hook)
+      const exhibitorData = {
+        name: data.name.trim(),
+        email: data.email.toLowerCase().trim(),
+        company: data.company.trim(),
+        password: data.password, // Will be hashed by beforeCreate hook
+        phone: data.phone || '',
+        sector: data.sector || '',
+        boothNumber: data.boothNumber || '',
+        status: data.status || 'pending',
+        originalPassword: originalPassword // Store for metadata
+      };
+      
+      // Save to database
+      const exhibitor = await Exhibitor.create(exhibitorData);
+      
+      // Show in terminal
+      console.log('\n========================================');
+      console.log('✅ EXHIBITOR CREATED SUCCESSFULLY');
+      console.log('========================================');
+      console.log('📧 Email:', exhibitor.email);
+      console.log('🔑 Original Password:', originalPassword);
+      console.log('🔑 Hashed Password:', exhibitor.password.substring(0, 20) + '...');
+      console.log('🏢 Company:', exhibitor.company);
+      console.log('👤 Contact:', exhibitor.name);
+      console.log('📊 Status:', exhibitor.status);
+      console.log('========================================\n');
+      
+      // Get metadata for original password
+      let originalPasswordFromMetadata = null;
+      if (exhibitor.metadata) {
+        try {
+          const metadata = JSON.parse(exhibitor.metadata);
+          originalPasswordFromMetadata = metadata.originalPassword;
+        } catch (error) {
+          console.error('Error parsing metadata:', error);
+        }
+      }
+      
+      // Return response
+      const response = exhibitor.toJSON();
+      response.originalPassword = originalPasswordFromMetadata || originalPassword;
+      delete response.password;
+      delete response.resetPasswordToken;
+      delete response.resetPasswordExpires;
       
       res.status(201).json({
         success: true,
-        data: exhibitor
+        data: response,
+        message: 'Exhibitor created successfully'
+      });
+      
+    } catch (error) {
+      console.error('❌ Create exhibitor error:', error);
+      
+      let errorMessage = 'Failed to create exhibitor';
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        errorMessage = 'Email already exists';
+      } else if (error.name === 'SequelizeValidationError') {
+        errorMessage = error.errors.map(e => e.message).join(', ');
+      }
+      
+      res.status(400).json({
+        success: false,
+        error: errorMessage,
+        details: error.errors ? error.errors.map(e => e.message) : undefined
+      });
+    }
+  }
+
+async getAllExhibitors(req, res) {
+  try {
+    const { page = 1, limit = 10, search = '', sector = '', status = '' } = req.query;
+    const modelFactory = require('../models');
+    const { Op } = require('sequelize');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+    
+    const where = {};
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+        { company: { [Op.like]: `%${search}%` } }
+      ];
+    }
+    if (sector) where.sector = sector;
+    if (status && status !== 'all') {
+      // Map frontend status to database status
+      const dbStatus = status === 'active' ? 'approved' : status;
+      where.status = dbStatus;
+    }
+    
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+    
+    const { count, rows } = await Exhibitor.findAndCountAll({
+      where,
+      limit: limitNum,
+      offset,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Format response - map "approved" to "active" for frontend
+    const formatted = rows.map(exhibitor => {
+      const data = exhibitor.toJSON();
+      
+      // Get original password
+      let originalPassword = null;
+      if (data.metadata) {
+        try {
+          const metadata = JSON.parse(data.metadata);
+          originalPassword = metadata.originalPassword;
+        } catch {}
+      }
+      
+      // Map database status to frontend status
+      const frontendStatus = data.status === 'approved' ? 'active' : data.status;
+      
+      return {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        company: data.company,
+        sector: data.sector,
+        booth: data.boothNumber,
+        status: frontendStatus, // Use mapped status
+        originalPassword: originalPassword,
+        createdAt: data.createdAt
+      };
+    });
+    
+    res.json({
+      success: true,
+      data: formatted,
+      pagination: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum)
+      }
+    });
+  } catch (error) {
+    console.error('Get all error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+  // Get exhibitor statistics
+  async getExhibitorStats(req, res) {
+    try {
+      console.log('📊 Getting exhibitor statistics');
+      
+      const modelFactory = require('../models');
+      const { Sequelize } = require('sequelize');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      
+      // Get total count
+      const total = await Exhibitor.count();
+      
+      // Get counts by status
+      const byStatus = await Exhibitor.findAll({
+        attributes: [
+          'status',
+          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+        ],
+        group: ['status'],
+        raw: true
+      });
+      
+      // Get counts by sector
+      const bySector = await Exhibitor.findAll({
+        attributes: [
+          'sector',
+          [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
+        ],
+        where: {
+          sector: {
+            [Sequelize.Op.ne]: null
+          }
+        },
+        group: ['sector'],
+        raw: true
+      });
+      
+      res.json({
+        success: true,
+        data: {
+          total,
+          byStatus: byStatus.map(item => ({
+            _id: item.status,
+            count: item.count
+          })),
+          bySector: bySector.map(item => ({
+            _id: item.sector,
+            count: item.count
+          }))
+        }
       });
     } catch (error) {
-      res.status(400).json({
+      console.error('Get stats error:', error);
+      res.status(500).json({
         success: false,
         error: error.message
       });
     }
   }
 
-// controllers/ExhibitorController.js - Update getAllExhibitors method
-async getAllExhibitors(req, res) {
-  try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search, 
-      sector, 
-      status,
-      sortBy = 'createdAt',
-      sortOrder = 'DESC',
-      includePassword = false
-    } = req.query;
-    
-    // Only allow password inclusion for admins
-    const isAdmin = req.user && req.user.role === 'admin';
-    const shouldIncludePassword = isAdmin && (includePassword === 'true' || includePassword === true);
-    
-    console.log('🔍 GET /exhibitors called with:', {
-      page, limit, search, sector, status,
-      includePassword, isAdmin, shouldIncludePassword,
-      user: req.user ? { id: req.user.id, role: req.user.role, email: req.user.email } : 'no user'
-    });
-    
-    // Build filter conditions
-    const filters = {};
-    if (search) {
-      filters.search = search;
-    }
-    if (sector && sector !== 'all') {
-      filters.sector = sector;
-    }
-    if (status && status !== 'all') {
-      filters.status = status;
-    }
-    
-    console.log('📊 Calling exhibitorService.getAllExhibitors with:', {
-      filters, page, limit, shouldIncludePassword
-    });
-    
-    // Get exhibitors with optional password inclusion
-    const result = await exhibitorService.getAllExhibitors(
-      filters, 
-      parseInt(page), 
-      parseInt(limit),
-      shouldIncludePassword
-    );
-    
-    console.log('✅ Service returned:', {
-      hasResult: !!result,
-      exhibitorCount: result ? result.exhibitors.length : 0,
-      total: result ? result.total : 0,
-      firstExhibitor: result && result.exhibitors.length > 0 ? {
-        id: result.exhibitors[0].id,
-        name: result.exhibitors[0].name,
-        email: result.exhibitors[0].email,
-        company: result.exhibitors[0].company,
-        hasPassword: 'password' in result.exhibitors[0],
-        password: result.exhibitors[0].password ? '******' : 'none'
-      } : 'no exhibitors'
-    });
-    
-    if (!result) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          data: [], // Using 'data' as the frontend expects
-          total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: 0
-        }
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        data: result.exhibitors, // Changed from 'exhibitors' to 'data'
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error fetching exhibitors:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-}
-
-  // Get single exhibitor by ID with all details
+  // Get single exhibitor
   async getExhibitor(req, res) {
     try {
       const { id } = req.params;
-      const { includePassword = false } = req.query;
+      console.log('Get exhibitor:', id);
       
-      console.log(`Fetching exhibitor ${id}, includePassword: ${includePassword}`);
+      const modelFactory = require('../models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
       
-      const exhibitor = await exhibitorService.getExhibitorById(id, includePassword);
+      const exhibitor = await Exhibitor.findByPk(id);
       
       if (!exhibitor) {
         return res.status(404).json({
@@ -133,110 +276,169 @@ async getAllExhibitors(req, res) {
         });
       }
       
-      // Convert to plain object if needed
-      let exhibitorData = exhibitor;
-      if (exhibitor.toJSON) {
-        exhibitorData = exhibitor.toJSON();
+      const data = exhibitor.toJSON();
+      
+      // Get original password from metadata
+      let originalPassword = null;
+      if (data.metadata) {
+        try {
+          const metadata = JSON.parse(data.metadata);
+          originalPassword = metadata.originalPassword || null;
+        } catch {
+          // ignore
+        }
       }
       
-      // Include password if requested (admin only)
-      if (includePassword && exhibitor.password) {
-        exhibitorData.password = exhibitor.password;
-      }
+      // Don't show hash
+      delete data.password;
+      delete data.resetPasswordToken;
+      delete data.resetPasswordExpires;
+      data.originalPassword = originalPassword;
       
-      res.status(200).json({
+      res.json({
         success: true,
-        data: exhibitorData
+        data: data
       });
-      
     } catch (error) {
-      console.error(`Error fetching exhibitor ${req.params.id}:`, error);
+      console.error('Get exhibitor error:', error);
       res.status(500).json({
         success: false,
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: error.message
       });
     }
   }
 
-  // Update exhibitor
-  async updateExhibitor(req, res) {
-    try {
-      const { id } = req.params;
-      const updateData = req.body;
-      
-      console.log(`Updating exhibitor ${id}:`, updateData);
-      
-      const exhibitor = await exhibitorService.updateExhibitor(id, updateData);
-      
-      if (!exhibitor) {
-        return res.status(404).json({
-          success: false,
-          error: 'Exhibitor not found'
-        });
-      }
-      
-      res.status(200).json({
-        success: true,
-        data: exhibitor
-      });
-      
-    } catch (error) {
-      console.error(`Error updating exhibitor:`, error);
-      res.status(400).json({
+async updateExhibitor(req, res) {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    console.log('🔧 Update exhibitor:', id);
+    console.log('📦 Update data:', updateData);
+
+    const modelFactory = require('../models');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+
+    const exhibitor = await Exhibitor.findByPk(id);
+    if (!exhibitor) {
+      return res.status(404).json({
         success: false,
-        error: error.message,
-        details: error.errors ? error.errors.map(e => e.message) : undefined
+        error: 'Exhibitor not found'
       });
     }
+
+    // MAP "active" to "approved" for database compatibility
+    if (updateData.status === 'active') {
+      updateData.status = 'approved';
+      console.log('🔄 Mapped "active" to "approved" for database');
+    }
+
+    // Use raw SQL to avoid Sequelize issues
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    // Build update parts
+    const updates = [];
+    const values = [];
+    
+    if (updateData.name !== undefined) {
+      updates.push('name = ?');
+      values.push(updateData.name);
+    }
+    if (updateData.email !== undefined) {
+      updates.push('email = ?');
+      values.push(updateData.email);
+    }
+    if (updateData.phone !== undefined) {
+      updates.push('phone = ?');
+      values.push(updateData.phone);
+    }
+    if (updateData.company !== undefined) {
+      updates.push('company = ?');
+      values.push(updateData.company);
+    }
+    if (updateData.sector !== undefined) {
+      updates.push('sector = ?');
+      values.push(updateData.sector);
+    }
+    if (updateData.boothNumber !== undefined) {
+      updates.push('boothNumber = ?');
+      values.push(updateData.boothNumber);
+    }
+    if (updateData.status !== undefined) {
+      updates.push('status = ?');
+      values.push(updateData.status);
+    }
+    
+    updates.push('updatedAt = ?');
+    values.push(new Date());
+    
+    values.push(id); // For WHERE clause
+    
+    const query = `UPDATE exhibitors SET ${updates.join(', ')} WHERE id = ?`;
+    console.log('📝 Executing query:', query);
+    console.log('📝 With values:', values);
+    
+    await sequelize.query(query, {
+      replacements: values
+    });
+    
+    console.log('✅ Update successful');
+    
+    // Get updated exhibitor
+    const updatedExhibitor = await Exhibitor.findByPk(id);
+    const response = updatedExhibitor.toJSON();
+    
+    // Map "approved" back to "active" for frontend
+    if (response.status === 'approved') {
+      response.status = 'active';
+    }
+    
+    delete response.password;
+    
+    res.json({
+      success: true,
+      data: response,
+      message: 'Exhibitor updated successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Update error:', error.message);
+    res.status(400).json({
+      success: false,
+      error: 'Failed to update exhibitor: ' + error.message
+    });
   }
+}
 
   // Delete exhibitor
   async deleteExhibitor(req, res) {
     try {
       const { id } = req.params;
       
-      console.log(`Deleting exhibitor ${id}`);
+      console.log('Delete exhibitor:', id);
       
-      const result = await exhibitorService.deleteExhibitor(id);
+      const modelFactory = require('../models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
       
-      if (!result) {
+      const exhibitor = await Exhibitor.findByPk(id);
+      
+      if (!exhibitor) {
         return res.status(404).json({
           success: false,
           error: 'Exhibitor not found'
         });
       }
       
-      res.status(200).json({
-        success: true,
-        message: 'Exhibitor deleted successfully',
-        data: result
-      });
+      console.log('🗑️ Deleting exhibitor:', exhibitor.email);
+      await exhibitor.destroy();
       
+      res.json({
+        success: true,
+        message: 'Exhibitor deleted successfully'
+      });
     } catch (error) {
-      console.error(`Error deleting exhibitor ${req.params.id}:`, error);
+      console.error('Delete error:', error);
       res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  // Get exhibitor statistics
-  async getExhibitorStats(req, res) {
-    try {
-      console.log('Fetching exhibitor statistics');
-      
-      const stats = await exhibitorService.getExhibitorStats();
-      
-      res.status(200).json({
-        success: true,
-        data: stats
-      });
-      
-    } catch (error) {
-      console.error('Error fetching exhibitor stats:', error);
-      res.status(500).json({
         success: false,
         error: error.message
       });
@@ -248,7 +450,7 @@ async getAllExhibitors(req, res) {
     try {
       const { ids, status } = req.body;
       
-      console.log('Bulk updating exhibitors:', { ids, status });
+      console.log('Bulk update status:', { ids, status });
       
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({
@@ -257,149 +459,49 @@ async getAllExhibitors(req, res) {
         });
       }
       
-      if (!status || typeof status !== 'string') {
+      if (!status) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid status provided'
+          error: 'Status is required'
         });
       }
       
-      const results = await exhibitorService.bulkUpdateStatus(ids, status);
+      // Validate status
+      const validStatuses = ['pending', 'active', 'inactive', 'approved', 'rejected'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        });
+      }
       
-      res.status(200).json({
+      const modelFactory = require('../models');
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      
+      const [affectedCount] = await Exhibitor.update(
+        { status },
+        {
+          where: {
+            id: ids
+          }
+        }
+      );
+      
+      res.json({
         success: true,
-        data: results,
-        message: `Updated ${results.length} exhibitors to ${status} status`
+        data: {
+          affectedCount,
+          message: `Updated status for ${affectedCount} exhibitor(s)`
+        }
       });
-      
     } catch (error) {
-      console.error('Error in bulk update:', error);
+      console.error('Bulk update error:', error);
       res.status(400).json({
         success: false,
         error: error.message
       });
     }
   }
-
-  // Export exhibitors
-  async exportExhibitors(req, res) {
-    try {
-      const { format = 'csv' } = req.query;
-      
-      console.log(`Exporting exhibitors in ${format} format`);
-      
-      const exhibitors = await exhibitorService.getAllExhibitors({}, 1, 10000);
-      
-      if (format === 'csv') {
-        // Generate CSV
-        const header = 'ID,Name,Email,Company,Sector,Booth,Status,Registration Date,Phone,Website,Address\n';
-        
-        let csv = header;
-        exhibitors.exhibitors.forEach(exhibitor => {
-          csv += `"${exhibitor.id || ''}","${exhibitor.name || ''}","${exhibitor.email || ''}","${exhibitor.company || ''}","${exhibitor.sector || ''}","${exhibitor.boothNumber || ''}","${exhibitor.status || ''}","${exhibitor.createdAt || ''}","${exhibitor.phone || ''}","${exhibitor.website || ''}","${exhibitor.address || ''}"\n`;
-        });
-        
-        res.header('Content-Type', 'text/csv');
-        res.attachment(`exhibitors-${new Date().toISOString().split('T')[0]}.csv`);
-        res.send(csv);
-        
-      } else if (format === 'json') {
-        res.status(200).json({
-          success: true,
-          data: exhibitors.exhibitors
-        });
-      } else {
-        return res.status(400).json({
-          success: false,
-          error: 'Unsupported format. Use "csv" or "json"'
-        });
-      }
-      
-    } catch (error) {
-      console.error('Error exporting exhibitors:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-// controllers/ExhibitorController.js
-// Add this method to your existing controller
-
-async getExhibitorsWithPasswords(req, res) {
-  try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search, 
-      sector, 
-      status,
-      sortBy = 'createdAt',
-      sortOrder = 'DESC'
-    } = req.query;
-    
-    console.log('🔑 Fetching exhibitors WITH PASSWORDS (admin)');
-    
-    // Build filter conditions
-    const filters = {};
-    if (search) {
-      filters.search = search;
-    }
-    if (sector && sector !== 'all') {
-      filters.sector = sector;
-    }
-    if (status && status !== 'all') {
-      filters.status = status;
-    }
-    
-    console.log('Admin filters:', { page, limit, filters });
-    
-    // Get exhibitors with passwords using the existing service method
-    // We'll modify the getAllExhibitors method to include passwords
-    const result = await exhibitorService.getAllExhibitorsWithPasswords(
-      filters, 
-      parseInt(page), 
-      parseInt(limit),
-      sortBy,
-      sortOrder
-    );
-    
-    if (!result || !result.exhibitors) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          exhibitors: [],
-          total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: 0
-        }
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        exhibitors: result.exhibitors,
-        total: result.total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(result.total / parseInt(limit))
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error fetching exhibitors with passwords:', error);
-    console.error('Error stack:', error.stack);
-    
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch exhibitors',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-}
 }
 
 module.exports = new ExhibitorController();
