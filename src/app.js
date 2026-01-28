@@ -168,17 +168,32 @@ class AppServer {
     }));
     
    // In your Express app setup, update CORS configuration
+// Update CORS configuration in setupMiddleware():
 const corsOptions = {
-  origin: process.env.FRONTEND_URL ? 
-    process.env.FRONTEND_URL.split(',') : 
-    ['http://localhost:3000', 'http://localhost:3001'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires'],
-  exposedHeaders: ['Content-Disposition']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  exposedHeaders: ['Authorization']
 };
-    
-    this.app.use(cors(corsOptions));
+
+this.app.use(cors(corsOptions));
     
     // Pre-flight requests
     this.app.options('*', cors(corsOptions));
@@ -346,6 +361,16 @@ const corsOptions = {
         data: docs
       });
     });
+     this.app.post('/auth/exhibitor/login', (req, res, next) => {
+    req.url = '/api/auth/exhibitor/login';
+    this.app._router.handle(req, res, next);
+  });
+   this.app.use('/api/auth', authRoutes);
+  this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
+  
+  // Protected API routes
+  this.app.use('/api/users', userRoutes);
+  this.app.use('/api/exhibitors', exhibitorRoutes);
     
     console.log('✅ API routes loaded successfully');
   }

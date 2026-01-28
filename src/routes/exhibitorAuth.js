@@ -1,40 +1,28 @@
-// src/routes/exhibitorAuth.js
-const express = require('express');
-const router = express.Router();
+const router = require('express').Router();
 const exhibitorAuthController = require('../controllers/ExhibitorAuthController');
 const { authenticateExhibitor } = require('../middleware/auth');
-const { body } = require('express-validator');
 
-// Validation middleware
-const validateLogin = [
-  body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
-];
+// Test route to check if controller is loaded
+router.get('/test', (req, res) => {
+  console.log('✅ Exhibitor auth routes working');
+  res.json({ 
+    success: true, 
+    message: 'Exhibitor auth routes working',
+    endpoints: {
+      login: 'POST /api/auth/exhibitor/login',
+      profile: 'GET /api/auth/exhibitor/profile (protected)',
+      test: 'GET /api/auth/exhibitor/test'
+    }
+  });
+});
 
-const validateForgotPassword = [
-  body('email').isEmail().normalizeEmail()
-];
+// Test login endpoint
+router.post('/test-login', exhibitorAuthController.testLogin);
 
-const validateResetPassword = [
-  body('token').notEmpty(),
-  body('password').isLength({ min: 6 })
-];
+// Login route
+router.post('/login', exhibitorAuthController.login);
 
-const validateChangePassword = [
-  body('currentPassword').notEmpty(),
-  body('newPassword').isLength({ min: 6 })
-];
-
-// Public routes
-router.post('/login', validateLogin, exhibitorAuthController.login);
-router.post('/forgot-password', validateForgotPassword, exhibitorAuthController.forgotPassword);
-router.post('/reset-password', validateResetPassword, exhibitorAuthController.resetPassword);
-
-// Protected routes
-router.use(authenticateExhibitor);
-
-router.get('/profile', exhibitorAuthController.getProfile);
-router.put('/profile', exhibitorAuthController.updateProfile);
-router.post('/change-password', validateChangePassword, exhibitorAuthController.changePassword);
+// Profile route (protected)
+router.get('/profile', authenticateExhibitor, exhibitorAuthController.getProfile);
 
 module.exports = router;
