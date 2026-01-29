@@ -27,22 +27,51 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       defaultValue: '1.0'
     },
+    isMaster: {
+  type: DataTypes.BOOLEAN,
+  defaultValue: false,
+  field: 'is_master'
+},
     image: {
       type: DataTypes.TEXT('long'),
       allowNull: true
     },
-    // Store shapes as JSON
-    shapes: {
-      type: DataTypes.TEXT('long'),
-      allowNull: true,
-      get() {
-        const rawValue = this.getDataValue('shapes');
-        return rawValue ? JSON.parse(rawValue) : [];
-      },
-      set(value) {
-        this.setDataValue('shapes', JSON.stringify(value || []));
-      }
-    },
+// Update the shapes column to store complete shape data
+shapes: {
+  type: DataTypes.TEXT('long'),
+  allowNull: true,
+  get() {
+    const rawValue = this.getDataValue('shapes');
+    if (!rawValue) return [];
+    
+    try {
+      const parsed = JSON.parse(rawValue);
+      // Ensure shapes have proper structure
+      return Array.isArray(parsed) ? parsed.map(shape => ({
+        id: shape.id || `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: shape.type || 'rectangle',
+        x: Number(shape.x) || 0,
+        y: Number(shape.y) || 0,
+        width: Number(shape.width) || 50,
+        height: Number(shape.height) || 50,
+        rotation: Number(shape.rotation) || 0,
+        color: shape.color || "rgba(59, 130, 246, 0.3)",
+        borderColor: shape.borderColor || "#1e40af",
+        borderWidth: Number(shape.borderWidth) || 2,
+        fontSize: Number(shape.fontSize) || 12,
+        text: shape.text || '',
+        zIndex: Number(shape.zIndex) || 1,
+        isLocked: Boolean(shape.isLocked),
+        metadata: shape.metadata || {}
+      })) : [];
+    } catch {
+      return [];
+    }
+  },
+  set(value) {
+    this.setDataValue('shapes', JSON.stringify(value || []));
+  }
+},
     scale: {
       type: DataTypes.FLOAT,
       defaultValue: 0.1
