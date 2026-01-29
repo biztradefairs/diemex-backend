@@ -112,6 +112,47 @@ class FloorPlanService {
     
     return sanitized;
   }
+  async createOrUpdateMasterFloorPlan(floorPlanData, userId) {
+    try {
+      console.log('📝 Creating/updating master floor plan...');
+      
+      const model = this.FloorPlan;
+      if (!model) throw new Error('FloorPlan model not available');
+      
+      // Prepare data
+      const preparedData = await this.prepareFloorPlanData(floorPlanData);
+      
+      // Ensure it's marked as master and public
+      preparedData.isMaster = true;
+      preparedData.isPublic = true;
+      preparedData.updatedBy = userId;
+      
+      // Check if we already have a master plan
+      const existingMaster = await model.findOne({
+        where: { isMaster: true }
+      });
+      
+      let floorPlan;
+      
+      if (existingMaster) {
+        // Update existing master
+        console.log('🔄 Updating existing master floor plan:', existingMaster.id);
+        preparedData.createdBy = existingMaster.createdBy; // Preserve original creator
+        floorPlan = await existingMaster.update(preparedData);
+      } else {
+        // Create new master
+        console.log('🆕 Creating new master floor plan');
+        preparedData.createdBy = userId;
+        floorPlan = await model.create(preparedData);
+      }
+      
+      console.log('✅ Master floor plan saved:', floorPlan.id);
+      return floorPlan.get({ plain: true });
+    } catch (error) {
+      console.error('❌ Create/update master plan error:', error);
+      throw error;
+    }
+  }
 
   // Create floor plan
   async createFloorPlan(floorPlanData, userId) {
@@ -199,7 +240,303 @@ class FloorPlanService {
       throw new Error(`Failed to fetch floor plans: ${error.message}`);
     }
   }
+  // Add this method to process shapes for viewing
+processShapesForDisplay(shapes, userData = null) {
+  if (!Array.isArray(shapes)) return [];
+  
+  return shapes.map(shape => {
+    const baseShape = {
+      ...shape,
+      id: shape.id || `shape-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: shape.type || 'rectangle',
+      x: Number(shape.x) || 0,
+      y: Number(shape.y) || 0,
+      width: Number(shape.width) || 50,
+      height: Number(shape.height) || 50,
+      rotation: Number(shape.rotation) || 0,
+      color: shape.color || "rgba(59, 130, 246, 0.3)",
+      borderColor: shape.borderColor || "#1e40af",
+      borderWidth: Number(shape.borderWidth) || 2,
+      fontSize: Number(shape.fontSize) || 12,
+      text: shape.text || '',
+      zIndex: Number(shape.zIndex) || 1,
+      isLocked: Boolean(shape.isLocked),
+      metadata: shape.metadata || {}
+    };
+    
+    // If user is exhibitor, personalize booth data
+    if (userData && shape.type === 'booth' && shape.metadata) {
+      const boothMetadata = shape.metadata;
+      
+      // Check if this is the exhibitor's booth
+      if (userData.boothNumber === boothMetadata.boothNumber) {
+        return {
+          ...baseShape,
+          text: `${boothMetadata.companyName || userData.company || 'Your Booth'}\nBooth ${boothMetadata.boothNumber}`,
+          color: 'rgba(16, 185, 129, 0.4)', // Highlight in green
+          borderColor: '#047857',
+          metadata: {
+            ...boothMetadata,
+            isUserBooth: true,
+            companyName: userData.company,
+            contactPerson: userData.name,
+            phone: userData.phone
+          }
+        };
+      }
+    }
+    
+    return baseShape;
+  });
+}
 
+// Update getAllFloorPlans to include shapes for viewer
+async getAllFloorPlans(filters = {}, page = 1, limit = 20, user = null) {
+  try {
+    const model = this.FloorPlan;
+    if (!model) throw new Error('FloorPlan model not available');
+    
+    const offset = (page - 1) * limit;
+    
+    let where = {};
+    
+    // For exhibitors, show only public plans or their assigned plan
+    if (user && user.role === 'exhibitor') {
+      where[Op.or] = [
+        { isPublic: true },
+        { id: user.floorPlanId } // If exhibitor has assigned floor plan
+      ];
+    }
+    
+    // Search filter
+    if (filters.search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${filters.search}%` } },
+        { description: { [Op.like]: `%${filters.search}%` } }
+      ];
+    }
+    
+    const result = await model.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [['created_at', 'DESC']]
+    });
+    
+    // Process shapes for display
+    const processedPlans = result.rows.map(plan => {
+      const planData = plan.get({ plain: true });
+      return {
+        ...planData,
+        shapes: this.processShapesForDisplay(planData.shapes, user)
+      };
+    });
+    
+    return {
+      floorPlans: processedPlans,
+      total: result.count,
+      page,
+      totalPages: Math.ceil(result.count / limit),
+      limit
+    };
+  } catch (error) {
+    console.error('❌ Get all floor plans error:', error);
+    throw error;
+  }
+}
+async getMasterFloorPlan() {
+    try {
+      const model = this.FloorPlan;
+      if (!model) throw new Error('FloorPlan model not available');
+      
+      console.log('🔍 Looking for master floor plan...');
+      
+      // First, try to find a plan explicitly marked as master
+      let masterPlan = await model.findOne({
+        where: {
+          isMaster: true,
+          isPublic: true
+        },
+        order: [['updatedAt', 'DESC']]
+      });
+      
+      if (masterPlan) {
+        console.log('✅ Found master floor plan (isMaster: true):', masterPlan.name);
+        return masterPlan.get({ plain: true });
+      }
+      
+      // If no explicit master, look for plan with "master" in name or tags
+      masterPlan = await model.findOne({
+        where: {
+          [Op.or]: [
+            { name: { [Op.like]: '%master%' } },
+            { name: { [Op.like]: '%exhibition%' } },
+            { tags: { [Op.like]: '%master%' } }
+          ],
+          isPublic: true
+        },
+        order: [['updatedAt', 'DESC']]
+      });
+      
+      if (masterPlan) {
+        console.log('✅ Found master floor plan (by name/tags):', masterPlan.name);
+        return masterPlan.get({ plain: true });
+      }
+      
+      // If still no master, use the most recent public plan
+      masterPlan = await model.findOne({
+        where: { isPublic: true },
+        order: [['updatedAt', 'DESC']]
+      });
+      
+      if (masterPlan) {
+        console.log('ℹ️ Using most recent public plan as master:', masterPlan.name);
+        return masterPlan.get({ plain: true });
+      }
+      
+      console.log('ℹ️ No master floor plan found');
+      return null;
+    } catch (error) {
+      console.error('❌ Get master floor plan error:', error);
+      throw error;
+    }
+  }
+async getFloorPlanForExhibitor(req, res) {
+  try {
+    // Get master floor plan
+    const floorPlan = await this.getMasterFloorPlan();
+    
+    if (!floorPlan) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No floor plan available yet'
+      });
+    }
+    
+    // Get exhibitor data
+    const exhibitorData = await ExhibitorService.getExhibitorById(req.user.id);
+    
+    // Process shapes to highlight exhibitor's booth
+    const processedShapes = (floorPlan.shapes || []).map(shape => {
+      const shapeCopy = { ...shape };
+      
+      // Check if this is the exhibitor's booth
+      if (shape.type === 'booth' && shape.metadata?.boothNumber === exhibitorData.boothNumber) {
+        return {
+          ...shapeCopy,
+          color: 'rgba(16, 185, 129, 0.4)', // Highlight in green
+          borderColor: '#047857',
+          text: `${shape.metadata.companyName || exhibitorData.company}\nBooth ${shape.metadata.boothNumber}`,
+          metadata: {
+            ...shape.metadata,
+            isUserBooth: true,
+            companyName: exhibitorData.company,
+            contactPerson: exhibitorData.name,
+            phone: exhibitorData.phone,
+            email: exhibitorData.email
+          }
+        };
+      }
+      
+      return shapeCopy;
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        ...floorPlan,
+        shapes: processedShapes
+      },
+      exhibitor: exhibitorData
+    });
+  } catch (error) {
+    console.error('❌ Get exhibitor view error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+// src/services/FloorPlanService.js
+// Add these methods to your existing service:
+
+// Get master floor plan
+async getMasterFloorPlan() {
+  try {
+    const model = this.FloorPlan;
+    if (!model) throw new Error('FloorPlan model not available');
+    
+    console.log('🔍 Looking for master floor plan...');
+    
+    // Find plan marked as master or public plan with master tag
+    const masterPlan = await model.findOne({
+      where: {
+        isPublic: true,
+        [Op.or]: [
+          { isMaster: true },
+          { tags: { [Op.like]: '%master%' } },
+          { name: { [Op.like]: '%master%' } },
+          { name: { [Op.like]: '%exhibition%' } }
+        ]
+      },
+      order: [['updatedAt', 'DESC']]
+    });
+    
+    if (masterPlan) {
+      console.log('✅ Found master floor plan:', masterPlan.name);
+      return masterPlan.get({ plain: true });
+    }
+    
+    // If no master plan found, return the most recent public plan
+    const publicPlan = await model.findOne({
+      where: { isPublic: true },
+      order: [['updatedAt', 'DESC']]
+    });
+    
+    if (publicPlan) {
+      console.log('ℹ️ Using public plan as master:', publicPlan.name);
+      return publicPlan.get({ plain: true });
+    }
+    
+    console.log('ℹ️ No master floor plan found');
+    return null;
+  } catch (error) {
+    console.error('❌ Get master floor plan error:', error);
+    return null;
+  }
+}
+
+// Process shapes for exhibitor view
+async processShapesForExhibitor(shapes, exhibitorData) {
+    if (!Array.isArray(shapes)) return [];
+    
+    return shapes.map(shape => {
+      const shapeCopy = { ...shape };
+      
+      // Check if this is the exhibitor's booth
+      if (shape.type === 'booth' && shape.metadata?.boothNumber === exhibitorData.boothNumber) {
+        console.log('🎯 Found exhibitor booth:', exhibitorData.boothNumber);
+        
+        return {
+          ...shapeCopy,
+          color: 'rgba(16, 185, 129, 0.4)', // Highlight in green
+          borderColor: '#047857',
+          text: `${shape.metadata.companyName || exhibitorData.company || 'Your Booth'}\nBooth ${shape.metadata.boothNumber}`,
+          metadata: {
+            ...shape.metadata,
+            isUserBooth: true,
+            companyName: exhibitorData.company || shape.metadata?.companyName,
+            contactPerson: exhibitorData.name || shape.metadata?.contactPerson,
+            phone: exhibitorData.phone || shape.metadata?.phone,
+            email: exhibitorData.email || shape.metadata?.email
+          }
+        };
+      }
+      
+      return shapeCopy;
+    });
+  }
   // Get single floor plan by ID
   async getFloorPlanById(id) {
     try {

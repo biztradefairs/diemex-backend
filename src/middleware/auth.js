@@ -1,17 +1,17 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware to authenticate user (admin/editor/viewer)
+/* ============================
+   ADMIN / EDITOR / VIEWER AUTH
+============================ */
 const authenticate = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: 'No token provided'
-      });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Token missing' });
     }
 
+    const token = authHeader.replace('Bearer ', '');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const modelFactory = require('../models');
@@ -22,82 +22,64 @@ const authenticate = async (req, res, next) => {
     });
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: 'User not found'
-      });
+      return res.status(401).json({ success: false, error: 'User not found' });
     }
 
     if (user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        error: 'Account is not active'
-      });
+      return res.status(403).json({ success: false, error: 'Account not active' });
     }
 
     req.user = {
       id: user.id,
-      email: user.email,
       role: user.role,
+      email: user.email,
       name: user.name
     };
 
     next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ success: false, error: 'Invalid token' });
-    }
-
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, error: 'Token expired' });
-    }
-
-    res.status(500).json({ success: false, error: error.message });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: err.name === 'TokenExpiredError'
+        ? 'Token expired'
+        : 'Invalid token'
+    });
   }
 };
 
-// Role-based authorization
+/* ============================
+   ROLE AUTHORIZATION (USERS)
+============================ */
 const authorize = (roles = []) => {
-  if (typeof roles === 'string') roles = [roles];
-
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required'
-      });
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     if (roles.length && !roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        error: 'You do not have permission to access this resource'
-      });
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
     next();
   };
 };
 
-// Exhibitor authentication
+/* ============================
+   EXHIBITOR AUTH (SEPARATE)
+============================ */
 const authenticateExhibitor = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: 'No token provided'
-      });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Token missing' });
     }
 
+    const token = authHeader.replace('Bearer ', '');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     if (decoded.role !== 'exhibitor') {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. Exhibitor access required.'
-      });
+      return res.status(403).json({ success: false, error: 'Exhibitor access only' });
     }
 
     const modelFactory = require('../models');
@@ -106,51 +88,36 @@ const authenticateExhibitor = async (req, res, next) => {
     const exhibitor = await Exhibitor.findByPk(decoded.id);
 
     if (!exhibitor) {
-      return res.status(401).json({
-        success: false,
-        error: 'Exhibitor not found'
-      });
+      return res.status(401).json({ success: false, error: 'Exhibitor not found' });
     }
 
-    if (exhibitor.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        error: 'Account is not active'
-      });
+    if (!['active', 'approved'].includes(exhibitor.status)) {
+      return res.status(403).json({ success: false, error: 'Account not active' });
     }
 
     req.user = {
       id: exhibitor.id,
+      role: 'exhibitor',
       email: exhibitor.email,
+      name: exhibitor.name,
       company: exhibitor.company,
-      role: 'exhibitor'
+      boothNumber: exhibitor.boothNumber || null,
+      phone: exhibitor.phone
     };
 
     next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ success: false, error: 'Invalid token' });
-    }
-
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, error: 'Token expired' });
-    }
-
-    res.status(500).json({ success: false, error: error.message });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: err.name === 'TokenExpiredError'
+        ? 'Token expired'
+        : 'Invalid token'
+    });
   }
-};
-
-// Combined authentication and authorization middleware
-const authMiddleware = (roles = []) => {
-  return [
-    authenticate,
-    authorize(roles)
-  ];
 };
 
 module.exports = {
   authenticate,
   authorize,
-  authenticateExhibitor,
-  authMiddleware
+  authenticateExhibitor
 };
