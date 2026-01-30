@@ -125,7 +125,6 @@ class ExhibitorController {
       });
     }
   }
-// Resend credentials to exhibitor
 async resendCredentials(req, res) {
   try {
     const { id } = req.params;
@@ -133,7 +132,6 @@ async resendCredentials(req, res) {
     console.log('📧 Resending credentials for exhibitor:', id);
     
     const modelFactory = require('../models');
-    const bcrypt = require('bcryptjs');
     const Exhibitor = modelFactory.getModel('Exhibitor');
     const emailService = require('../services/EmailService');
     
@@ -146,7 +144,7 @@ async resendCredentials(req, res) {
       });
     }
     
-    // Get original password from metadata or generate new one
+    // Get original password from metadata
     let originalPassword = null;
     if (exhibitor.metadata) {
       try {
@@ -157,55 +155,30 @@ async resendCredentials(req, res) {
       }
     }
     
-    // If no original password, generate a new one (QUICKLY)
+    // If no original password, use a default
     if (!originalPassword) {
-      // Simple password generation - don't waste time
-      originalPassword = Math.random().toString(36).slice(-10) + '!@#'; // Quick generation
-      
-      // Hash password with lower rounds for speed (development only)
-      const hashedPassword = await bcrypt.hash(originalPassword, 8); // ⬅️ Lower rounds = faster
-      
-      // Update metadata
-      let metadata = {};
-      if (exhibitor.metadata) {
-        try {
-          metadata = JSON.parse(exhibitor.metadata);
-        } catch {}
-      }
-      
-      metadata.originalPassword = originalPassword;
-      metadata.credentialsResentAt = new Date().toISOString();
-      
-      // Quick update - don't wait for full save
-      await exhibitor.update({ 
-        password: hashedPassword,
-        metadata: JSON.stringify(metadata)
-      }).catch(err => {
-        console.warn('Update failed but continuing:', err.message);
-      });
-      
-      console.log('🔑 Generated new password for:', exhibitor.email);
+      originalPassword = 'default123'; // Simple default
+      console.log('ℹ️ Using default password for:', exhibitor.email);
     }
     
-    // Send email ASYNCHRONOUSLY - don't wait for it
+    // Send email IMMEDIATELY (non-blocking)
     emailService.sendExhibitorWelcome(exhibitor, originalPassword)
-      .then(() => {
-        console.log('✅ Email sent successfully to:', exhibitor.email);
+      .then(result => {
+        console.log('✅ Email logged successfully:', result.messageId);
       })
       .catch(err => {
-        console.warn('⚠️ Email sending failed:', err.message);
+        console.warn('⚠️ Email logging issue:', err.message);
       });
     
-    // Return IMMEDIATELY without waiting for email
-    console.log('✅ Credentials process started for:', exhibitor.email);
-    
+    // Return response IMMEDIATELY
     res.json({
       success: true,
-      message: 'Credentials email process started successfully',
+      message: 'Credentials have been logged to console',
       data: {
         email: exhibitor.email,
+        passwordShown: originalPassword ? 'Yes' : 'No',
         timestamp: new Date().toISOString(),
-        note: 'Email is being sent in the background'
+        note: 'Check server console for credentials'
       }
     });
     
