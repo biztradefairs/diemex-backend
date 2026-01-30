@@ -1,130 +1,122 @@
 const exhibitorService = require('../services/ExhibitorService');
 
 class ExhibitorController {
-   async createExhibitor(req, res) {
-    try {
-      console.log('\n🎯 CREATE EXHIBITOR REQUEST');
-      console.log('Data:', JSON.stringify(req.body, null, 2));
-      
-      const data = req.body;
-      
-      // Check required fields
-      const requiredFields = ['name', 'email', 'password', 'company'];
-      const missingFields = requiredFields.filter(field => !data[field]);
-      
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error: `Missing required fields: ${missingFields.join(', ')}`
-        });
-      }
-      
-      // Validate email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(data.email)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid email format'
-        });
-      }
-      
-      // Check if email already exists
-      const modelFactory = require('../models');
-      const Exhibitor = modelFactory.getModel('Exhibitor');
-      const existingExhibitor = await Exhibitor.findOne({
-        where: { email: data.email.toLowerCase().trim() }
-      });
-      
-      if (existingExhibitor) {
-        return res.status(400).json({
-          success: false,
-          error: 'Email already exists'
-        });
-      }
-      
-      // Store original password before hashing
-      const originalPassword = data.password;
-      
-      // Prepare exhibitor data
-      const exhibitorData = {
-        name: data.name.trim(),
-        email: data.email.toLowerCase().trim(),
-        company: data.company.trim(),
-        password: data.password,
-        phone: data.phone || '',
-        sector: data.sector || '',
-        boothNumber: data.boothNumber || '',
-        status: data.status || 'pending',
-        originalPassword: originalPassword
-      };
-      
-      // Save to database
-      const exhibitor = await Exhibitor.create(exhibitorData);
-      
-      // 🔴 IMPORTANT: Send welcome email with credentials
-      try {
-        const emailService = require('../services/EmailService');
-        await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
-        console.log('✅ Welcome email sent to:', exhibitor.email);
-      } catch (emailError) {
-        console.warn('⚠️ Failed to send welcome email:', emailError.message);
-        // Don't fail the whole request if email fails
-        // You might want to log this to a monitoring service
-      }
-      
-      // Show in terminal
-      console.log('\n========================================');
-      console.log('✅ EXHIBITOR CREATED SUCCESSFULLY');
-      console.log('========================================');
-      console.log('📧 Email:', exhibitor.email);
-      console.log('🔑 Original Password:', originalPassword);
-      console.log('🔑 Hashed Password:', exhibitor.password?.substring(0, 20) + '...');
-      console.log('🏢 Company:', exhibitor.company);
-      console.log('👤 Contact:', exhibitor.name);
-      console.log('📊 Status:', exhibitor.status);
-      console.log('========================================\n');
-      
-      // Get metadata for original password
-      let originalPasswordFromMetadata = null;
-      if (exhibitor.metadata) {
-        try {
-          const metadata = JSON.parse(exhibitor.metadata);
-          originalPasswordFromMetadata = metadata.originalPassword;
-        } catch (error) {
-          console.error('Error parsing metadata:', error);
-        }
-      }
-      
-      // Return response
-      const response = exhibitor.toJSON();
-      response.originalPassword = originalPasswordFromMetadata || originalPassword;
-      delete response.password;
-      delete response.resetPasswordToken;
-      delete response.resetPasswordExpires;
-      
-      res.status(201).json({
-        success: true,
-        data: response,
-        message: 'Exhibitor created successfully. Welcome email sent.'
-      });
-      
-    } catch (error) {
-      console.error('❌ Create exhibitor error:', error);
-      
-      let errorMessage = 'Failed to create exhibitor';
-      if (error.name === 'SequelizeUniqueConstraintError') {
-        errorMessage = 'Email already exists';
-      } else if (error.name === 'SequelizeValidationError') {
-        errorMessage = error.errors.map(e => e.message).join(', ');
-      }
-      
-      res.status(400).json({
+  async createExhibitor(req, res) {
+  try {
+    console.log('\n🎯 CREATE EXHIBITOR REQUEST');
+    console.log('Data:', JSON.stringify(req.body, null, 2));
+    
+    const data = req.body;
+    const bcrypt = require('bcryptjs');
+    
+    // Check required fields
+    const requiredFields = ['name', 'email', 'password', 'company'];
+    const missingFields = requiredFields.filter(field => !data[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({
         success: false,
-        error: errorMessage,
-        details: error.errors ? error.errors.map(e => e.message) : undefined
+        error: `Missing required fields: ${missingFields.join(', ')}`
       });
     }
+    
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format'
+      });
+    }
+    
+    // Check if email already exists
+    const modelFactory = require('../models');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+    const existingExhibitor = await Exhibitor.findOne({
+      where: { email: data.email.toLowerCase().trim() }
+    });
+    
+    if (existingExhibitor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email already exists'
+      });
+    }
+    
+    // Store original password
+    const originalPassword = data.password;
+    
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(originalPassword, 10);
+    
+    // Prepare exhibitor data
+    const exhibitorData = {
+      name: data.name.trim(),
+      email: data.email.toLowerCase().trim(),
+      company: data.company.trim(),
+      password: hashedPassword, // Store hashed password
+      phone: data.phone || '',
+      sector: data.sector || '',
+      boothNumber: data.boothNumber || '',
+      status: data.status || 'pending',
+      metadata: JSON.stringify({
+        originalPassword: originalPassword,
+        createdBy: 'admin',
+        createdAt: new Date().toISOString()
+      })
+    };
+    
+    // Save to database
+    const exhibitor = await Exhibitor.create(exhibitorData);
+    
+    // Send welcome email with credentials
+    try {
+      const emailService = require('../services/EmailService');
+      await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
+      console.log('✅ Welcome email sent to:', exhibitor.email);
+    } catch (emailError) {
+      console.warn('⚠️ Failed to send welcome email:', emailError.message);
+    }
+    
+    // Show in terminal
+    console.log('\n========================================');
+    console.log('✅ EXHIBITOR CREATED SUCCESSFULLY');
+    console.log('========================================');
+    console.log('📧 Email:', exhibitor.email);
+    console.log('🔑 Original Password:', originalPassword);
+    console.log('🏢 Company:', exhibitor.company);
+    console.log('========================================\n');
+    
+    // Return response
+    const response = exhibitor.toJSON();
+    response.originalPassword = originalPassword; // Include original password in response
+    delete response.password;
+    delete response.resetPasswordToken;
+    delete response.resetPasswordExpires;
+    
+    res.status(201).json({
+      success: true,
+      data: response,
+      message: 'Exhibitor created successfully. Welcome email sent.'
+    });
+    
+  } catch (error) {
+    console.error('❌ Create exhibitor error:', error);
+    
+    let errorMessage = 'Failed to create exhibitor';
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      errorMessage = 'Email already exists';
+    } else if (error.name === 'SequelizeValidationError') {
+      errorMessage = error.errors.map(e => e.message).join(', ');
+    }
+    
+    res.status(400).json({
+      success: false,
+      error: errorMessage,
+      details: error.errors ? error.errors.map(e => e.message) : undefined
+    });
   }
+}
 async resendCredentials(req, res) {
   try {
     const { id } = req.params;
@@ -134,6 +126,7 @@ async resendCredentials(req, res) {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
     const emailService = require('../services/EmailService');
+    const bcrypt = require('bcryptjs');
     
     const exhibitor = await Exhibitor.findByPk(id);
     
@@ -144,41 +137,55 @@ async resendCredentials(req, res) {
       });
     }
     
-    // Get original password from metadata
-    let originalPassword = null;
+    // Generate a new random password
+    const newPassword = this.generateRandomPassword();
+    
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Get current metadata
+    let metadata = {};
     if (exhibitor.metadata) {
       try {
-        const metadata = JSON.parse(exhibitor.metadata);
-        originalPassword = metadata.originalPassword;
+        metadata = typeof exhibitor.metadata === 'string' 
+          ? JSON.parse(exhibitor.metadata) 
+          : exhibitor.metadata;
       } catch (error) {
         console.warn('Could not parse metadata:', error.message);
+        metadata = {};
       }
     }
     
-    // If no original password, use a default
-    if (!originalPassword) {
-      originalPassword = 'default123'; // Simple default
-      console.log('ℹ️ Using default password for:', exhibitor.email);
+    // Update metadata with new original password
+    metadata.originalPassword = newPassword;
+    metadata.lastPasswordReset = new Date().toISOString();
+    
+    // Update exhibitor with new password
+    await exhibitor.update({
+      password: hashedPassword,
+      metadata: JSON.stringify(metadata)
+    });
+    
+    console.log('🔐 New password generated for:', exhibitor.email);
+    console.log('🔑 Plain password:', newPassword);
+    
+    // Send email with new credentials
+    try {
+      await emailService.sendExhibitorWelcome(exhibitor, newPassword);
+      console.log('✅ Email sent successfully');
+    } catch (emailError) {
+      console.warn('⚠️ Email sending failed:', emailError.message);
     }
     
-    // Send email IMMEDIATELY (non-blocking)
-    emailService.sendExhibitorWelcome(exhibitor, originalPassword)
-      .then(result => {
-        console.log('✅ Email logged successfully:', result.messageId);
-      })
-      .catch(err => {
-        console.warn('⚠️ Email logging issue:', err.message);
-      });
-    
-    // Return response IMMEDIATELY
+    // Return response
     res.json({
       success: true,
-      message: 'Credentials have been logged to console',
+      message: 'Credentials have been sent to email',
       data: {
         email: exhibitor.email,
-        passwordShown: originalPassword ? 'Yes' : 'No',
+        passwordShown: 'Check email',
         timestamp: new Date().toISOString(),
-        note: 'Check server console for credentials'
+        note: 'New password has been set and emailed'
       }
     });
     
@@ -189,6 +196,27 @@ async resendCredentials(req, res) {
       error: 'Failed to process request: ' + error.message
     });
   }
+}
+
+// Add this helper method to generate random passwords
+generateRandomPassword() {
+  const length = 12;
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  let password = "";
+  
+  // Ensure at least one of each required character type
+  password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ".charAt(Math.floor(Math.random() * 26));
+  password += "abcdefghijklmnopqrstuvwxyz".charAt(Math.floor(Math.random() * 26));
+  password += "0123456789".charAt(Math.floor(Math.random() * 10));
+  password += "!@#$%^&*".charAt(Math.floor(Math.random() * 8));
+  
+  // Fill the rest randomly
+  for (let i = 4; i < length; i++) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
+  }
+  
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 async getAllExhibitors(req, res) {
