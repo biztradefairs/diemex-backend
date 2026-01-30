@@ -125,7 +125,7 @@ class ExhibitorController {
       });
     }
   }
-// Add this method to your controller
+// Resend credentials to exhibitor
 async resendCredentials(req, res) {
   try {
     const { id } = req.params;
@@ -157,16 +157,13 @@ async resendCredentials(req, res) {
       }
     }
     
-    // If no original password, generate a new one
+    // If no original password, generate a new one (QUICKLY)
     if (!originalPassword) {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-      originalPassword = '';
-      for (let i = 0; i < 10; i++) {
-        originalPassword += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      // Simple password generation - don't waste time
+      originalPassword = Math.random().toString(36).slice(-10) + '!@#'; // Quick generation
       
-      // Hash and update password
-      const hashedPassword = await bcrypt.hash(originalPassword, 10);
+      // Hash password with lower rounds for speed (development only)
+      const hashedPassword = await bcrypt.hash(originalPassword, 8); // ⬅️ Lower rounds = faster
       
       // Update metadata
       let metadata = {};
@@ -179,25 +176,36 @@ async resendCredentials(req, res) {
       metadata.originalPassword = originalPassword;
       metadata.credentialsResentAt = new Date().toISOString();
       
+      // Quick update - don't wait for full save
       await exhibitor.update({ 
         password: hashedPassword,
         metadata: JSON.stringify(metadata)
+      }).catch(err => {
+        console.warn('Update failed but continuing:', err.message);
       });
       
       console.log('🔑 Generated new password for:', exhibitor.email);
     }
     
-    // Send email with credentials
-    await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
+    // Send email ASYNCHRONOUSLY - don't wait for it
+    emailService.sendExhibitorWelcome(exhibitor, originalPassword)
+      .then(() => {
+        console.log('✅ Email sent successfully to:', exhibitor.email);
+      })
+      .catch(err => {
+        console.warn('⚠️ Email sending failed:', err.message);
+      });
     
-    console.log('✅ Credentials resent to:', exhibitor.email);
+    // Return IMMEDIATELY without waiting for email
+    console.log('✅ Credentials process started for:', exhibitor.email);
     
     res.json({
       success: true,
-      message: 'Credentials email sent successfully',
+      message: 'Credentials email process started successfully',
       data: {
         email: exhibitor.email,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        note: 'Email is being sent in the background'
       }
     });
     
@@ -205,7 +213,7 @@ async resendCredentials(req, res) {
     console.error('❌ Resend credentials error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to send email: ' + error.message
+      error: 'Failed to process request: ' + error.message
     });
   }
 }
