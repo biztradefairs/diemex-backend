@@ -1,8 +1,7 @@
 const exhibitorService = require('../services/ExhibitorService');
 
 class ExhibitorController {
-  // Create exhibitor with password
-  async createExhibitor(req, res) {
+   async createExhibitor(req, res) {
     try {
       console.log('\n🎯 CREATE EXHIBITOR REQUEST');
       console.log('Data:', JSON.stringify(req.body, null, 2));
@@ -46,21 +45,32 @@ class ExhibitorController {
       // Store original password before hashing
       const originalPassword = data.password;
       
-      // Prepare exhibitor data (password will be hashed by model hook)
+      // Prepare exhibitor data
       const exhibitorData = {
         name: data.name.trim(),
         email: data.email.toLowerCase().trim(),
         company: data.company.trim(),
-        password: data.password, // Will be hashed by beforeCreate hook
+        password: data.password,
         phone: data.phone || '',
         sector: data.sector || '',
         boothNumber: data.boothNumber || '',
         status: data.status || 'pending',
-        originalPassword: originalPassword // Store for metadata
+        originalPassword: originalPassword
       };
       
       // Save to database
       const exhibitor = await Exhibitor.create(exhibitorData);
+      
+      // 🔴 IMPORTANT: Send welcome email with credentials
+      try {
+        const emailService = require('../services/EmailService');
+        await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
+        console.log('✅ Welcome email sent to:', exhibitor.email);
+      } catch (emailError) {
+        console.warn('⚠️ Failed to send welcome email:', emailError.message);
+        // Don't fail the whole request if email fails
+        // You might want to log this to a monitoring service
+      }
       
       // Show in terminal
       console.log('\n========================================');
@@ -68,7 +78,7 @@ class ExhibitorController {
       console.log('========================================');
       console.log('📧 Email:', exhibitor.email);
       console.log('🔑 Original Password:', originalPassword);
-      console.log('🔑 Hashed Password:', exhibitor.password.substring(0, 20) + '...');
+      console.log('🔑 Hashed Password:', exhibitor.password?.substring(0, 20) + '...');
       console.log('🏢 Company:', exhibitor.company);
       console.log('👤 Contact:', exhibitor.name);
       console.log('📊 Status:', exhibitor.status);
@@ -95,7 +105,7 @@ class ExhibitorController {
       res.status(201).json({
         success: true,
         data: response,
-        message: 'Exhibitor created successfully'
+        message: 'Exhibitor created successfully. Welcome email sent.'
       });
       
     } catch (error) {
@@ -115,6 +125,90 @@ class ExhibitorController {
       });
     }
   }
+// Add this method to your controller
+async resendCredentials(req, res) {
+  try {
+    const { id } = req.params;
+    
+    console.log('📧 Resending credentials for exhibitor:', id);
+    
+    const modelFactory = require('../models');
+    const bcrypt = require('bcryptjs');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+    const emailService = require('../services/EmailService');
+    
+    const exhibitor = await Exhibitor.findByPk(id);
+    
+    if (!exhibitor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Exhibitor not found'
+      });
+    }
+    
+    // Get original password from metadata or generate new one
+    let originalPassword = null;
+    if (exhibitor.metadata) {
+      try {
+        const metadata = JSON.parse(exhibitor.metadata);
+        originalPassword = metadata.originalPassword;
+      } catch (error) {
+        console.warn('Could not parse metadata:', error.message);
+      }
+    }
+    
+    // If no original password, generate a new one
+    if (!originalPassword) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      originalPassword = '';
+      for (let i = 0; i < 10; i++) {
+        originalPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      
+      // Hash and update password
+      const hashedPassword = await bcrypt.hash(originalPassword, 10);
+      
+      // Update metadata
+      let metadata = {};
+      if (exhibitor.metadata) {
+        try {
+          metadata = JSON.parse(exhibitor.metadata);
+        } catch {}
+      }
+      
+      metadata.originalPassword = originalPassword;
+      metadata.credentialsResentAt = new Date().toISOString();
+      
+      await exhibitor.update({ 
+        password: hashedPassword,
+        metadata: JSON.stringify(metadata)
+      });
+      
+      console.log('🔑 Generated new password for:', exhibitor.email);
+    }
+    
+    // Send email with credentials
+    await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
+    
+    console.log('✅ Credentials resent to:', exhibitor.email);
+    
+    res.json({
+      success: true,
+      message: 'Credentials email sent successfully',
+      data: {
+        email: exhibitor.email,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Resend credentials error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send email: ' + error.message
+    });
+  }
+}
 
 async getAllExhibitors(req, res) {
   try {

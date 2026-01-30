@@ -139,11 +139,13 @@ class AppServer {
       
       // Test email service
       console.log('\n📧 Testing email service...');
-      const emailTestResult = await emailService.testConnection();
-      if (emailTestResult) {
-        console.log('✅ Email service connected');
-      } else {
-        console.warn('⚠️ Email service not available');
+      try {
+        const emailTestResult = await emailService.testConnection();
+        if (emailTestResult) {
+          console.log('✅ Email service connected');
+        }
+      } catch (emailError) {
+        console.warn('⚠️ Email service not available:', emailError.message);
       }
       
     } catch (error) {
@@ -163,37 +165,35 @@ class AppServer {
     
     // Security headers
     this.app.use(helmet({
-      contentSecurityPolicy: false, // Disable for API server
+      contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false
     }));
     
-   // In your Express app setup, update CORS configuration
-// Update CORS configuration in setupMiddleware():
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-  exposedHeaders: ['Authorization']
-};
+    const corsOptions = {
+      origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://127.0.0.1:3000',
+          process.env.FRONTEND_URL
+        ].filter(Boolean);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+      exposedHeaders: ['Authorization']
+    };
 
-this.app.use(cors(corsOptions));
+    this.app.use(cors(corsOptions));
     
     // Pre-flight requests
     this.app.options('*', cors(corsOptions));
@@ -317,7 +317,8 @@ this.app.use(cors(corsOptions));
           auth: '/api/auth',
           users: '/api/users',
           exhibitors: '/api/exhibitors',
-          articles: '/api/articles'
+          articles: '/api/articles',
+          exhibitorDashboard: '/api/exhibitorDashboard'
         },
         documentation: 'See /api/docs for API documentation'
       });
@@ -338,21 +339,26 @@ this.app.use(cors(corsOptions));
             profile: 'GET /api/auth/profile',
             refresh: 'POST /api/auth/refresh'
           },
+          exhibitorAuth: {
+            login: 'POST /api/auth/exhibitor/login',
+            profile: 'GET /api/auth/exhibitor/profile'
+          },
+          exhibitors: {
+            getAll: 'GET /api/exhibitors?page=1&limit=10&search=&sector=&status=',
+            getStats: 'GET /api/exhibitors/stats',
+            getById: 'GET /api/exhibitors/:id',
+            create: 'POST /api/exhibitors',
+            update: 'PUT /api/exhibitors/:id',
+            delete: 'DELETE /api/exhibitors/:id',
+            resendCredentials: 'POST /api/exhibitors/:id/resend-credentials',
+            bulkUpdate: 'POST /api/exhibitors/bulk/update-status'
+          },
           users: {
             getAll: 'GET /api/users',
             getById: 'GET /api/users/:id',
             create: 'POST /api/users',
             update: 'PUT /api/users/:id',
             delete: 'DELETE /api/users/:id'
-          },
-          exhibitors: {
-            getAll: 'GET /api/exhibitors?page=1&limit=10&search=&sector=&status=',
-            getStats: 'GET /api/exhibitors/stats',
-            create: 'POST /api/exhibitors',
-            update: 'PUT /api/exhibitors/:id',
-            delete: 'DELETE /api/exhibitors/:id',
-            bulkUpdate: 'POST /api/exhibitors/bulk/update-status',
-            export: 'GET /api/exhibitors/export/data?format=csv'
           }
         }
       };
@@ -362,16 +368,12 @@ this.app.use(cors(corsOptions));
         data: docs
       });
     });
-     this.app.post('/auth/exhibitor/login', (req, res, next) => {
-    req.url = '/api/auth/exhibitor/login';
-    this.app._router.handle(req, res, next);
-  });
-   this.app.use('/api/auth', authRoutes);
-  this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
-  
-  // Protected API routes
-  this.app.use('/api/users', userRoutes);
-  this.app.use('/api/exhibitors', exhibitorRoutes);
+    
+    // Fix for exhibitor login route
+    this.app.post('/auth/exhibitor/login', (req, res, next) => {
+      req.url = '/api/auth/exhibitor/login';
+      this.app._router.handle(req, res, next);
+    });
     
     console.log('✅ API routes loaded successfully');
   }
@@ -590,21 +592,18 @@ this.app.use(cors(corsOptions));
         console.log(`📊 Health Check: http://localhost:${this.port}/health`);
         console.log(`📚 API Docs: http://localhost:${this.port}/api/docs`);
         console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
+        
+        // Check email configuration
+        const hasEmailConfig = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+        console.log(`📧 Email Service: ${hasEmailConfig ? '✅ Configured' : '❌ Not configured'}`);
+        
         console.log('='.repeat(60));
         console.log('\n📋 Available Endpoints:');
-        console.log('├── GET  /health              - Health check');
-        console.log('├── GET  /api                 - API info');
-        console.log('├── GET  /api/docs            - API documentation');
-        console.log('├── GET  /api/db-test         - Database test');
-        console.log('├── POST /api/test-exhibitor  - Test exhibitor creation');
-        console.log('├── POST /api/auth/login      - User login');
-        console.log('├── POST /api/auth/register   - User registration');
-        console.log('├── GET  /api/users           - List users (admin)');
-        console.log('├── GET  /api/exhibitors      - List exhibitors');
-        console.log('└── GET  /api/articles        - List articles');
-        console.log('\n💡 Default Admin Credentials:');
-        console.log('├── Email: admin@example.com');
-        console.log('└── Password: admin123');
+        console.log('├── POST /api/exhibitors                 - Create exhibitor (sends email)');
+        console.log('├── POST /api/exhibitors/:id/resend-credentials - Resend credentials email');
+        console.log('├── GET  /api/exhibitors                - List exhibitors');
+        console.log('├── POST /api/auth/exhibitor/login      - Exhibitor login');
+        console.log('└── POST /api/auth/login                - Admin login');
         console.log('='.repeat(60));
         
         // Check/create default admin user
