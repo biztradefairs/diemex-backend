@@ -8,22 +8,17 @@ class EmailService {
 
   async getTransporter() {
     if (!this._transporter) {
-      const testAccount = await nodemailer.createTestAccount();
-
       this._transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        secure: false,
+        host: process.env.EMAIL_HOST,
+        port: process.env.EMAIL_PORT,
+        secure: false, // TLS
         auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
         },
       });
 
-      console.log("📧 Ethereal Email Account Created");
-      console.log("   User:", testAccount.user);
-      console.log("   Pass:", testAccount.pass);
-      console.log("   Inbox:", "https://ethereal.email");
+      console.log("📧 Gmail SMTP configured");
     }
 
     return this._transporter;
@@ -33,7 +28,7 @@ class EmailService {
     const transporter = await this.getTransporter();
 
     const info = await transporter.sendMail({
-      from: "noreply@exhibition.com",
+      from: process.env.EMAIL_FROM,
       to,
       subject,
       html,
@@ -41,7 +36,7 @@ class EmailService {
     });
 
     console.log(`✅ Email sent to ${to}`);
-    console.log("📧 Preview URL:", nodemailer.getTestMessageUrl(info));
+    console.log("📨 Message ID:", info.messageId);
 
     return info;
   }
@@ -54,7 +49,7 @@ class EmailService {
       <p><strong>Password:</strong> ${password}</p>
       <p>
         Login here:
-        <a href="${process.env.FRONTEND_URL || "http://localhost:3000"}/login">
+        <a href="${process.env.FRONTEND_URL}/login">
           Login
         </a>
       </p>
@@ -71,7 +66,7 @@ class EmailService {
   async testConnection() {
     const transporter = await this.getTransporter();
     await transporter.verify();
-    console.log("✅ Email service ready (Ethereal)");
+    console.log("✅ Email service ready (Gmail)");
     return true;
   }
 }
