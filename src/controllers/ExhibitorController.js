@@ -69,14 +69,15 @@ class ExhibitorController {
     // Save to database
     const exhibitor = await Exhibitor.create(exhibitorData);
     
-    // Send welcome email with credentials
-    try {
-      const emailService = require('../services/EmailService');
-      await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
-      console.log('✅ Welcome email sent to:', exhibitor.email);
-    } catch (emailError) {
-      console.warn('⚠️ Failed to send welcome email:', emailError.message);
-    }
+    // Send welcome email with credentials (ASYNC - don't block response)
+    const emailService = require('../services/EmailService');
+    emailService.sendExhibitorWelcome(exhibitor, originalPassword)
+      .then(() => {
+        console.log('✅ Welcome email sent to:', exhibitor.email);
+      })
+      .catch((emailError) => {
+        console.warn('⚠️ Failed to send welcome email:', emailError.message);
+      });
     
     // Show in terminal
     console.log('\n========================================');
@@ -87,7 +88,7 @@ class ExhibitorController {
     console.log('🏢 Company:', exhibitor.company);
     console.log('========================================\n');
     
-    // Return response
+    // Return response immediately (don't wait for email)
     const response = exhibitor.toJSON();
     response.originalPassword = originalPassword; // Include original password in response
     delete response.password;
@@ -126,7 +127,6 @@ async resendCredentials(req, res) {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
     const emailService = require('../services/EmailService');
-    const bcrypt = require('bcryptjs');
     
     const exhibitor = await Exhibitor.findByPk(id);
     
@@ -137,42 +137,33 @@ async resendCredentials(req, res) {
       });
     }
     
-    // Generate a new random password
-    const newPassword = this.generateRandomPassword();
-    
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Get current metadata
-    let metadata = {};
+    // Get original password from metadata (do NOT generate a new one)
+    let originalPassword = null;
     if (exhibitor.metadata) {
       try {
-        metadata = typeof exhibitor.metadata === 'string' 
+        const metadata = typeof exhibitor.metadata === 'string' 
           ? JSON.parse(exhibitor.metadata) 
           : exhibitor.metadata;
+        originalPassword = metadata.originalPassword;
       } catch (error) {
         console.warn('Could not parse metadata:', error.message);
-        metadata = {};
       }
     }
     
-    // Update metadata with new original password
-    metadata.originalPassword = newPassword;
-    metadata.lastPasswordReset = new Date().toISOString();
+    if (!originalPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'No original password found for this exhibitor'
+      });
+    }
     
-    // Update exhibitor with new password
-    await exhibitor.update({
-      password: hashedPassword,
-      metadata: JSON.stringify(metadata)
-    });
+    console.log('🔑 Sending original password to:', exhibitor.email);
+    console.log('📧 Password (not changing):', originalPassword);
     
-    console.log('🔐 New password generated for:', exhibitor.email);
-    console.log('🔑 Plain password:', newPassword);
-    
-    // Send email with new credentials
+    // Send email with ORIGINAL credentials (no password change)
     try {
-      await emailService.sendExhibitorWelcome(exhibitor, newPassword);
-      console.log('✅ Email sent successfully');
+      await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
+      console.log('✅ Credentials email sent successfully (password NOT changed)');
     } catch (emailError) {
       console.warn('⚠️ Email sending failed:', emailError.message);
     }
@@ -185,7 +176,7 @@ async resendCredentials(req, res) {
         email: exhibitor.email,
         passwordShown: 'Check email',
         timestamp: new Date().toISOString(),
-        note: 'New password has been set and emailed'
+        note: 'Original credentials sent (password not changed)'
       }
     });
     
