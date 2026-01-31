@@ -160,15 +160,16 @@ async resendCredentials(req, res) {
     console.log('🔑 Sending original password to:', exhibitor.email);
     console.log('📧 Password (not changing):', originalPassword);
     
-    // Send email with ORIGINAL credentials (no password change)
-    try {
-      await emailService.sendExhibitorWelcome(exhibitor, originalPassword);
-      console.log('✅ Credentials email sent successfully (password NOT changed)');
-    } catch (emailError) {
-      console.warn('⚠️ Email sending failed:', emailError.message);
-    }
+    // Send email with ORIGINAL credentials (ASYNC - don't block response)
+    emailService.sendExhibitorWelcome(exhibitor, originalPassword)
+      .then(() => {
+        console.log('✅ Credentials email sent successfully (password NOT changed)');
+      })
+      .catch((emailError) => {
+        console.warn('⚠️ Email sending failed:', emailError.message);
+      });
     
-    // Return response
+    // Return response immediately (don't wait for email)
     res.json({
       success: true,
       message: 'Credentials have been sent to email',
