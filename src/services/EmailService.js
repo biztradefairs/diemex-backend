@@ -3,30 +3,9 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
-    // Initialize transporter with Gmail
-    try {
-      // For Gmail (easiest to set up)
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: 'mondalrohan201@gmail.com', // Your Gmail
-          pass: 'edtq coey qbkz bnqu'     // App password from Google
-        }
-      });
-      
-      // Verify connection immediately
-      this.transporter.verify((error, success) => {
-        if (error) {
-          console.error('❌ Gmail SMTP connection error:', error.message);
-          this.transporter = null;
-        } else {
-          console.log('✅ Email Service initialized (Gmail SMTP ready)');
-        }
-      });
-    } catch (error) {
-      console.error('❌ Email Service initialization error:', error.message);
-      this.transporter = null;
-    }
+    // Console-only mode (no SMTP)
+    this.transporter = null;
+    console.log('📧 Email Service initialized (Console Mode - Credentials displayed below)');
   }
 
   async sendEmail(to, subject, html) {
@@ -44,50 +23,26 @@ class EmailService {
         console.log(`🔑 PASSWORD: ${passwordMatch[1].trim()}`);
       }
       
-      // Try to send actual email if transporter exists
-      if (this.transporter) {
-        const mailOptions = {
-          from: 'Exhibition Portal <mondalrohan201@gmail.com>',
-          to: to,
-          subject: subject,
-          html: html,
-          text: text
-        };
-        
-        try {
-          const info = await this.transporter.sendMail(mailOptions);
-          console.log(`✅ Email SENT successfully to ${to}`);
-          console.log(`📫 Message ID: ${info.messageId}`);
-          console.log('='.repeat(70) + '\n');
-          return info;
-        } catch (sendError) {
-          console.error(`❌ Email send failed: ${sendError.message}`);
-          console.log('='.repeat(70) + '\n');
-          throw sendError;
-        }
-      } else {
-        console.log(`❌ EMAIL NOT SENT (Gmail SMTP not configured)`);
-        console.log(`ℹ️ Would send to: ${to}`);
-        console.log(`🔑 Password: ${passwordMatch ? passwordMatch[1].trim() : 'Not found'}`);
-        console.log('='.repeat(70) + '\n');
-        
-        return {
-          messageId: 'console-' + Date.now(),
-          accepted: [to],
-          response: 'Email logged to console (SMTP not configured)'
-        };
-      }
+      // Console-only mode (no SMTP)
+      console.log(`✅ EMAIL DISPLAYED IN CONSOLE (Not sent via SMTP)`);
+      console.log(`📨 To: ${to}`);
+      console.log(`🔑 Password: ${passwordMatch ? passwordMatch[1].trim() : 'Not found'}`);
+      console.log('='.repeat(70) + '\n');
+      
+      return {
+        messageId: 'console-' + Date.now(),
+        accepted: [to],
+        response: 'Email displayed in console (no SMTP)'
+      };
       
     } catch (error) {
-      console.error('❌ Email error:', error.message);
-      console.log('📋 Fallback - Showing credentials:');
-      console.log(`To: ${to}`);
-      console.log(`Password would be: [Check console above]`);
+      console.error('❌ Error preparing email:', error.message);
+      console.log('='.repeat(70) + '\n');
       
       return {
         messageId: 'error-' + Date.now(),
         accepted: [to],
-        response: 'Email failed: ' + error.message
+        response: 'Error: ' + error.message
       };
     }
   }
