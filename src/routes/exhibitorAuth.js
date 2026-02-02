@@ -10,17 +10,21 @@ router.get('/test', (req, res) => {
     message: 'Exhibitor auth routes working',
     endpoints: {
       login: 'POST /api/auth/exhibitor/login',
-      profile: 'GET /api/auth/exhibitor/profile (protected)',
-      test: 'GET /api/auth/exhibitor/test'
+      resetPassword: 'POST /api/auth/exhibitor/reset-password',
+      fixPassword: 'POST /api/auth/exhibitor/fix-password-direct',
+      profile: 'GET /api/auth/exhibitor/profile (protected)'
     }
   });
 });
 
-// Test login endpoint
+// Test endpoints
 router.post('/test-login', exhibitorAuthController.testLogin);
+router.post('/test-body', exhibitorAuthController.testBodyParsing);
 
-// Login route
+// Auth endpoints
 router.post('/login', exhibitorAuthController.login);
+router.post('/reset-password', exhibitorAuthController.resetPassword);
+router.post('/fix-password-direct', exhibitorAuthController.fixPasswordDirect);
 
 // Profile route (protected)
 router.get('/profile', authenticateExhibitor, exhibitorAuthController.getProfile);

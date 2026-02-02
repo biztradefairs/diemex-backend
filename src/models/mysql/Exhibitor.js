@@ -54,7 +54,7 @@ module.exports = (sequelize) => {
     boothNumber: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'boothNumber' // Explicit field name
+      field: 'boothNumber'
     },
     stallDetails: {
       type: DataTypes.JSON,
@@ -91,50 +91,72 @@ module.exports = (sequelize) => {
   }, {
     tableName: 'exhibitors',
     timestamps: true,
-    underscored: false, // Use camelCase for field names
+    underscored: false,
     hooks: {
       beforeCreate: async (exhibitor) => {
-        if (exhibitor.password) {
+        console.log('🔄 beforeCreate hook called for:', exhibitor.email);
+        
+        // Only hash if password is provided and not already hashed
+        if (exhibitor.password && !exhibitor.password.startsWith('$2')) {
+          console.log('🔑 Hashing password for new exhibitor');
           const bcrypt = require('bcryptjs');
           const hashedPassword = await bcrypt.hash(exhibitor.password, 10);
           exhibitor.password = hashedPassword;
-          
-          // Store original password in metadata
-          if (exhibitor.originalPassword) {
-            const metadata = {
-              originalPassword: exhibitor.originalPassword,
-              createdBy: 'admin',
-              createdAt: new Date().toISOString()
-            };
-            exhibitor.metadata = metadata;
-          }
+          console.log('✅ Password hashed');
+        } else if (exhibitor.password?.startsWith('$2')) {
+          console.log('⚠️ Password already hashed, skipping re-hash');
+        }
+        
+        // Store original password in metadata if provided via _originalPassword
+        if (exhibitor._originalPassword) {
+          console.log('📝 Storing original password in metadata');
+          const metadata = exhibitor.metadata || {};
+          metadata.originalPassword = exhibitor._originalPassword;
+          metadata.createdBy = 'admin';
+          metadata.createdAt = new Date().toISOString();
+          exhibitor.metadata = metadata;
+          console.log('✅ Metadata updated with original password');
         }
       },
+      
       beforeUpdate: async (exhibitor) => {
-        // Only hash password if it's changed
-        if (exhibitor.changed('password') && exhibitor.password) {
-          const bcrypt = require('bcryptjs');
-          const hashedPassword = await bcrypt.hash(exhibitor.password, 10);
-          exhibitor.password = hashedPassword;
+        console.log('🔄 beforeUpdate hook called for:', exhibitor.email);
+        
+        // Check if password field is being updated
+        if (exhibitor.changed('password')) {
+          console.log('📝 Password field changed');
           
-          // Update metadata with new password
-          let metadata = exhibitor.metadata || {};
-          if (typeof metadata === 'string') {
-            try {
-              metadata = JSON.parse(metadata);
-            } catch {
-              metadata = {};
-            }
+          // Only hash if it's not already a bcrypt hash
+          if (exhibitor.password && !exhibitor.password.startsWith('$2')) {
+            console.log('🔑 Hashing updated password');
+            const bcrypt = require('bcryptjs');
+            const hashedPassword = await bcrypt.hash(exhibitor.password, 10);
+            exhibitor.password = hashedPassword;
+            console.log('✅ Updated password hashed');
+          } else if (exhibitor.password?.startsWith('$2')) {
+            console.log('⚠️ Updated password already hashed, using as-is');
           }
           
-          if (exhibitor.originalPassword) {
-            metadata.originalPassword = exhibitor.originalPassword;
-            metadata.updatedAt = new Date().toISOString();
+          // Update metadata with new original password if provided
+          if (exhibitor._originalPassword) {
+            console.log('📝 Updating metadata with new original password');
+            let metadata = exhibitor.metadata || {};
+            if (typeof metadata === 'string') {
+              try {
+                metadata = JSON.parse(metadata);
+              } catch {
+                metadata = {};
+              }
+            }
+            
+            metadata.originalPassword = exhibitor._originalPassword;
+            metadata.passwordUpdatedAt = new Date().toISOString();
             exhibitor.metadata = metadata;
+            console.log('✅ Metadata updated');
           }
         }
         
-        // Always update the updatedAt timestamp
+        // Always update timestamp
         exhibitor.updatedAt = new Date();
       }
     }

@@ -1,15 +1,14 @@
 const exhibitorService = require('../services/ExhibitorService');
 
 class ExhibitorController {
-  async createExhibitor(req, res) {
+async createExhibitor(req, res) {
   try {
     console.log('\n🎯 CREATE EXHIBITOR REQUEST');
-    console.log('Data:', JSON.stringify(req.body, null, 2));
     
     const data = req.body;
     const bcrypt = require('bcryptjs');
     
-    // Check required fields
+    // Required fields
     const requiredFields = ['name', 'email', 'password', 'company'];
     const missingFields = requiredFields.filter(field => !data[field]);
     
@@ -29,9 +28,10 @@ class ExhibitorController {
       });
     }
     
-    // Check if email already exists
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
+    
+    // Check if email exists
     const existingExhibitor = await Exhibitor.findOne({
       where: { email: data.email.toLowerCase().trim() }
     });
@@ -46,75 +46,45 @@ class ExhibitorController {
     // Store original password
     const originalPassword = data.password;
     
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(originalPassword, 10);
-    
-    // Prepare exhibitor data
-    const exhibitorData = {
+    // Create exhibitor - use _originalPassword to pass to hook
+    const exhibitor = await Exhibitor.create({
       name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      company: data.company.trim(),
-      password: hashedPassword, // Store hashed password
-      phone: data.phone || '',
-      sector: data.sector || '',
-      boothNumber: data.boothNumber || '',
-      status: data.status || 'pending',
-      metadata: JSON.stringify({
-        originalPassword: originalPassword,
-        createdBy: 'admin',
-        createdAt: new Date().toISOString()
-      })
-    };
+  email: data.email.toLowerCase().trim(),
+  company: data.company.trim(),
+  password: data.password, // Plain password
+  _originalPassword: data.password, // This goes to metadata via hook
+  phone: data.phone || '',
+  sector: data.sector || '',
+  boothNumber: data.boothNumber || '',
+  status: data.status || 'pending',
+  metadata: {}
+    });
     
-    // Save to database
-    const exhibitor = await Exhibitor.create(exhibitorData);
+    console.log('✅ Exhibitor created:', exhibitor.email);
+    console.log('🔑 Original password:', originalPassword);
     
-    // Send welcome email with credentials (ASYNC - don't block response)
+    // Send welcome email
     const emailService = require('../services/EmailService');
     emailService.sendExhibitorWelcome(exhibitor, originalPassword)
-      .then(() => {
-        console.log('✅ Welcome email sent to:', exhibitor.email);
-      })
-      .catch((emailError) => {
-        console.warn('⚠️ Failed to send welcome email:', emailError.message);
-      });
+      .then(() => console.log('✅ Welcome email sent'))
+      .catch(err => console.warn('⚠️ Email failed:', err.message));
     
-    // Show in terminal
-    console.log('\n========================================');
-    console.log('✅ EXHIBITOR CREATED SUCCESSFULLY');
-    console.log('========================================');
-    console.log('📧 Email:', exhibitor.email);
-    console.log('🔑 Original Password:', originalPassword);
-    console.log('🏢 Company:', exhibitor.company);
-    console.log('========================================\n');
-    
-    // Return response immediately (don't wait for email)
+    // Return response
     const response = exhibitor.toJSON();
-    response.originalPassword = originalPassword; // Include original password in response
+    response.originalPassword = originalPassword;
     delete response.password;
-    delete response.resetPasswordToken;
-    delete response.resetPasswordExpires;
     
     res.status(201).json({
       success: true,
       data: response,
-      message: 'Exhibitor created successfully. Welcome email sent.'
+      message: 'Exhibitor created successfully'
     });
     
   } catch (error) {
-    console.error('❌ Create exhibitor error:', error);
-    
-    let errorMessage = 'Failed to create exhibitor';
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      errorMessage = 'Email already exists';
-    } else if (error.name === 'SequelizeValidationError') {
-      errorMessage = error.errors.map(e => e.message).join(', ');
-    }
-    
+    console.error('❌ Create error:', error);
     res.status(400).json({
       success: false,
-      error: errorMessage,
-      details: error.errors ? error.errors.map(e => e.message) : undefined
+      error: error.message
     });
   }
 }
