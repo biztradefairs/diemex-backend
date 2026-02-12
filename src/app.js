@@ -14,7 +14,7 @@ const userRoutes = require('./routes/users');
 const exhibitorRoutes = require('./routes/exhibitors');
 const articleRoutes = require('./routes/articles');
 const exhibitorAuthRoutes = require('./routes/exhibitorAuth');
-const floorPlanRoutes = require('./routes/floorPlans');
+const boothRoutes = require('./routes/booths');
 const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
 // Import services for initialization
 const emailService = require('./services/EmailService');
@@ -299,7 +299,7 @@ class AppServer {
     this.app.use('/api/users', userRoutes);
     this.app.use('/api/exhibitors', exhibitorRoutes);
     this.app.use('/api/articles', articleRoutes);
-    this.app.use('/api/floor-plans', floorPlanRoutes);
+    this.app.use('/api/booths', boothRoutes);
     this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
     
     // ======================
