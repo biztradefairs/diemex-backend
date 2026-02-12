@@ -156,9 +156,16 @@ router.get('/layout', async (req, res) => {
     // =========================
     // Get Active Floor Plan
     // =========================
-    const floorPlan = await FloorPlan.findOne({
-      where: { isActive: true }
-    });
+   let floorPlan;
+
+if (process.env.DB_TYPE === 'mysql') {
+  floorPlan = await FloorPlan.findOne({
+    where: { isActive: true }
+  });
+} else {
+  floorPlan = await FloorPlan.findOne({ isActive: true });
+}
+
 
     let boothDetails = null;
 
