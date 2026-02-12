@@ -126,55 +126,59 @@ router.put('/profile', async (req, res) => {
 
 // ==================== DASHBOARD ROUTES ====================
 
+// ==================== DASHBOARD ROUTES ====================
+
 // Get exhibitor's complete dashboard data
 router.get('/layout', async (req, res) => {
   try {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
-    
+    const FloorPlan = modelFactory.getModel('FloorPlan');
+
+    // =========================
+    // Get Logged-in Exhibitor
+    // =========================
     let exhibitor;
+
     if (process.env.DB_TYPE === 'mysql') {
       exhibitor = await Exhibitor.findByPk(req.user.id);
     } else {
       exhibitor = await Exhibitor.findById(req.user.id);
     }
-    
+
     if (!exhibitor) {
       return res.status(404).json({
         success: false,
         error: 'Exhibitor not found'
       });
     }
-    
-    // Get floor plan service
-    const floorPlanService = require('../services/FloorPlanService');
-    
-    // Get all floor plans to find exhibitor's booth
-    const floorPlans = await floorPlanService.getAllFloorPlans({}, 1, 100);
-    
-    // Find the booth in floor plans
+
+    // =========================
+    // Get Active Floor Plan
+    // =========================
+    const floorPlan = await FloorPlan.findOne({
+      where: { isActive: true }
+    });
+
     let boothDetails = null;
-    let floorPlan = null;
-    
-    if (exhibitor.boothNumber) {
-      for (const fp of floorPlans.floorPlans) {
-        if (fp.shapes && Array.isArray(fp.shapes)) {
-          const booth = fp.shapes.find(shape => 
-            shape.metadata && shape.metadata.boothNumber === exhibitor.boothNumber
-          );
-          if (booth) {
-            boothDetails = booth;
-            floorPlan = fp;
-            break;
-          }
-        }
-      }
+
+    if (floorPlan && exhibitor.boothNumber) {
+      const booths = floorPlan.booths || [];
+
+      boothDetails = booths.find(
+        booth => booth.boothNumber === exhibitor.boothNumber
+      );
     }
-    
-    // Get invoice service
+
+    // =========================
+    // Get Invoices
+    // =========================
     const invoiceService = require('../services/InvoiceService');
     const invoices = await invoiceService.getInvoicesByExhibitor(exhibitor.id);
-    
+
+    // =========================
+    // Response
+    // =========================
     res.json({
       success: true,
       data: {
@@ -192,24 +196,28 @@ router.get('/layout', async (req, res) => {
           description: exhibitor.description || '',
           status: exhibitor.status || 'active'
         },
-        floorPlan: floorPlan ? {
-          id: floorPlan.id,
-          name: floorPlan.name,
-          floor: floorPlan.floor,
-          scale: floorPlan.scale,
-          gridSize: floorPlan.gridSize
-        } : null,
-        booth: boothDetails,
-        invoices: invoices
+        floorPlan: floorPlan
+          ? {
+              id: floorPlan.id,
+              name: floorPlan.name,
+              gridSize: floorPlan.gridSize
+            }
+          : null,
+        booth: boothDetails || null,
+        invoices: invoices || []
       }
     });
+
   } catch (error) {
+    console.error('❌ Layout error:', error);
+
     res.status(500).json({
       success: false,
       error: error.message
     });
   }
 });
+
 
 // ==================== INVOICE ROUTES ====================
 
