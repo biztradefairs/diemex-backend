@@ -167,7 +167,7 @@ async saveFloorPlan(req, res) {
     const FloorPlan = modelFactory.getModel('FloorPlan');
 
     const floorPlan = await FloorPlan.findOne({
-      where: { isActive: true }
+      where: { isActive: true, isMaster: true }
     });
 
     if (!floorPlan) {
