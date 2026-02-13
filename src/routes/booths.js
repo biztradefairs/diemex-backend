@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const boothController = require('../controllers/FloorPlanController');
 const multer = require('multer');
-const { authenticate, authorize, authenticateExhibitor } = require('../middleware/auth');
+const { authenticate, authorize, authenticateExhibitor, authenticateAny } = require('../middleware/auth');
 
 // Multer config
 const upload = multer({
@@ -14,11 +14,8 @@ const upload = multer({
    GLOBAL FLOOR PLAN (ALL ROLES)
 ========================================= */
 
-router.get(
-  '/floor-plan',
-  authenticateExhibitor,
-  boothController.getFloorPlan
-);
+router.get('/floor-plan', authenticateAny, boothController.getFloorPlan);
+
 
 /* =========================================
    ADMIN / EDITOR / VIEWER ROUTES

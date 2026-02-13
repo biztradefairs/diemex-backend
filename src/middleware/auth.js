@@ -113,11 +113,42 @@ const authenticateExhibitor = async (req, res, next) => {
         ? 'Token expired'
         : 'Invalid token'
     });
-  }
+  };
+
 };
+  const authenticateAny = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Token missing' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const modelFactory = require('../models');
+
+    if (decoded.role === 'exhibitor') {
+      const Exhibitor = modelFactory.getModel('Exhibitor');
+      const exhibitor = await Exhibitor.findByPk(decoded.id);
+      if (!exhibitor) throw new Error();
+      req.user = { ...exhibitor.dataValues, role: 'exhibitor' };
+    } else {
+      const User = modelFactory.getModel('User');
+      const user = await User.findByPk(decoded.id);
+      if (!user) throw new Error();
+      req.user = { ...user.dataValues };
+    }
+
+    next();
+  } catch {
+    return res.status(401).json({ success: false, error: 'Invalid token' });
+  }
+}
 
 module.exports = {
   authenticate,
   authorize,
-  authenticateExhibitor
+  authenticateExhibitor,
+  authenticateAny
 };
