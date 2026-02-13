@@ -157,13 +157,14 @@ class BoothController {
       });
     }
   }
-  
+
 async saveFloorPlan(req, res) {
   try {
     const { baseImageUrl } = req.body;
     const userId = req.user?.id;
 
-    const FloorPlan = require('../models')().FloorPlan;
+    const modelFactory = require('../models');
+    const FloorPlan = modelFactory.getModel('FloorPlan');
 
     const floorPlan = await FloorPlan.findOne({
       where: { isActive: true }
@@ -176,7 +177,11 @@ async saveFloorPlan(req, res) {
       });
     }
 
-    floorPlan.baseImageUrl = baseImageUrl;
+    // Only update image
+    if (baseImageUrl) {
+      floorPlan.baseImageUrl = baseImageUrl;
+    }
+
     floorPlan.updatedBy = userId;
     await floorPlan.save();
 
@@ -187,7 +192,7 @@ async saveFloorPlan(req, res) {
 
   } catch (error) {
     console.error('❌ Save floor plan error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message
     });
