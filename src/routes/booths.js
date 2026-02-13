@@ -18,7 +18,7 @@ router.use(authenticate);
 router.get('/', authorize(['admin', 'editor', 'viewer']), boothController.getAllBooths);
 
 // Get floor plan with image
-router.get('/floor-plan', authorize(['admin', 'editor', 'viewer']), boothController.getFloorPlan);
+router.get('/floor-plan', authorize(['admin', 'editor', 'viewer', 'exhibitor']), boothController.getFloorPlan);
 
 // Get booth statistics
 router.get('/statistics', authorize(['admin', 'editor', 'viewer']), boothController.getBoothStatistics);
