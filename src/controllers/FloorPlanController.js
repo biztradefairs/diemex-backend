@@ -1,13 +1,64 @@
+// controllers/FloorPlanController.js
 const boothService = require('../services/FloorPlanService');
 
 class BoothController {
   // Get all booths
   async getAllBooths(req, res) {
     try {
-      const result = await boothService.getAllBooths(req.user?.id, req.user?.role);
+      const result = await boothService.getFloorPlan();
+      res.json({
+        success: true,
+        data: result.data.booths || [],
+        floorPlanId: result.data.id
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Get floor plan with image
+  async getFloorPlan(req, res) {
+    try {
+      const result = await boothService.getFloorPlan();
       res.json(result);
     } catch (error) {
       res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Upload floor plan image
+  async uploadFloorPlanImage(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: 'No image file provided'
+        });
+      }
+
+      const result = await boothService.uploadFloorPlanImage(req.file.buffer, req.user?.id);
+      res.status(201).json(result);
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Export floor plan
+  async exportFloorPlan(req, res) {
+    try {
+      const result = await boothService.exportFloorPlan();
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({
         success: false,
         error: error.message
       });
@@ -27,11 +78,11 @@ class BoothController {
     }
   }
 
-  // Update booth
-  async updateBooth(req, res) {
+  // Update booth position
+  async updateBoothPosition(req, res) {
     try {
       const { boothId } = req.params;
-      const result = await boothService.updateBooth(boothId, req.body, req.user?.id);
+      const result = await boothService.updateBoothPosition(boothId, req.body, req.user?.id);
       res.json(result);
     } catch (error) {
       res.status(400).json({
@@ -40,23 +91,7 @@ class BoothController {
       });
     }
   }
-  async saveBooths(req, res) {
-  try {
-    const { booths } = req.body;
-    const modelFactory = require('../models');
-    const FloorPlan = modelFactory.getModel('FloorPlan');
 
-    const floorPlan = await FloorPlan.findOne({ where: { isActive: true } });
-
-    floorPlan.booths = booths;
-    await floorPlan.save();
-
-    res.json({ success: true });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-}
   // Update booth status
   async updateBoothStatus(req, res) {
     try {
@@ -110,20 +145,6 @@ class BoothController {
     }
   }
 
-  // Bulk update booths
-  async bulkUpdateBooths(req, res) {
-    try {
-      const { updates } = req.body;
-      const result = await boothService.bulkUpdateBooths(updates, req.user?.id);
-      res.json(result);
-    } catch (error) {
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
   // Get booth statistics
   async getBoothStatistics(req, res) {
     try {
@@ -137,10 +158,10 @@ class BoothController {
     }
   }
 
-  // Reset floor plan to default
-  async resetToDefault(req, res) {
+  // Reset floor plan
+  async resetFloorPlan(req, res) {
     try {
-      const result = await boothService.resetToDefault(req.user?.id);
+      const result = await boothService.resetFloorPlan(req.user?.id);
       res.json(result);
     } catch (error) {
       res.status(500).json({
