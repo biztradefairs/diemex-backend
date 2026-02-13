@@ -77,7 +77,13 @@ module.exports = (sequelize) => {
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
-    }
+    },
+    isMaster: {
+  type: DataTypes.BOOLEAN,
+  allowNull: false,
+  defaultValue: false,
+  field: 'is_master'
+},
   }, {
     tableName: 'floor_plans',
     timestamps: true,
