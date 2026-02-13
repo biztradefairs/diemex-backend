@@ -1,4 +1,6 @@
+// services/BoothService.js
 const { Op } = require('sequelize');
+const cloudinaryService = require('./CloudinaryService');
 
 class BoothService {
   constructor() {
@@ -13,69 +15,71 @@ class BoothService {
     return this._floorPlanModel;
   }
 
-  // Get all booths from the active floor plan
-  async getAllBooths(userId, role) {
+  // Upload floor plan image to Cloudinary
+  async uploadFloorPlanImage(imageFile, userId) {
     try {
-      const model = this.FloorPlan;
-      if (!model) throw new Error('FloorPlan model not available');
+      console.log('📤 Uploading floor plan image to Cloudinary...');
+      
+      // Upload to Cloudinary
+      const uploadResult = await cloudinaryService.uploadImage(imageFile, {
+        folder: 'exhibition-floor-plans',
+        resource_type: 'image'
+      });
 
-      // Get the active floor plan (first one or create default)
-      let floorPlan = await model.findOne({
-        where: { isActive: true },
-        order: [['createdAt', 'DESC']]
+      // Create or update floor plan with image
+      let floorPlan = await this.FloorPlan.findOne({
+        where: { isActive: true }
       });
 
       if (!floorPlan) {
-        // Create default floor plan with sample booths
-        floorPlan = await model.create({
+        floorPlan = await this.FloorPlan.create({
           name: 'Main Exhibition Floor',
-          booths: this.getDefaultBooths(),
+          baseImageUrl: uploadResult.url,
+          cloudinaryPublicId: uploadResult.publicId,
+          imageWidth: uploadResult.width,
+          imageHeight: uploadResult.height,
+          booths: [],
+          referencePoints: [],
           isActive: true,
-          createdBy: userId || 1
+          createdBy: userId
         });
+      } else {
+        // Delete old image from Cloudinary if exists
+        if (floorPlan.cloudinaryPublicId) {
+          try {
+            await cloudinaryService.deleteImage(floorPlan.cloudinaryPublicId);
+          } catch (error) {
+            console.warn('Failed to delete old image:', error.message);
+          }
+        }
+
+        // Update with new image
+        floorPlan.baseImageUrl = uploadResult.url;
+        floorPlan.cloudinaryPublicId = uploadResult.publicId;
+        floorPlan.imageWidth = uploadResult.width;
+        floorPlan.imageHeight = uploadResult.height;
+        floorPlan.updatedBy = userId;
+        await floorPlan.save();
       }
 
       return {
         success: true,
-        data: floorPlan.booths || [],
-        floorPlanId: floorPlan.id
+        data: {
+          id: floorPlan.id,
+          baseImageUrl: floorPlan.baseImageUrl,
+          imageWidth: floorPlan.imageWidth,
+          imageHeight: floorPlan.imageHeight,
+          booths: floorPlan.booths || []
+        },
+        message: 'Floor plan image uploaded successfully'
       };
     } catch (error) {
-      console.error('❌ Get all booths error:', error);
+      console.error('❌ Upload floor plan error:', error);
       throw error;
     }
   }
 
-  // Get default booths for new floor plan
-  getDefaultBooths() {
-    const booths = [];
-    const rows = 4;
-    const cols = 6;
-    const startX = 50;
-    const startY = 50;
-    const boothWidth = 120;
-    const boothHeight = 80;
-    const spacing = 20;
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const boothNumber = `${String.fromCharCode(65 + row)}${col + 1}`;
-        booths.push({
-          id: `booth-${Date.now()}-${row}-${col}`,
-          boothNumber,
-          companyName: '',
-          status: 'available',
-          x: startX + col * (boothWidth + spacing),
-          y: startY + row * (boothHeight + spacing),
-          width: boothWidth,
-          height: boothHeight
-        });
-      }
-    }
-    return booths;
-  }
-
-  // Add new booth
+  // Add booth with percentage-based positioning
   async addBooth(boothData, userId) {
     try {
       const model = this.FloorPlan;
@@ -89,8 +93,22 @@ class BoothService {
         throw new Error('No active floor plan found');
       }
 
+      if (!floorPlan.imageWidth || !floorPlan.imageHeight) {
+        throw new Error('Floor plan image dimensions not set');
+      }
+
       const booths = floorPlan.booths || [];
       
+      // Convert pixel coordinates to percentages if provided
+      let xPercent = boothData.xPercent;
+      let yPercent = boothData.yPercent;
+      
+      if (boothData.x !== undefined && boothData.y !== undefined) {
+        // Convert absolute pixels to percentages
+        xPercent = (boothData.x / floorPlan.imageWidth) * 100;
+        yPercent = (boothData.y / floorPlan.imageHeight) * 100;
+      }
+
       // Generate booth number if not provided
       if (!boothData.boothNumber) {
         const maxNumber = booths
@@ -103,9 +121,25 @@ class BoothService {
 
       const newBooth = {
         id: `booth-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        ...boothData,
+        boothNumber: boothData.boothNumber,
+        companyName: boothData.companyName || '',
         status: boothData.status || 'available',
-        companyName: boothData.companyName || ''
+        // Store as percentages relative to image size
+        xPercent: parseFloat(xPercent.toFixed(4)),
+        yPercent: parseFloat(yPercent.toFixed(4)),
+        widthPercent: boothData.widthPercent || 10, // Default 10% of image width
+        heightPercent: boothData.heightPercent || 8, // Default 8% of image height
+        // Store absolute dimensions for reference
+        width: boothData.width || 120,
+        height: boothData.height || 80,
+        // Store text position
+        labelXPercent: parseFloat((xPercent + 2).toFixed(4)),
+        labelYPercent: parseFloat((yPercent - 2).toFixed(4)),
+        // Store status dot position
+        dotXPercent: parseFloat((xPercent + 8).toFixed(4)),
+        dotYPercent: parseFloat((yPercent - 2).toFixed(4)),
+        // Additional metadata
+        metadata: boothData.metadata || {}
       };
 
       booths.push(newBooth);
@@ -124,7 +158,280 @@ class BoothService {
     }
   }
 
-  // Update booth
+  // Update booth position (percentage-based)
+  async updateBoothPosition(boothId, positionData, userId) {
+    try {
+      const model = this.FloorPlan;
+      if (!model) throw new Error('FloorPlan model not available');
+
+      const floorPlan = await model.findOne({
+        where: { isActive: true }
+      });
+
+      if (!floorPlan) {
+        throw new Error('No active floor plan found');
+      }
+
+      if (!floorPlan.imageWidth || !floorPlan.imageHeight) {
+        throw new Error('Floor plan image dimensions not set');
+      }
+
+      let booths = floorPlan.booths || [];
+      const boothIndex = booths.findIndex(b => b.id === boothId);
+
+      if (boothIndex === -1) {
+        throw new Error('Booth not found');
+      }
+
+      const booth = booths[boothIndex];
+      
+      // Update position
+      if (positionData.x !== undefined && positionData.y !== undefined) {
+        // Convert absolute pixels to percentages
+        booth.xPercent = (positionData.x / floorPlan.imageWidth) * 100;
+        booth.yPercent = (positionData.y / floorPlan.imageHeight) * 100;
+        booth.labelXPercent = parseFloat((booth.xPercent + 2).toFixed(4));
+        booth.labelYPercent = parseFloat((booth.yPercent - 2).toFixed(4));
+        booth.dotXPercent = parseFloat((booth.xPercent + 8).toFixed(4));
+        booth.dotYPercent = parseFloat((booth.yPercent - 2).toFixed(4));
+      }
+
+      if (positionData.width && positionData.height) {
+        booth.widthPercent = (positionData.width / floorPlan.imageWidth) * 100;
+        booth.heightPercent = (positionData.height / floorPlan.imageHeight) * 100;
+        booth.width = positionData.width;
+        booth.height = positionData.height;
+      }
+
+      booths[boothIndex] = booth;
+      floorPlan.booths = booths;
+      floorPlan.updatedBy = userId;
+      await floorPlan.save();
+
+      return {
+        success: true,
+        data: booth,
+        message: 'Booth position updated successfully'
+      };
+    } catch (error) {
+      console.error('❌ Update booth position error:', error);
+      throw error;
+    }
+  }
+
+  // Get floor plan with image and booths
+  async getFloorPlan() {
+    try {
+      const model = this.FloorPlan;
+      if (!model) throw new Error('FloorPlan model not available');
+
+      const floorPlan = await model.findOne({
+        where: { isActive: true },
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!floorPlan) {
+        return {
+          success: true,
+          data: {
+            baseImageUrl: null,
+            imageWidth: null,
+            imageHeight: null,
+            booths: []
+          }
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          id: floorPlan.id,
+          name: floorPlan.name,
+          baseImageUrl: floorPlan.baseImageUrl,
+          imageWidth: floorPlan.imageWidth,
+          imageHeight: floorPlan.imageHeight,
+          booths: floorPlan.booths || []
+        }
+      };
+    } catch (error) {
+      console.error('❌ Get floor plan error:', error);
+      throw error;
+    }
+  }
+
+  // Export floor plan as image with overlays
+  async exportFloorPlan() {
+    try {
+      const floorPlan = await this.getFloorPlan();
+      if (!floorPlan.data.baseImageUrl) {
+        throw new Error('No floor plan image found');
+      }
+
+      // Generate a temporary URL with overlays using Cloudinary
+      const overlayString = this.generateCloudinaryOverlay(floorPlan.data.booths);
+      
+      const cloudinary = require('cloudinary').v2;
+      const exportUrl = cloudinary.url(floorPlan.data.cloudinaryPublicId, {
+        transformation: [
+          { width: floorPlan.data.imageWidth, height: floorPlan.data.imageHeight, crop: 'scale' },
+          ...overlayString
+        ],
+        secure: true
+      });
+
+      return {
+        success: true,
+        data: {
+          exportUrl,
+          imageUrl: floorPlan.data.baseImageUrl
+        }
+      };
+    } catch (error) {
+      console.error('❌ Export floor plan error:', error);
+      throw error;
+    }
+  }
+
+  // Generate Cloudinary overlay string for booths
+  generateCloudinaryOverlay(booths) {
+    const overlays = [];
+    
+    booths.forEach((booth, index) => {
+      const statusColors = {
+        available: 'green',
+        booked: 'blue',
+        reserved: 'orange'
+      };
+
+      const color = statusColors[booth.status] || 'gray';
+      
+      // Add booth box overlay
+      overlays.push({
+        overlay: {
+          font_family: 'Arial',
+          font_size: 20,
+          text: booth.boothNumber
+        },
+        color: 'white',
+        background: color,
+        gravity: 'north_west',
+        x: Math.round((booth.xPercent / 100) * floorPlan.data.imageWidth),
+        y: Math.round((booth.yPercent / 100) * floorPlan.data.imageHeight),
+        width: Math.round((booth.widthPercent / 100) * floorPlan.data.imageWidth),
+        height: Math.round((booth.heightPercent / 100) * floorPlan.data.imageHeight),
+        border: `2px_solid_${color}`
+      });
+
+      // Add status dot
+      if (booth.status !== 'available') {
+        overlays.push({
+          overlay: {
+            font_family: 'Arial',
+            font_size: 30,
+            text: '●'
+          },
+          color: color,
+          gravity: 'north_west',
+          x: Math.round((booth.dotXPercent / 100) * floorPlan.data.imageWidth),
+          y: Math.round((booth.dotYPercent / 100) * floorPlan.data.imageHeight)
+        });
+      }
+
+      // Add company name if exists
+      if (booth.companyName) {
+        overlays.push({
+          overlay: {
+            font_family: 'Arial',
+            font_size: 14,
+            text: booth.companyName.substring(0, 20)
+          },
+          color: 'black',
+          background: 'white',
+          gravity: 'north_west',
+          x: Math.round((booth.xPercent / 100) * floorPlan.data.imageWidth),
+          y: Math.round((booth.yPercent / 100) * floorPlan.data.imageHeight + 30)
+        });
+      }
+    });
+
+    return overlays;
+  }
+
+  // Reset floor plan
+  async resetFloorPlan(userId) {
+    try {
+      const model = this.FloorPlan;
+      if (!model) throw new Error('FloorPlan model not available');
+
+      const floorPlan = await model.findOne({
+        where: { isActive: true }
+      });
+
+      if (floorPlan) {
+        // Delete image from Cloudinary
+        if (floorPlan.cloudinaryPublicId) {
+          try {
+            await cloudinaryService.deleteImage(floorPlan.cloudinaryPublicId);
+          } catch (error) {
+            console.warn('Failed to delete image:', error.message);
+          }
+        }
+
+        floorPlan.baseImageUrl = null;
+        floorPlan.cloudinaryPublicId = null;
+        floorPlan.imageWidth = null;
+        floorPlan.imageHeight = null;
+        floorPlan.booths = [];
+        floorPlan.referencePoints = [];
+        floorPlan.updatedBy = userId;
+        await floorPlan.save();
+      }
+
+      return {
+        success: true,
+        message: 'Floor plan reset successfully'
+      };
+    } catch (error) {
+      console.error('❌ Reset floor plan error:', error);
+      throw error;
+    }
+  }
+
+  // Get booth statistics
+  async getBoothStatistics() {
+    try {
+      const floorPlan = await this.getFloorPlan();
+      const booths = floorPlan.data.booths || [];
+      
+      const stats = {
+        total: booths.length,
+        available: booths.filter(b => b.status === 'available').length,
+        booked: booths.filter(b => b.status === 'booked').length,
+        reserved: booths.filter(b => b.status === 'reserved').length,
+        occupied: booths.filter(b => b.companyName && b.companyName.trim() !== '').length
+      };
+
+      return {
+        success: true,
+        data: stats
+      };
+    } catch (error) {
+      console.error('❌ Get statistics error:', error);
+      throw error;
+    }
+  }
+
+  // Update booth status
+  async updateBoothStatus(boothId, status, userId) {
+    return this.updateBooth(boothId, { status }, userId);
+  }
+
+  // Update company name
+  async updateCompanyName(boothId, companyName, userId) {
+    return this.updateBooth(boothId, { companyName }, userId);
+  }
+
+  // Generic booth update
   async updateBooth(boothId, updateData, userId) {
     try {
       const model = this.FloorPlan;
@@ -145,11 +452,10 @@ class BoothService {
         throw new Error('Booth not found');
       }
 
-      // Update booth data
       booths[boothIndex] = {
         ...booths[boothIndex],
         ...updateData,
-        id: boothId // Ensure ID doesn't change
+        id: boothId
       };
 
       floorPlan.booths = booths;
@@ -165,16 +471,6 @@ class BoothService {
       console.error('❌ Update booth error:', error);
       throw error;
     }
-  }
-
-  // Update booth status
-  async updateBoothStatus(boothId, status, userId) {
-    return this.updateBooth(boothId, { status }, userId);
-  }
-
-  // Update company name
-  async updateCompanyName(boothId, companyName, userId) {
-    return this.updateBooth(boothId, { companyName }, userId);
   }
 
   // Delete booth
@@ -210,109 +506,6 @@ class BoothService {
       };
     } catch (error) {
       console.error('❌ Delete booth error:', error);
-      throw error;
-    }
-  }
-
-  // Bulk update booths
-  async bulkUpdateBooths(updates, userId) {
-    try {
-      const model = this.FloorPlan;
-      if (!model) throw new Error('FloorPlan model not available');
-
-      const floorPlan = await model.findOne({
-        where: { isActive: true }
-      });
-
-      if (!floorPlan) {
-        throw new Error('No active floor plan found');
-      }
-
-      let booths = floorPlan.booths || [];
-      const updatedBooths = [];
-
-      updates.forEach(update => {
-        const index = booths.findIndex(b => b.id === update.id);
-        if (index !== -1) {
-          booths[index] = { ...booths[index], ...update };
-          updatedBooths.push(booths[index]);
-        }
-      });
-
-      floorPlan.booths = booths;
-      floorPlan.updatedBy = userId;
-      await floorPlan.save();
-
-      return {
-        success: true,
-        data: updatedBooths,
-        message: `Updated ${updatedBooths.length} booths`
-      };
-    } catch (error) {
-      console.error('❌ Bulk update error:', error);
-      throw error;
-    }
-  }
-
-  // Get booth statistics
-  async getBoothStatistics() {
-    try {
-      const model = this.FloorPlan;
-      if (!model) throw new Error('FloorPlan model not available');
-
-      const floorPlan = await model.findOne({
-        where: { isActive: true }
-      });
-
-      const booths = floorPlan?.booths || [];
-      
-      const stats = {
-        total: booths.length,
-        available: booths.filter(b => b.status === 'available').length,
-        booked: booths.filter(b => b.status === 'booked').length,
-        reserved: booths.filter(b => b.status === 'reserved').length,
-        occupied: booths.filter(b => b.companyName && b.companyName.trim() !== '').length
-      };
-
-      return {
-        success: true,
-        data: stats
-      };
-    } catch (error) {
-      console.error('❌ Get statistics error:', error);
-      throw error;
-    }
-  }
-
-  // Reset floor plan to default
-  async resetToDefault(userId) {
-    try {
-      const model = this.FloorPlan;
-      if (!model) throw new Error('FloorPlan model not available');
-
-      const floorPlan = await model.findOne({
-        where: { isActive: true }
-      });
-
-      if (floorPlan) {
-        floorPlan.booths = this.getDefaultBooths();
-        floorPlan.updatedBy = userId;
-        await floorPlan.save();
-      } else {
-        await model.create({
-          name: 'Main Exhibition Floor',
-          booths: this.getDefaultBooths(),
-          isActive: true,
-          createdBy: userId
-        });
-      }
-
-      return {
-        success: true,
-        message: 'Floor plan reset to default'
-      };
-    } catch (error) {
-      console.error('❌ Reset error:', error);
       throw error;
     }
   }
