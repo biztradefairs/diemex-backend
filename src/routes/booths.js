@@ -30,6 +30,8 @@ router.delete('/:boothId', authorize(['admin', 'editor']), boothController.delet
 // Bulk update booths
 router.post('/bulk-update', authorize(['admin', 'editor']), boothController.bulkUpdateBooths);
 
+router.post('/save-booths', boothController.saveBooths);
+
 // Reset floor plan to default
 router.post('/reset', authorize(['admin']), boothController.resetToDefault);
 

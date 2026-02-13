@@ -18,6 +18,7 @@ const boothRoutes = require('./routes/booths');
 const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
 // Import services for initialization
 const emailService = require('./services/EmailService');
+const floorPlanImageRoutes = require('./routes/floorPlanImage');
 
 class AppServer {
   constructor() {
@@ -301,6 +302,7 @@ class AppServer {
     this.app.use('/api/articles', articleRoutes);
     this.app.use('/api/booths', boothRoutes);
     this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
+    this.app.use('/api/floor-plan', floorPlanImageRoutes);
     
     // ======================
     // Documentation & Info

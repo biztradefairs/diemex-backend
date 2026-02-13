@@ -40,7 +40,23 @@ class BoothController {
       });
     }
   }
+  async saveBooths(req, res) {
+  try {
+    const { booths } = req.body;
+    const modelFactory = require('../models');
+    const FloorPlan = modelFactory.getModel('FloorPlan');
 
+    const floorPlan = await FloorPlan.findOne({ where: { isActive: true } });
+
+    floorPlan.booths = booths;
+    await floorPlan.save();
+
+    res.json({ success: true });
+
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
   // Update booth status
   async updateBoothStatus(req, res) {
     try {
