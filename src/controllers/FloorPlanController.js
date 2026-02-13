@@ -159,39 +159,16 @@ class BoothController {
   }
 async saveFloorPlan(req, res) {
   try {
-    const { baseImageUrl, booths } = req.body;
+    const { booths } = req.body;
+    const userId = req.user?.id;
 
-    const floorPlan = await FloorPlan.findOne({
-      where: { isActive: true }
-    });
+    const result = await boothService.saveFloorPlan(booths, userId);
 
-    if (!floorPlan) {
-      return res.status(400).json({
-        success: false,
-        error: "No active floor plan found"
-      });
-    }
-
-    // Update image if provided
-    if (baseImageUrl) {
-      floorPlan.baseImageUrl = baseImageUrl;
-    }
-
-    // Update booths if provided
-    if (booths) {
-      floorPlan.booths = booths;
-    }
-
-    await floorPlan.save();
-
-    return res.json({
-      success: true,
-      message: "Floor plan updated successfully"
-    });
+    res.json(result);
 
   } catch (error) {
     console.error("❌ Save floor plan error:", error);
-    return res.status(500).json({
+    res.status(400).json({
       success: false,
       error: error.message
     });
