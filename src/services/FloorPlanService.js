@@ -472,6 +472,65 @@ class BoothService {
       throw error;
     }
   }
+  // services/BoothService.js - Add this method
+async saveFloorPlan(booths, userId) {
+  try {
+    const model = this.FloorPlan;
+    if (!model) throw new Error('FloorPlan model not available');
+
+    const floorPlan = await model.findOne({
+      where: { isActive: true }
+    });
+
+    if (!floorPlan) {
+      throw new Error('No active floor plan found');
+    }
+
+    // Update the booths with any new metadata
+    const existingBooths = floorPlan.booths || [];
+    
+    // Merge existing booths with updated ones
+    const updatedBooths = booths.map(newBooth => {
+      const existingBooth = existingBooths.find(b => b.id === newBooth.id);
+      return {
+        ...existingBooth,
+        ...newBooth,
+        // Preserve important fields
+        id: newBooth.id || existingBooth?.id,
+        boothNumber: newBooth.boothNumber || existingBooth?.boothNumber,
+        xPercent: newBooth.xPercent ?? existingBooth?.xPercent,
+        yPercent: newBooth.yPercent ?? existingBooth?.yPercent,
+        widthPercent: newBooth.widthPercent ?? existingBooth?.widthPercent,
+        heightPercent: newBooth.heightPercent ?? existingBooth?.heightPercent,
+        // Update metadata with latest values
+        metadata: {
+          ...existingBooth?.metadata,
+          ...newBooth.metadata,
+          companyName: newBooth.companyName || newBooth.metadata?.companyName || existingBooth?.companyName,
+          status: newBooth.status || newBooth.metadata?.status || existingBooth?.status || 'available',
+          amenities: newBooth.metadata?.amenities || existingBooth?.metadata?.amenities || [],
+          restrictions: newBooth.metadata?.restrictions || existingBooth?.metadata?.restrictions || []
+        }
+      };
+    });
+
+    floorPlan.booths = updatedBooths;
+    floorPlan.updatedBy = userId;
+    await floorPlan.save();
+
+    return {
+      success: true,
+      data: {
+        id: floorPlan.id,
+        booths: floorPlan.booths
+      },
+      message: 'Floor plan saved successfully'
+    };
+  } catch (error) {
+    console.error('❌ Save floor plan error:', error);
+    throw error;
+  }
+}
 
   // Delete booth
   async deleteBooth(boothId, userId) {
