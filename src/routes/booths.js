@@ -29,7 +29,33 @@ router.post('/upload-image',
   upload.single('image'), 
   boothController.uploadFloorPlanImage
 );
-
+// routes/booths.js - Add this ONE route
+router.post('/save-floor-plan', 
+  authorize(['admin', 'editor']), 
+  async (req, res) => {
+    try {
+      const { booths } = req.body;
+      const userId = req.user?.id;
+      
+      const floorPlan = await FloorPlan.findOne({ where: { isActive: true } });
+      
+      if (!floorPlan) {
+        return res.status(404).json({ success: false, error: 'No floor plan found' });
+      }
+      
+      floorPlan.booths = booths;
+      floorPlan.updatedBy = userId;
+      await floorPlan.save();
+      
+      res.json({ 
+        success: true, 
+        message: 'Floor plan saved successfully' 
+      });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+);
 // Export floor plan
 router.get('/export', authorize(['admin', 'editor', 'viewer']), boothController.exportFloorPlan);
 

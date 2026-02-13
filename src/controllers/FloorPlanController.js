@@ -157,6 +157,20 @@ class BoothController {
       });
     }
   }
+  async saveFloorPlan(req, res) {
+  try {
+    const { booths } = req.body;
+    const userId = req.user?.id;
+    
+    const result = await boothService.saveFloorPlan(booths, userId);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
 
   // Reset floor plan
   async resetFloorPlan(req, res) {
