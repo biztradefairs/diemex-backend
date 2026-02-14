@@ -1,19 +1,12 @@
-/**
- * src/models/index.js
- * Fixed Model Factory with all models including FloorPlan
- */
-
+// src/models/index.js
 const database = require('../config/database');
 
 let models = {};
 let initialized = false;
 
-// Model factory functions (lazy loading)
-// Model factory functions (lazy loading)
+// Model factory functions
 const modelFactories = {
-  // ======================
-  // MySQL / Sequelize
-  // ======================
+  // MySQL / Sequelize models
   User: () => {
     const UserFactory = require('./mysql/User');
     const sequelize = database.getConnection('mysql');
@@ -56,7 +49,6 @@ const modelFactories = {
     return FloorPlanFactory(sequelize);
   },
 
-  // ADD THESE THREE NEW MODELS
   Product: () => {
     const ProductFactory = require('./mysql/Product');
     const sequelize = database.getConnection('mysql');
@@ -74,15 +66,21 @@ const modelFactories = {
     const sequelize = database.getConnection('mysql');
     return BrochureFactory(sequelize);
   },
-  Requirement: () => {
-  const RequirementFactory = require('./mysql/Requirement');
-  const sequelize = database.getConnection('mysql');
-  return RequirementFactory(sequelize);
-},
 
-  // ======================
-  // MongoDB / Mongoose
-  // ======================
+  Requirement: () => {
+    const RequirementFactory = require('./mysql/Requirement');
+    const sequelize = database.getConnection('mysql');
+    return RequirementFactory(sequelize);
+  },
+
+  // ADD THIS - Manual model
+  Manual: () => {
+    const ManualFactory = require('./mysql/Manual');
+    const sequelize = database.getConnection('mysql');
+    return ManualFactory(sequelize);
+  },
+
+  // MongoDB models
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
   MongoNotification: () => require('./mongodb/Notification'),
@@ -93,9 +91,6 @@ const modelFactories = {
   MongoAlert: () => require('./mongodb/Alert')
 };
 
-/**
- * Initialize models AFTER database.connect()
- */
 function init() {
   if (initialized) {
     return models;
@@ -103,9 +98,7 @@ function init() {
 
   const dbType = process.env.DB_TYPE || 'mysql';
 
-  // ======================
   // MySQL Models
-  // ======================
   if (dbType === 'mysql' || dbType === 'both') {
     const sequelize = database.getConnection('mysql');
 
@@ -113,6 +106,7 @@ function init() {
       throw new Error('MySQL connection not available');
     }
 
+    // Load all MySQL models
     Object.keys(modelFactories).forEach((modelName) => {
       if (!modelName.startsWith('Mongo')) {
         try {
@@ -124,7 +118,7 @@ function init() {
       }
     });
 
-    // Set up associations AFTER all models are loaded
+    // Set up associations
     Object.keys(models).forEach(modelName => {
       if (models[modelName].associate) {
         try {
@@ -136,17 +130,16 @@ function init() {
       }
     });
 
+    // Sync models (only in development)
     if (process.env.NODE_ENV === 'development') {
       sequelize
-        .sync({ alter: false })
+        .sync({ alter: true })
         .then(() => console.log('✅ MySQL models synced'))
         .catch(err => console.error('❌ MySQL sync failed:', err.message));
     }
   }
 
-  // ======================
   // MongoDB Models
-  // ======================
   if (dbType === 'mongodb' || dbType === 'both') {
     Object.keys(modelFactories).forEach((modelName) => {
       if (modelName.startsWith('Mongo')) {
@@ -162,12 +155,11 @@ function init() {
 
   initialized = true;
   console.log(`🎯 Total models loaded: ${Object.keys(models).length}`);
+  console.log('📋 Loaded models:', Object.keys(models).join(', '));
+  
   return models;
 }
 
-/**
- * Get a single model safely
- */
 function getModel(name) {
   if (!initialized) {
     throw new Error('Models not initialized. Call init() first.');
@@ -177,10 +169,10 @@ function getModel(name) {
     return models[name];
   }
 
-  // Try to find alternative names
   const altNames = {
     FloorPlan: 'MongoFloorPlan',
-    User: 'MongoUser'
+    User: 'MongoUser',
+    Manual: 'Manual' // Add this
   };
 
   if (altNames[name] && models[altNames[name]]) {
@@ -190,16 +182,10 @@ function getModel(name) {
   throw new Error(`Model "${name}" not found. Available models: ${Object.keys(models).join(', ')}`);
 }
 
-/**
- * Get all models
- */
 function getAllModels() {
   return models;
 }
 
-/**
- * Clear models (testing)
- */
 function clear() {
   models = {};
   initialized = false;

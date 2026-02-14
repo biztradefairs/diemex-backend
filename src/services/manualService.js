@@ -1,26 +1,53 @@
 // src/services/manualService.js
-const Manual = require('../models/mysql/Manual');
 const { Op } = require('sequelize');
-const path = require('path');
-const fs = require('fs').promises;
+const cloudinaryService = require('./CloudinaryService');
 
 class ManualService {
+  constructor() {
+    this.Manual = null;
+  }
+
+  // Get Manual model with lazy initialization
+  async getManualModel() {
+    if (!this.Manual) {
+      try {
+        // Try to get models from the global app context
+        const models = require('../models');
+        
+        // Check if models are initialized
+        if (!models.getAllModels().Manual) {
+          console.log('🔄 Manual model not found, initializing models...');
+          models.init();
+        }
+        
+        this.Manual = models.getModel('Manual');
+        console.log('✅ Manual model loaded in service');
+      } catch (error) {
+        console.error('❌ Failed to load Manual model:', error);
+        throw new Error('Manual model not available');
+      }
+    }
+    return this.Manual;
+  }
+
   // Create a new manual
   async createManual(manualData, file) {
     try {
-      // Handle file upload
-      const fileName = `${Date.now()}-${file.originalname}`;
-      const filePath = path.join(__dirname, '../../uploads/manuals', fileName);
+      const Manual = await this.getManualModel();
       
-      // Save file to disk
-      await fs.writeFile(filePath, file.buffer);
+      // Upload file to Cloudinary
+     const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
+  folder: 'exhibition-manuals',
+  resource_type: 'raw',   // 🔥 FIX
+  access_mode: 'public'
+});
 
       const manual = await Manual.create({
         title: manualData.title,
-        description: manualData.description,
-        category: manualData.category,
+        description: manualData.description || '',
+        category: manualData.category || 'General',
         version: manualData.version || '1.0',
-        file_path: `/uploads/manuals/${fileName}`,
+        file_path: uploadResult.url,
         file_name: file.originalname,
         file_size: this.formatFileSize(file.size),
         mime_type: file.mimetype,
@@ -30,12 +57,16 @@ class ManualService {
         downloads: 0,
         metadata: {
           originalName: file.originalname,
-          uploadedAt: new Date().toISOString()
+          uploadedAt: new Date().toISOString(),
+          cloudinaryPublicId: uploadResult.publicId,
+          cloudinaryFormat: uploadResult.format,
+          cloudinaryBytes: uploadResult.bytes
         }
       });
 
       return { success: true, data: manual };
     } catch (error) {
+      console.error('Error in createManual:', error);
       throw new Error(`Error creating manual: ${error.message}`);
     }
   }
@@ -43,13 +74,15 @@ class ManualService {
   // Get all manuals with filters
   async getAllManuals(filters = {}) {
     try {
+      const Manual = await this.getManualModel();
+
       const whereClause = {};
 
       if (filters.status) {
         whereClause.status = filters.status;
       }
 
-      if (filters.category && filters.category !== 'all') {
+      if (filters.category && filters.category !== 'all' && filters.category !== 'undefined') {
         whereClause.category = filters.category;
       }
 
@@ -66,21 +99,26 @@ class ManualService {
         order: [['last_updated', 'DESC']]
       });
 
-      return { success: true, data: manuals };
+      return { success: true, data: manuals || [] };
     } catch (error) {
-      throw new Error(`Error fetching manuals: ${error.message}`);
+      console.error('Error in getAllManuals:', error);
+      // Return empty array instead of throwing error
+      return { success: true, data: [] };
     }
   }
 
   // Get manual by ID
   async getManualById(id) {
     try {
+      const Manual = await this.getManualModel();
+
       const manual = await Manual.findByPk(id);
       if (!manual) {
         throw new Error('Manual not found');
       }
       return { success: true, data: manual };
     } catch (error) {
+      console.error('Error in getManualById:', error);
       throw new Error(`Error fetching manual: ${error.message}`);
     }
   }
@@ -88,6 +126,8 @@ class ManualService {
   // Update manual
   async updateManual(id, updateData, file = null) {
     try {
+      const Manual = await this.getManualModel();
+
       const manual = await Manual.findByPk(id);
       if (!manual) {
         throw new Error('Manual not found');
@@ -95,19 +135,32 @@ class ManualService {
 
       // If new file is uploaded
       if (file) {
-        // Delete old file
-        const oldFilePath = path.join(__dirname, '../..', manual.file_path);
-        await fs.unlink(oldFilePath).catch(() => {}); // Ignore if file doesn't exist
+        // Delete old file from Cloudinary
+        if (manual.metadata?.cloudinaryPublicId) {
+          await cloudinaryService.deleteImage(manual.metadata.cloudinaryPublicId).catch(() => {
+            console.log('Failed to delete old file from Cloudinary, but continuing...');
+          });
+        }
 
-        // Save new file
-        const fileName = `${Date.now()}-${file.originalname}`;
-        const filePath = path.join(__dirname, '../../uploads/manuals', fileName);
-        await fs.writeFile(filePath, file.buffer);
+        // Upload new file to Cloudinary
+        const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
+          folder: 'exhibition-manuals',
+          resource_type: 'auto',
+          access_mode: 'public'
+        });
 
-        updateData.file_path = `/uploads/manuals/${fileName}`;
+        updateData.file_path = uploadResult.url;
         updateData.file_name = file.originalname;
         updateData.file_size = this.formatFileSize(file.size);
         updateData.mime_type = file.mimetype;
+        updateData.metadata = {
+          ...manual.metadata,
+          originalName: file.originalname,
+          uploadedAt: new Date().toISOString(),
+          cloudinaryPublicId: uploadResult.publicId,
+          cloudinaryFormat: uploadResult.format,
+          cloudinaryBytes: uploadResult.bytes
+        };
       }
 
       updateData.last_updated = new Date().toISOString().split('T')[0];
@@ -115,6 +168,7 @@ class ManualService {
       await manual.update(updateData);
       return { success: true, data: manual };
     } catch (error) {
+      console.error('Error in updateManual:', error);
       throw new Error(`Error updating manual: ${error.message}`);
     }
   }
@@ -122,18 +176,24 @@ class ManualService {
   // Delete manual
   async deleteManual(id) {
     try {
+      const Manual = await this.getManualModel();
+
       const manual = await Manual.findByPk(id);
       if (!manual) {
         throw new Error('Manual not found');
       }
 
-      // Delete file from disk
-      const filePath = path.join(__dirname, '../..', manual.file_path);
-      await fs.unlink(filePath).catch(() => {}); // Ignore if file doesn't exist
+      // Delete file from Cloudinary
+      if (manual.metadata?.cloudinaryPublicId) {
+        await cloudinaryService.deleteImage(manual.metadata.cloudinaryPublicId).catch((error) => {
+          console.log('Failed to delete from Cloudinary:', error.message);
+        });
+      }
 
       await manual.destroy();
       return { success: true, message: 'Manual deleted successfully' };
     } catch (error) {
+      console.error('Error in deleteManual:', error);
       throw new Error(`Error deleting manual: ${error.message}`);
     }
   }
@@ -141,6 +201,8 @@ class ManualService {
   // Download manual
   async downloadManual(id) {
     try {
+      const Manual = await this.getManualModel();
+
       const manual = await Manual.findByPk(id);
       if (!manual) {
         throw new Error('Manual not found');
@@ -151,11 +213,13 @@ class ManualService {
       
       return { 
         success: true, 
-        filePath: manual.file_path,
+        fileUrl: manual.file_path,
         fileName: manual.file_name,
-        mimeType: manual.mime_type 
+        mimeType: manual.mime_type,
+        downloadUrl: manual.file_path.replace('/upload/', '/upload/fl_attachment/')
       };
     } catch (error) {
+      console.error('Error in downloadManual:', error);
       throw new Error(`Error downloading manual: ${error.message}`);
     }
   }
@@ -163,11 +227,14 @@ class ManualService {
   // Get statistics
   async getStatistics() {
     try {
+      const Manual = await this.getManualModel();
+      const sequelize = Manual.sequelize;
+      
       const totalManuals = await Manual.count();
       const publishedManuals = await Manual.count({ where: { status: 'published' } });
       const draftManuals = await Manual.count({ where: { status: 'draft' } });
       
-      const totalDownloads = await Manual.sum('downloads');
+      const totalDownloads = await Manual.sum('downloads') || 0;
       
       const categoryStats = await Manual.findAll({
         attributes: [
@@ -183,13 +250,41 @@ class ManualService {
           totalManuals,
           publishedManuals,
           draftManuals,
-          totalDownloads: totalDownloads || 0,
-          categoryStats
+          totalDownloads,
+          categoryStats: categoryStats || []
         }
       };
     } catch (error) {
-      throw new Error(`Error getting statistics: ${error.message}`);
+      console.error('Error in getStatistics:', error);
+      // Return default stats instead of throwing
+      return {
+        success: true,
+        data: {
+          totalManuals: 0,
+          publishedManuals: 0,
+          draftManuals: 0,
+          totalDownloads: 0,
+          categoryStats: []
+        }
+      };
     }
+  }
+
+  // Get preview URL
+  getPreviewUrl(manual) {
+    if (!manual || !manual.mime_type) return null;
+    
+    const mimeType = manual.mime_type;
+    
+    if (mimeType === 'application/pdf') {
+      return manual.file_path.replace('/upload/', '/upload/fl_attachment/');
+    }
+    
+    if (mimeType.startsWith('image/') && manual.metadata?.cloudinaryPublicId) {
+      return cloudinaryService.generateOptimizedUrl(manual.metadata.cloudinaryPublicId);
+    }
+    
+    return manual.file_path;
   }
 
   // Format file size

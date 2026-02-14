@@ -1,56 +1,123 @@
-// src/routes/manualRoutes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const manualController = require('../controllers/manualController');
 const { authenticate, authorize } = require('../middleware/auth');
 
-// Configure multer for memory storage
+// ======================
+// Multer Configuration
+// ======================
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ];
+
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, and TXT files are allowed.'));
+      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, TXT, Excel, and PowerPoint files are allowed.'));
     }
   }
 });
 
-// Admin routes
-router.post('/',
+
+// ======================================================
+// PUBLIC ROUTES (Accessible without authentication)
+// ======================================================
+
+// Get all manuals
+router.get('/', manualController.getAllManuals);
+
+// Search manuals
+router.get('/search', manualController.searchManuals);
+
+// Get recent manuals
+router.get('/recent', manualController.getRecentManuals);
+
+// Get manuals by category
+router.get('/category/:category', manualController.getManualsByCategory);
+
+// ------------------------------------------------------
+// IMPORTANT: Fixed routes MUST come before /:id
+// ------------------------------------------------------
+
+// Download manual
+router.get('/:id/download', manualController.downloadManual);
+
+// Preview manual
+router.get('/:id/preview', manualController.getPreview);
+
+// Get download count
+router.get('/:id/download-count', manualController.getDownloadCount);
+
+// Get single manual by ID
+router.get('/:id', manualController.getManual);
+
+
+// ======================================================
+// ADMIN ROUTES (Protected)
+// ======================================================
+
+// Create manual
+router.post(
+  '/',
   authenticate,
   authorize(['admin']),
   upload.single('file'),
   manualController.createManual
 );
 
-router.put('/:id',
+// Update manual
+router.put(
+  '/:id',
   authenticate,
   authorize(['admin']),
   upload.single('file'),
   manualController.updateManual
 );
 
-router.delete('/:id',
+// Delete manual
+router.delete(
+  '/:id',
   authenticate,
   authorize(['admin']),
   manualController.deleteManual
 );
 
-router.get('/statistics',
+// Bulk delete manuals
+router.delete(
+  '/bulk/delete',
+  authenticate,
+  authorize(['admin']),
+  manualController.bulkDeleteManuals
+);
+
+// Update manual status
+router.patch(
+  '/:id/status',
+  authenticate,
+  authorize(['admin']),
+  manualController.updateManualStatus
+);
+
+// Get statistics (MUST be above :id routes to avoid conflict)
+router.get(
+  '/statistics/overview',
   authenticate,
   authorize(['admin']),
   manualController.getStatistics
 );
-
-// Public routes (accessible to exhibitors)
-router.get('/', manualController.getAllManuals);
-router.get('/:id', manualController.getManual);
-router.get('/:id/download', manualController.downloadManual);
 
 module.exports = router;
