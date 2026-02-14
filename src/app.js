@@ -19,6 +19,7 @@ const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
 // Import services for initialization
 const emailService = require('./services/EmailService');
 const floorPlanImageRoutes = require('./routes/floorPlanImage');
+const uploadRoutes = require('./routes/upload');
 
 class AppServer {
   constructor() {
@@ -230,6 +231,7 @@ class AppServer {
     
     this.app.use('/uploads', express.static(uploadsPath));
     this.app.use('/public', express.static(publicPath));
+    this.app.use('/api/upload', uploadRoutes);
     
     // Request logging middleware
     this.app.use((req, res, next) => {
