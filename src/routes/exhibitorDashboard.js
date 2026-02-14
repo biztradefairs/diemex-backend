@@ -3,8 +3,12 @@ const express = require('express');
 const router = express.Router();
 const { authenticateExhibitor } = require('../middleware/auth');
 
+const productRoutes = require('./exhibitorProducts');
+
 // All routes require exhibitor authentication
 router.use(authenticateExhibitor);
+
+router.use('/products', productRoutes);
 
 // ==================== PROFILE ROUTES ====================
 
