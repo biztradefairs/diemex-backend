@@ -20,6 +20,7 @@ const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
 const emailService = require('./services/EmailService');
 const floorPlanImageRoutes = require('./routes/floorPlanImage');
 const uploadRoutes = require('./routes/upload');
+const manualRoutes = require('./routes/manualRoutes');
 
 class AppServer {
   constructor() {
@@ -196,7 +197,6 @@ class AppServer {
     };
 
     this.app.use(cors(corsOptions));
-    
     // Pre-flight requests
     this.app.options('*', cors(corsOptions));
     
@@ -215,6 +215,47 @@ class AppServer {
       extended: true, 
       limit: '50mb' 
     }));
+
+
+this.app.get('/api/test/manuals-setup', async (req, res) => {
+  try {
+    const models = require('./models');
+    models.init();
+    
+    const { Manual } = models.getAllModels();
+    
+    if (!Manual) {
+      return res.status(500).json({
+        success: false,
+        error: 'Manual model not found',
+        loadedModels: Object.keys(models.getAllModels())
+      });
+    }
+
+    // Try to query the table
+    const count = await Manual.count();
+    
+    // Try to get table info
+    const tableInfo = await Manual.sequelize.query(
+      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Manuals'",
+      { type: Manual.sequelize.QueryTypes.SELECT }
+    );
+
+    res.json({
+      success: true,
+      message: 'Manual model is working',
+      tableExists: tableInfo[0].count > 0,
+      recordCount: count,
+      loadedModels: Object.keys(models.getAllModels())
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
     
     // Static files
     const uploadsPath = path.join(__dirname, '../uploads');
@@ -305,6 +346,7 @@ class AppServer {
     this.app.use('/api/booths', boothRoutes);
     this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
     this.app.use('/api/floor-plan', floorPlanImageRoutes);
+    this.app.use('/api/manuals', manualRoutes);
     
     // ======================
     // Documentation & Info
