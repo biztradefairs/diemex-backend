@@ -74,6 +74,11 @@ const modelFactories = {
     const sequelize = database.getConnection('mysql');
     return BrochureFactory(sequelize);
   },
+  Requirement: () => {
+  const RequirementFactory = require('./mysql/Requirement');
+  const sequelize = database.getConnection('mysql');
+  return RequirementFactory(sequelize);
+},
 
   // ======================
   // MongoDB / Mongoose
