@@ -56,10 +56,11 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'boothNumber'
     },
-    stallDetails: {
-      type: DataTypes.JSON,
-      allowNull: true
-    },
+      stallDetails: {
+      type: DataTypes.JSON,  // or DataTypes.TEXT for MySQL < 5.7
+      allowNull: true,
+      field: 'stallDetails'
+    }, 
     status: {
       type: DataTypes.ENUM('pending', 'active', 'inactive', 'approved', 'rejected'),
       defaultValue: 'pending',

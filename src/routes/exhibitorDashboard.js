@@ -7,6 +7,7 @@ const productRoutes = require('./exhibitorProducts');
 // You'll need to create these too
 const brandRoutes = require('./exhibitorBrands');
 const brochureRoutes = require('./exhibitorBrochures');
+const stallRoutes = require('./exhibitorStall');
 
 // All routes require exhibitor authentication
 router.use(authenticateExhibitor);
@@ -14,6 +15,7 @@ router.use(authenticateExhibitor);
 router.use('/products', productRoutes);
 router.use('/brands', brandRoutes);
 router.use('/brochures', brochureRoutes);
+router.use('/stall', stallRoutes);
 
 // ==================== PROFILE ROUTES ====================
 
