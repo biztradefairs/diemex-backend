@@ -9,6 +9,7 @@ let models = {};
 let initialized = false;
 
 // Model factory functions (lazy loading)
+// Model factory functions (lazy loading)
 const modelFactories = {
   // ======================
   // MySQL / Sequelize
@@ -49,11 +50,29 @@ const modelFactories = {
     return MediaFactory(sequelize);
   },
 
-  // ADD THIS - FloorPlan model
   FloorPlan: () => {
     const FloorPlanFactory = require('./mysql/FloorPlan');
     const sequelize = database.getConnection('mysql');
     return FloorPlanFactory(sequelize);
+  },
+
+  // ADD THESE THREE NEW MODELS
+  Product: () => {
+    const ProductFactory = require('./mysql/Product');
+    const sequelize = database.getConnection('mysql');
+    return ProductFactory(sequelize);
+  },
+
+  Brand: () => {
+    const BrandFactory = require('./mysql/Brand');
+    const sequelize = database.getConnection('mysql');
+    return BrandFactory(sequelize);
+  },
+
+  Brochure: () => {
+    const BrochureFactory = require('./mysql/Brochure');
+    const sequelize = database.getConnection('mysql');
+    return BrochureFactory(sequelize);
   },
 
   // ======================
