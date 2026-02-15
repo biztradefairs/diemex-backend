@@ -1,6 +1,7 @@
 const exhibitorService = require('../services/ExhibitorService');
 
 class ExhibitorController {
+// In exhibitor controller - update createExhibitor method
 async createExhibitor(req, res) {
   try {
     console.log('\n🎯 CREATE EXHIBITOR REQUEST');
@@ -46,22 +47,32 @@ async createExhibitor(req, res) {
     // Store original password
     const originalPassword = data.password;
     
-    // Create exhibitor - use _originalPassword to pass to hook
+    // Prepare stall details with booth size
+    const stallDetails = {
+      size: data.boothSize || '',
+      type: data.boothType || 'standard',
+      dimensions: data.boothDimensions || '',
+      notes: data.boothNotes || ''
+    };
+    
+    // Create exhibitor
     const exhibitor = await Exhibitor.create({
       name: data.name.trim(),
-  email: data.email.toLowerCase().trim(),
-  company: data.company.trim(),
-  password: data.password, // Plain password
-  _originalPassword: data.password, // This goes to metadata via hook
-  phone: data.phone || '',
-  sector: data.sector || '',
-  boothNumber: data.boothNumber || '',
-  status: data.status || 'pending',
-  metadata: {}
+      email: data.email.toLowerCase().trim(),
+      company: data.company.trim(),
+      password: data.password,
+      _originalPassword: data.password,
+      phone: data.phone || '',
+      sector: data.sector || '',
+      boothNumber: data.boothNumber || '',
+      stallDetails: stallDetails, // Add stall details with size
+      status: data.status || 'pending',
+      metadata: {}
     });
     
     console.log('✅ Exhibitor created:', exhibitor.email);
     console.log('🔑 Original password:', originalPassword);
+    console.log('🏪 Stall details:', stallDetails);
     
     // Send welcome email
     const emailService = require('../services/EmailService');
@@ -73,6 +84,10 @@ async createExhibitor(req, res) {
     const response = exhibitor.toJSON();
     response.originalPassword = originalPassword;
     delete response.password;
+    
+    // Add stall details to response
+    response.boothSize = stallDetails.size;
+    response.boothType = stallDetails.type;
     
     res.status(201).json({
       success: true,
@@ -181,6 +196,7 @@ generateRandomPassword() {
   return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
+// In getAllExhibitors method
 async getAllExhibitors(req, res) {
   try {
     const { page = 1, limit = 10, search = '', sector = '', status = '' } = req.query;
@@ -214,7 +230,7 @@ async getAllExhibitors(req, res) {
       order: [['createdAt', 'DESC']]
     });
     
-    // Format response - map "approved" to "active" for frontend
+    // Format response
     const formatted = rows.map(exhibitor => {
       const data = exhibitor.toJSON();
       
@@ -224,6 +240,21 @@ async getAllExhibitors(req, res) {
         try {
           const metadata = JSON.parse(data.metadata);
           originalPassword = metadata.originalPassword;
+        } catch {}
+      }
+      
+      // Get stall details
+      let boothSize = '';
+      let boothType = 'standard';
+      let boothDimensions = '';
+      if (data.stallDetails) {
+        try {
+          const stallDetails = typeof data.stallDetails === 'string' 
+            ? JSON.parse(data.stallDetails) 
+            : data.stallDetails;
+          boothSize = stallDetails.size || '';
+          boothType = stallDetails.type || 'standard';
+          boothDimensions = stallDetails.dimensions || '';
         } catch {}
       }
       
@@ -238,7 +269,10 @@ async getAllExhibitors(req, res) {
         company: data.company,
         sector: data.sector,
         booth: data.boothNumber,
-        status: frontendStatus, // Use mapped status
+        boothSize: boothSize,
+        boothType: boothType,
+        boothDimensions: boothDimensions,
+        status: frontendStatus,
         originalPassword: originalPassword,
         createdAt: data.createdAt
       };
@@ -373,6 +407,7 @@ async getAllExhibitors(req, res) {
     }
   }
 
+// In exhibitor controller - update updateExhibitor method
 async updateExhibitor(req, res) {
   try {
     const { id } = req.params;
@@ -396,6 +431,29 @@ async updateExhibitor(req, res) {
     if (updateData.status === 'active') {
       updateData.status = 'approved';
       console.log('🔄 Mapped "active" to "approved" for database');
+    }
+
+    // Handle stall details update
+    if (updateData.boothSize || updateData.boothType || updateData.boothDimensions || updateData.boothNotes) {
+      // Get existing stall details or create new
+      let stallDetails = exhibitor.stallDetails || {};
+      
+      // Parse if it's a string
+      if (typeof stallDetails === 'string') {
+        try {
+          stallDetails = JSON.parse(stallDetails);
+        } catch {
+          stallDetails = {};
+        }
+      }
+      
+      // Update with new values
+      if (updateData.boothSize !== undefined) stallDetails.size = updateData.boothSize;
+      if (updateData.boothType !== undefined) stallDetails.type = updateData.boothType;
+      if (updateData.boothDimensions !== undefined) stallDetails.dimensions = updateData.boothDimensions;
+      if (updateData.boothNotes !== undefined) stallDetails.notes = updateData.boothNotes;
+      
+      updateData.stallDetails = stallDetails;
     }
 
     // Use raw SQL to avoid Sequelize issues
@@ -428,6 +486,10 @@ async updateExhibitor(req, res) {
     if (updateData.boothNumber !== undefined) {
       updates.push('boothNumber = ?');
       values.push(updateData.boothNumber);
+    }
+    if (updateData.stallDetails !== undefined) {
+      updates.push('stallDetails = ?');
+      values.push(JSON.stringify(updateData.stallDetails));
     }
     if (updateData.status !== undefined) {
       updates.push('status = ?');
