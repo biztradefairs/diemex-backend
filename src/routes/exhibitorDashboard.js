@@ -19,50 +19,67 @@ router.use('/stall', stallRoutes);
 
 // ==================== PROFILE ROUTES ====================
 
-// Get exhibitor profile
 router.get('/profile', async (req, res) => {
   try {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
-    
-    let exhibitor;
-    if (process.env.DB_TYPE === 'mysql') {
-      exhibitor = await Exhibitor.findByPk(req.user.id);
-    } else {
-      exhibitor = await Exhibitor.findById(req.user.id);
-    }
-    
+
+    const exhibitor = await Exhibitor.findByPk(req.user.id);
+
     if (!exhibitor) {
       return res.status(404).json({
         success: false,
         error: 'Exhibitor not found'
       });
     }
-    
+
+    // Convert to plain object first (VERY IMPORTANT)
+    const exhibitorData = exhibitor.toJSON();
+
+    // Safely parse stallDetails
+    let stallDetails = {};
+
+    if (exhibitorData.stallDetails) {
+      if (typeof exhibitorData.stallDetails === 'string') {
+        try {
+          stallDetails = JSON.parse(exhibitorData.stallDetails);
+        } catch (err) {
+          console.error('❌ JSON parse error:', err.message);
+          stallDetails = {};
+        }
+      } else {
+        stallDetails = exhibitorData.stallDetails;
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        id: exhibitor.id,
-        name: exhibitor.name,
-        email: exhibitor.email,
-        phone: exhibitor.phone || '',
-        company: exhibitor.company,
-        sector: exhibitor.sector || '',
-        boothNumber: exhibitor.boothNumber || '',
-        website: exhibitor.website || '',
-        address: exhibitor.address || '',
-        description: exhibitor.description || '',
-        status: exhibitor.status || 'active',
-        createdAt: exhibitor.createdAt,
-        updatedAt: exhibitor.updatedAt,
-            stallDetails: stallDetails,
-    boothSize: stallDetails.size || '',
-    boothType: stallDetails.type || 'standard',
-    boothDimensions: stallDetails.dimensions || '',
-    boothNotes: stallDetails.notes || ''
+        id: exhibitorData.id,
+        name: exhibitorData.name,
+        email: exhibitorData.email,
+        phone: exhibitorData.phone || '',
+        company: exhibitorData.company,
+        sector: exhibitorData.sector || '',
+        boothNumber: exhibitorData.boothNumber || '',
+        website: exhibitorData.website || '',
+        address: exhibitorData.address || '',
+        description: exhibitorData.description || '',
+        status: exhibitorData.status || 'active',
+        createdAt: exhibitorData.createdAt,
+        updatedAt: exhibitorData.updatedAt,
+
+        // ✅ Booth fields
+        stallDetails: stallDetails,
+        boothSize: stallDetails.size || '',
+        boothType: stallDetails.type || 'standard',
+        boothDimensions: stallDetails.dimensions || '',
+        boothNotes: stallDetails.notes || ''
       }
     });
+
   } catch (error) {
+    console.error('❌ PROFILE ERROR:', error);
     res.status(500).json({
       success: false,
       error: error.message
