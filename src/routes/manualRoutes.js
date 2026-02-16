@@ -1,7 +1,8 @@
+// src/routes/manualRoutes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const manualController = require('../controllers/manualController');
+const manualController = require('../controllers/ManualController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // ======================
@@ -32,12 +33,14 @@ const upload = multer({
   }
 });
 
-
 // ======================================================
 // PUBLIC ROUTES (Accessible without authentication)
 // ======================================================
 
-// Get all manuals
+// Get statistics - MOVED TO TOP to avoid conflict
+router.get('/statistics/overview', manualController.getStatistics);
+
+// Get all manuals with filters
 router.get('/', manualController.getAllManuals);
 
 // Search manuals
@@ -49,10 +52,6 @@ router.get('/recent', manualController.getRecentManuals);
 // Get manuals by category
 router.get('/category/:category', manualController.getManualsByCategory);
 
-// ------------------------------------------------------
-// IMPORTANT: Fixed routes MUST come before /:id
-// ------------------------------------------------------
-
 // Download manual
 router.get('/:id/download', manualController.downloadManual);
 
@@ -62,9 +61,8 @@ router.get('/:id/preview', manualController.getPreview);
 // Get download count
 router.get('/:id/download-count', manualController.getDownloadCount);
 
-// Get single manual by ID
+// Get single manual by ID - MUST be last
 router.get('/:id', manualController.getManual);
-
 
 // ======================================================
 // ADMIN ROUTES (Protected)
@@ -110,14 +108,6 @@ router.patch(
   authenticate,
   authorize(['admin']),
   manualController.updateManualStatus
-);
-
-// Get statistics (MUST be above :id routes to avoid conflict)
-router.get(
-  '/statistics/overview',
-  authenticate,
-  authorize(['admin']),
-  manualController.getStatistics
 );
 
 module.exports = router;

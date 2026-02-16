@@ -6,7 +6,6 @@ class ManualController {
   // Create new manual
   async createManual(req, res) {
     try {
-      // Check if file was uploaded
       if (!req.file) {
         return res.status(400).json({ 
           success: false, 
@@ -14,7 +13,6 @@ class ManualController {
         });
       }
 
-      // Log received data for debugging
       console.log('Creating manual with data:', {
         body: req.body,
         file: {
@@ -68,6 +66,7 @@ class ManualController {
       console.error('Error in getAllManuals:', error);
       res.status(500).json({ 
         success: false, 
+        data: [], // Return empty array on error
         message: error.message || 'Failed to fetch manuals'
       });
     }
@@ -96,7 +95,6 @@ class ManualController {
     } catch (error) {
       console.error('Error in getManual:', error);
       
-      // Handle not found error
       if (error.message === 'Manual not found') {
         return res.status(404).json({ 
           success: false, 
@@ -124,16 +122,7 @@ class ManualController {
       }
 
       console.log('Updating manual with ID:', id);
-      console.log('Update data:', req.body);
       
-      if (req.file) {
-        console.log('New file uploaded:', {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size
-        });
-      }
-
       const result = await manualService.updateManual(
         id, 
         req.body, 
@@ -215,33 +204,17 @@ class ManualController {
       
       const result = await manualService.downloadManual(id);
       
-      // Option 1: Redirect to Cloudinary URL (simpler, better for large files)
-      // This avoids streaming the file through your server
+      // Return in the format expected by frontend
       return res.json({
         success: true,
         data: {
-          fileUrl: result.fileUrl,
+          downloadUrl: result.downloadUrl,
           fileName: result.fileName,
-          mimeType: result.mimeType,
-          downloadUrl: result.downloadUrl // For forced download
+          fileUrl: result.fileUrl,
+          mimeType: result.mimeType
         },
         message: 'Download ready'
       });
-      
-      /* Option 2: Stream through server (uncomment if you prefer this method)
-      const axios = require('axios');
-      const response = await axios({
-        method: 'GET',
-        url: result.fileUrl,
-        responseType: 'stream'
-      });
-
-      res.setHeader('Content-Type', result.mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.fileName)}"`);
-      res.setHeader('Content-Length', result.metadata?.cloudinaryBytes);
-      
-      response.data.pipe(res);
-      */
       
     } catch (error) {
       console.error('Error in downloadManual:', error);
@@ -304,7 +277,7 @@ class ManualController {
     }
   }
 
-  // Get statistics (admin only)
+  // Get statistics (public now)
   async getStatistics(req, res) {
     try {
       console.log('Fetching manual statistics');
@@ -317,14 +290,21 @@ class ManualController {
       });
     } catch (error) {
       console.error('Error in getStatistics:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: error.message || 'Failed to fetch statistics'
+      // Return default stats on error
+      res.status(200).json({ 
+        success: true,
+        data: {
+          totalManuals: 0,
+          publishedManuals: 0,
+          draftManuals: 0,
+          totalDownloads: 0,
+          categoryStats: []
+        }
       });
     }
   }
 
-  // Bulk delete manuals (admin only)
+  // Bulk delete manuals
   async bulkDeleteManuals(req, res) {
     try {
       const { ids } = req.body;
@@ -367,7 +347,7 @@ class ManualController {
     }
   }
 
-  // Update manual status (admin only)
+  // Update manual status
   async updateManualStatus(req, res) {
     try {
       const { id } = req.params;
@@ -545,4 +525,5 @@ class ManualController {
   }
 }
 
+// Make sure to export the instance
 module.exports = new ManualController();

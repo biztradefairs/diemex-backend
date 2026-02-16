@@ -11,10 +11,8 @@ class ManualService {
   async getManualModel() {
     if (!this.Manual) {
       try {
-        // Try to get models from the global app context
         const models = require('../models');
         
-        // Check if models are initialized
         if (!models.getAllModels().Manual) {
           console.log('🔄 Manual model not found, initializing models...');
           models.init();
@@ -36,18 +34,18 @@ class ManualService {
       const Manual = await this.getManualModel();
       
       // Upload file to Cloudinary
-     const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
-  folder: 'exhibition-manuals',
-  resource_type: 'raw',   // 🔥 FIX
-  access_mode: 'public'
-});
+      const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
+        folder: 'exhibition-manuals',
+        resource_type: 'raw',
+        access_mode: 'public'
+      });
 
       const manual = await Manual.create({
         title: manualData.title,
         description: manualData.description || '',
         category: manualData.category || 'General',
         version: manualData.version || '1.0',
-        file_path: uploadResult.url,
+        file_path: uploadResult.secure_url || uploadResult.url,
         file_name: file.originalname,
         file_size: this.formatFileSize(file.size),
         mime_type: file.mimetype,
@@ -58,7 +56,7 @@ class ManualService {
         metadata: {
           originalName: file.originalname,
           uploadedAt: new Date().toISOString(),
-          cloudinaryPublicId: uploadResult.publicId,
+          cloudinaryPublicId: uploadResult.public_id,
           cloudinaryFormat: uploadResult.format,
           cloudinaryBytes: uploadResult.bytes
         }
@@ -102,7 +100,6 @@ class ManualService {
       return { success: true, data: manuals || [] };
     } catch (error) {
       console.error('Error in getAllManuals:', error);
-      // Return empty array instead of throwing error
       return { success: true, data: [] };
     }
   }
@@ -145,11 +142,11 @@ class ManualService {
         // Upload new file to Cloudinary
         const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
           folder: 'exhibition-manuals',
-          resource_type: 'auto',
+          resource_type: 'raw',
           access_mode: 'public'
         });
 
-        updateData.file_path = uploadResult.url;
+        updateData.file_path = uploadResult.secure_url || uploadResult.url;
         updateData.file_name = file.originalname;
         updateData.file_size = this.formatFileSize(file.size);
         updateData.mime_type = file.mimetype;
@@ -157,7 +154,7 @@ class ManualService {
           ...manual.metadata,
           originalName: file.originalname,
           uploadedAt: new Date().toISOString(),
-          cloudinaryPublicId: uploadResult.publicId,
+          cloudinaryPublicId: uploadResult.public_id,
           cloudinaryFormat: uploadResult.format,
           cloudinaryBytes: uploadResult.bytes
         };
@@ -211,12 +208,21 @@ class ManualService {
       // Increment download count
       await manual.increment('downloads');
       
+      // Generate Cloudinary download URL
+      let downloadUrl = manual.file_path;
+      
+      // If it's a Cloudinary URL, add attachment flag
+      if (manual.file_path.includes('cloudinary.com')) {
+        // Replace /upload/ with /upload/fl_attachment/
+        downloadUrl = manual.file_path.replace('/upload/', '/upload/fl_attachment/');
+      }
+      
       return { 
         success: true, 
         fileUrl: manual.file_path,
         fileName: manual.file_name,
         mimeType: manual.mime_type,
-        downloadUrl: manual.file_path.replace('/upload/', '/upload/fl_attachment/')
+        downloadUrl: downloadUrl
       };
     } catch (error) {
       console.error('Error in downloadManual:', error);
@@ -256,7 +262,6 @@ class ManualService {
       };
     } catch (error) {
       console.error('Error in getStatistics:', error);
-      // Return default stats instead of throwing
       return {
         success: true,
         data: {
@@ -276,7 +281,8 @@ class ManualService {
     
     const mimeType = manual.mime_type;
     
-    if (mimeType === 'application/pdf') {
+    if (mimeType === 'application/pdf' && manual.file_path.includes('cloudinary.com')) {
+      // For PDF preview
       return manual.file_path.replace('/upload/', '/upload/fl_attachment/');
     }
     
