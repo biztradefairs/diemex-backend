@@ -47,13 +47,16 @@ async createExhibitor(req, res) {
     // Store original password
     const originalPassword = data.password;
     
-    // Prepare stall details with booth size
+    // Prepare stall details with booth size AND PRICE
     const stallDetails = {
-      size: data.boothSize || '',
-      type: data.boothType || 'standard',
-      dimensions: data.boothDimensions || '',
-      notes: data.boothNotes || ''
+      size: data.boothSize || data.stallDetails?.size || '3m x 3m',
+      type: data.boothType || data.stallDetails?.type || 'standard',
+      dimensions: data.boothDimensions || data.stallDetails?.dimensions || '',
+      notes: data.boothNotes || data.stallDetails?.notes || '',
+      price: data.boothPrice || data.stallDetails?.price || data.price || '' // ADD THIS LINE
     };
+    
+    console.log('🏪 Stall details with price:', stallDetails);
     
     // Create exhibitor
     const exhibitor = await Exhibitor.create({
@@ -65,14 +68,14 @@ async createExhibitor(req, res) {
       phone: data.phone || '',
       sector: data.sector || '',
       boothNumber: data.boothNumber || '',
-      stallDetails: stallDetails, // Add stall details with size
+      stallDetails: stallDetails, // Now includes price
       status: data.status || 'pending',
       metadata: {}
     });
     
     console.log('✅ Exhibitor created:', exhibitor.email);
     console.log('🔑 Original password:', originalPassword);
-    console.log('🏪 Stall details:', stallDetails);
+    console.log('🏪 Stall details with price:', stallDetails);
     
     // Send welcome email
     const emailService = require('../services/EmailService');
@@ -88,6 +91,7 @@ async createExhibitor(req, res) {
     // Add stall details to response
     response.boothSize = stallDetails.size;
     response.boothType = stallDetails.type;
+    response.boothPrice = stallDetails.price; // ADD THIS LINE
     
     res.status(201).json({
       success: true,
@@ -214,7 +218,6 @@ async getAllExhibitors(req, res) {
     }
     if (sector) where.sector = sector;
     if (status && status !== 'all') {
-      // Map frontend status to database status
       const dbStatus = status === 'active' ? 'approved' : status;
       where.status = dbStatus;
     }
@@ -243,10 +246,12 @@ async getAllExhibitors(req, res) {
         } catch {}
       }
       
-      // Get stall details
+      // Get stall details with PRICE
       let boothSize = '';
       let boothType = 'standard';
       let boothDimensions = '';
+      let boothPrice = ''; // ADD THIS LINE
+      
       if (data.stallDetails) {
         try {
           const stallDetails = typeof data.stallDetails === 'string' 
@@ -255,6 +260,7 @@ async getAllExhibitors(req, res) {
           boothSize = stallDetails.size || '';
           boothType = stallDetails.type || 'standard';
           boothDimensions = stallDetails.dimensions || '';
+          boothPrice = stallDetails.price || ''; // ADD THIS LINE
         } catch {}
       }
       
@@ -272,6 +278,7 @@ async getAllExhibitors(req, res) {
         boothSize: boothSize,
         boothType: boothType,
         boothDimensions: boothDimensions,
+        boothPrice: boothPrice, // ADD THIS LINE
         status: frontendStatus,
         originalPassword: originalPassword,
         createdAt: data.createdAt
@@ -296,7 +303,6 @@ async getAllExhibitors(req, res) {
     });
   }
 }
-
   // Get exhibitor statistics
   async getExhibitorStats(req, res) {
     try {
@@ -434,7 +440,7 @@ async updateExhibitor(req, res) {
     }
 
     // Handle stall details update
-    if (updateData.boothSize || updateData.boothType || updateData.boothDimensions || updateData.boothNotes) {
+    if (updateData.boothSize || updateData.boothType || updateData.boothDimensions || updateData.boothNotes || updateData.boothPrice) {
       // Get existing stall details or create new
       let stallDetails = exhibitor.stallDetails || {};
       
@@ -447,11 +453,12 @@ async updateExhibitor(req, res) {
         }
       }
       
-      // Update with new values
+      // Update with new values - PRESERVE PRICE
       if (updateData.boothSize !== undefined) stallDetails.size = updateData.boothSize;
       if (updateData.boothType !== undefined) stallDetails.type = updateData.boothType;
       if (updateData.boothDimensions !== undefined) stallDetails.dimensions = updateData.boothDimensions;
       if (updateData.boothNotes !== undefined) stallDetails.notes = updateData.boothNotes;
+      if (updateData.boothPrice !== undefined) stallDetails.price = updateData.boothPrice; // ADD THIS LINE
       
       updateData.stallDetails = stallDetails;
     }
@@ -514,6 +521,18 @@ async updateExhibitor(req, res) {
     // Get updated exhibitor
     const updatedExhibitor = await Exhibitor.findByPk(id);
     const response = updatedExhibitor.toJSON();
+    
+    // Parse stallDetails to include price in response
+    if (response.stallDetails) {
+      if (typeof response.stallDetails === 'string') {
+        try {
+          response.stallDetails = JSON.parse(response.stallDetails);
+        } catch {
+          response.stallDetails = {};
+        }
+      }
+      response.boothPrice = response.stallDetails.price || ''; // ADD THIS LINE
+    }
     
     // Map "approved" back to "active" for frontend
     if (response.status === 'approved') {

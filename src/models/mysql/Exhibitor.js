@@ -56,10 +56,30 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'boothNumber'
     },
-      stallDetails: {
-      type: DataTypes.JSON,  // or DataTypes.TEXT for MySQL < 5.7
+    stallDetails: {
+      type: DataTypes.JSON,
       allowNull: true,
-      field: 'stallDetails'
+      field: 'stallDetails',
+      get() {
+        const rawValue = this.getDataValue('stallDetails');
+        if (!rawValue) return {};
+        
+        if (typeof rawValue === 'string') {
+          try {
+            return JSON.parse(rawValue);
+          } catch {
+            return {};
+          }
+        }
+        return rawValue;
+      },
+      set(value) {
+        if (typeof value === 'object') {
+          this.setDataValue('stallDetails', JSON.stringify(value));
+        } else {
+          this.setDataValue('stallDetails', value);
+        }
+      }
     }, 
     status: {
       type: DataTypes.ENUM('pending', 'active', 'inactive', 'approved', 'rejected'),
@@ -77,7 +97,27 @@ module.exports = (sequelize) => {
     },
     metadata: {
       type: DataTypes.JSON,
-      allowNull: true
+      allowNull: true,
+      get() {
+        const rawValue = this.getDataValue('metadata');
+        if (!rawValue) return {};
+        
+        if (typeof rawValue === 'string') {
+          try {
+            return JSON.parse(rawValue);
+          } catch {
+            return {};
+          }
+        }
+        return rawValue;
+      },
+      set(value) {
+        if (typeof value === 'object') {
+          this.setDataValue('metadata', JSON.stringify(value));
+        } else {
+          this.setDataValue('metadata', value);
+        }
+      }
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -97,18 +137,14 @@ module.exports = (sequelize) => {
       beforeCreate: async (exhibitor) => {
         console.log('🔄 beforeCreate hook called for:', exhibitor.email);
         
-        // Only hash if password is provided and not already hashed
         if (exhibitor.password && !exhibitor.password.startsWith('$2')) {
           console.log('🔑 Hashing password for new exhibitor');
           const bcrypt = require('bcryptjs');
           const hashedPassword = await bcrypt.hash(exhibitor.password, 10);
           exhibitor.password = hashedPassword;
           console.log('✅ Password hashed');
-        } else if (exhibitor.password?.startsWith('$2')) {
-          console.log('⚠️ Password already hashed, skipping re-hash');
         }
         
-        // Store original password in metadata if provided via _originalPassword
         if (exhibitor._originalPassword) {
           console.log('📝 Storing original password in metadata');
           const metadata = exhibitor.metadata || {};
@@ -123,33 +159,20 @@ module.exports = (sequelize) => {
       beforeUpdate: async (exhibitor) => {
         console.log('🔄 beforeUpdate hook called for:', exhibitor.email);
         
-        // Check if password field is being updated
         if (exhibitor.changed('password')) {
           console.log('📝 Password field changed');
           
-          // Only hash if it's not already a bcrypt hash
           if (exhibitor.password && !exhibitor.password.startsWith('$2')) {
             console.log('🔑 Hashing updated password');
             const bcrypt = require('bcryptjs');
             const hashedPassword = await bcrypt.hash(exhibitor.password, 10);
             exhibitor.password = hashedPassword;
             console.log('✅ Updated password hashed');
-          } else if (exhibitor.password?.startsWith('$2')) {
-            console.log('⚠️ Updated password already hashed, using as-is');
           }
           
-          // Update metadata with new original password if provided
           if (exhibitor._originalPassword) {
             console.log('📝 Updating metadata with new original password');
             let metadata = exhibitor.metadata || {};
-            if (typeof metadata === 'string') {
-              try {
-                metadata = JSON.parse(metadata);
-              } catch {
-                metadata = {};
-              }
-            }
-            
             metadata.originalPassword = exhibitor._originalPassword;
             metadata.passwordUpdatedAt = new Date().toISOString();
             exhibitor.metadata = metadata;
@@ -157,13 +180,11 @@ module.exports = (sequelize) => {
           }
         }
         
-        // Always update timestamp
         exhibitor.updatedAt = new Date();
       }
     }
   });
 
-  // Instance method to check password
   Exhibitor.prototype.comparePassword = function(candidatePassword) {
     const bcrypt = require('bcryptjs');
     return bcrypt.compare(candidatePassword, this.password);
