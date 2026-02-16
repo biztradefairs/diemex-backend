@@ -54,7 +54,12 @@ router.get('/profile', async (req, res) => {
         description: exhibitor.description || '',
         status: exhibitor.status || 'active',
         createdAt: exhibitor.createdAt,
-        updatedAt: exhibitor.updatedAt
+        updatedAt: exhibitor.updatedAt,
+            stallDetails: stallDetails,
+    boothSize: stallDetails.size || '',
+    boothType: stallDetails.type || 'standard',
+    boothDimensions: stallDetails.dimensions || '',
+    boothNotes: stallDetails.notes || ''
       }
     });
   } catch (error) {
