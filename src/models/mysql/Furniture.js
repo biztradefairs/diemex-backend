@@ -1,4 +1,3 @@
-// src/models/mysql/Furniture.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
