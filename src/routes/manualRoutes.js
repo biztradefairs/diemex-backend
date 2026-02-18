@@ -136,6 +136,11 @@ router.get('/:id/download-count', manualController.getDownloadCount);
 // Get single manual by ID - MUST be last
 router.get('/:id', manualController.getManual);
 
+router.get('/admin/all', manualController.getAllManualsForAdmin);
+
+// Get statistics for admin exhibition page
+router.get('/admin/statistics', manualController.getAdminStatistics);
+
 // ======================================================
 // EXISTING ADMIN ROUTES (Protected)
 // ======================================================
