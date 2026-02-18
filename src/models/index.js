@@ -1,4 +1,3 @@
-// src/models/index.js
 const database = require('../config/database');
 
 let models = {};
@@ -73,11 +72,17 @@ const modelFactories = {
     return RequirementFactory(sequelize);
   },
 
-  // ADD THIS - Manual model
   Manual: () => {
     const ManualFactory = require('./mysql/Manual');
     const sequelize = database.getConnection('mysql');
     return ManualFactory(sequelize);
+  },
+
+  // ADD THIS - Furniture model
+  Furniture: () => {
+    const FurnitureFactory = require('./mysql/Furniture');
+    const sequelize = database.getConnection('mysql');
+    return FurnitureFactory(sequelize);
   },
 
   // MongoDB models
@@ -89,6 +94,7 @@ const modelFactories = {
   MongoPayment: () => require('./mongodb/Payment'),
   MongoMedia: () => require('./mongodb/Media'),
   MongoAlert: () => require('./mongodb/Alert')
+  
 };
 
 function init() {
@@ -172,7 +178,8 @@ function getModel(name) {
   const altNames = {
     FloorPlan: 'MongoFloorPlan',
     User: 'MongoUser',
-    Manual: 'Manual' // Add this
+    Manual: 'Manual',
+    Furniture: 'Furniture' // Add this
   };
 
   if (altNames[name] && models[altNames[name]]) {
