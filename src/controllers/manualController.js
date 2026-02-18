@@ -3,6 +3,7 @@ const manualService = require('../services/manualService');
 const { v4: uuidv4 } = require('uuid');
 
 // In-memory storage for text sections (replace with database later)
+
 let textSections = [
   {
     id: '1',
@@ -53,6 +54,7 @@ let textSections = [
     updatedAt: new Date().toISOString()
   }
 ];
+global.textSections = textSections;
 
 class ManualController {
   // ==================== TEXT SECTIONS METHODS ====================
@@ -910,7 +912,153 @@ class ManualController {
       });
     }
   }
+  // Add this method to your manualController.js - this will return ALL manuals in the format your frontend expects
 
+// Get all manuals for admin exhibition page (combines text sections and PDFs)
+async getAllManualsForAdmin(req, res) {
+  try {
+    // 1. Get PDFs from manualService
+    const pdfsResult = await manualService.getAllManuals({});
+    const pdfs = pdfsResult.data || [];
+    
+    // 2. Get text sections from your in-memory array or database
+    // Using the textSections array from your controller
+    const textSections = global.textSections || []; // Make sure this is accessible
+    
+    // 3. Transform text sections to match the Manual interface expected by frontend
+    const formattedSections = textSections.map(section => ({
+      id: section.id,
+      title: section.title,
+      description: section.content.substring(0, 100) + (section.content.length > 100 ? '...' : ''),
+      category: section.category.charAt(0).toUpperCase() + section.category.slice(1), // Capitalize first letter
+      version: '1.0',
+      file_path: '',
+      file_name: '',
+      file_size: '0 KB',
+      mime_type: 'text/plain',
+      last_updated: section.updatedAt || section.createdAt || new Date().toISOString().split('T')[0],
+      updated_by: 'Admin',
+      downloads: 0,
+      status: 'published',
+      metadata: {},
+      type: 'section' // Add type to distinguish
+    }));
+
+    // 4. Transform PDFs to match the Manual interface
+    const formattedPDFs = pdfs.map(pdf => ({
+      id: pdf.id,
+      title: pdf.title,
+      description: pdf.description || pdf.title,
+      category: pdf.category || 'General',
+      version: pdf.version || '1.0',
+      file_path: pdf.file_path || '',
+      file_name: pdf.file_name || '',
+      file_size: pdf.file_size || '0 KB',
+      mime_type: pdf.mime_type || 'application/pdf',
+      last_updated: pdf.last_updated || new Date().toISOString().split('T')[0],
+      updated_by: pdf.updated_by || 'Admin',
+      downloads: pdf.downloads || 0,
+      status: pdf.status || 'published',
+      metadata: pdf.metadata || {},
+      type: 'pdf'
+    }));
+
+    // 5. Combine both
+    const allManuals = [...formattedSections, ...formattedPDFs];
+
+    // 6. Apply filters if any
+    let filteredManuals = allManuals;
+    
+    if (req.query.category && req.query.category !== 'all') {
+      filteredManuals = filteredManuals.filter(m => 
+        m.category.toLowerCase() === req.query.category.toLowerCase()
+      );
+    }
+
+    if (req.query.search) {
+      const searchTerm = req.query.search.toLowerCase();
+      filteredManuals = filteredManuals.filter(m => 
+        m.title.toLowerCase().includes(searchTerm) || 
+        m.description.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    // 7. Sort by last_updated (newest first)
+    filteredManuals.sort((a, b) => 
+      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+    );
+
+    res.json({
+      success: true,
+      data: filteredManuals,
+      count: filteredManuals.length
+    });
+
+  } catch (error) {
+    console.error('Error in getAllManualsForAdmin:', error);
+    res.status(500).json({ 
+      success: false, 
+      data: [],
+      message: error.message || 'Failed to fetch manuals'
+    });
+  }
+}
+
+// Also add this method to get statistics for admin
+async getAdminStatistics(req, res) {
+  try {
+    // Get PDFs
+    const pdfsResult = await manualService.getAllManuals({});
+    const pdfs = pdfsResult.data || [];
+    
+    // Get text sections
+    const textSections = global.textSections || [];
+    
+    const totalManuals = pdfs.length + textSections.length;
+    const publishedManuals = pdfs.filter(p => p.status === 'published').length + 
+                            textSections.filter(s => s.status !== 'draft').length;
+    const draftManuals = pdfs.filter(p => p.status === 'draft').length;
+    
+    const totalDownloads = pdfs.reduce((sum, p) => sum + (p.downloads || 0), 0);
+    
+    // Category stats
+    const categoryMap = new Map();
+    
+    [...pdfs, ...textSections].forEach(item => {
+      const cat = item.category || 'General';
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+    });
+    
+    const categoryStats = Array.from(categoryMap.entries()).map(([category, count]) => ({
+      category,
+      count
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        totalManuals,
+        publishedManuals,
+        draftManuals,
+        totalDownloads,
+        categoryStats
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in getAdminStatistics:', error);
+    res.status(200).json({ 
+      success: true,
+      data: {
+        totalManuals: 0,
+        publishedManuals: 0,
+        draftManuals: 0,
+        totalDownloads: 0,
+        categoryStats: []
+      }
+    });
+  }
+}
   async getDownloadCount(req, res) {
     try {
       const { id } = req.params;
