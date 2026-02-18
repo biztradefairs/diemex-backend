@@ -439,8 +439,8 @@ async updateExhibitor(req, res) {
       console.log('🔄 Mapped "active" to "approved" for database');
     }
 
-    // Handle stall details update
-    if (updateData.boothSize || updateData.boothType || updateData.boothDimensions || updateData.boothNotes || updateData.boothPrice) {
+    // Handle stall details update - CRITICAL PART
+    if (updateData.stallDetails) {
       // Get existing stall details or create new
       let stallDetails = exhibitor.stallDetails || {};
       
@@ -453,14 +453,36 @@ async updateExhibitor(req, res) {
         }
       }
       
-      // Update with new values - PRESERVE PRICE
-      if (updateData.boothSize !== undefined) stallDetails.size = updateData.boothSize;
-      if (updateData.boothType !== undefined) stallDetails.type = updateData.boothType;
-      if (updateData.boothDimensions !== undefined) stallDetails.dimensions = updateData.boothDimensions;
-      if (updateData.boothNotes !== undefined) stallDetails.notes = updateData.boothNotes;
-      if (updateData.boothPrice !== undefined) stallDetails.price = updateData.boothPrice; // ADD THIS LINE
+      // Merge with new data - PRESERVE ALL FIELDS including price
+      stallDetails = {
+        ...stallDetails,
+        ...updateData.stallDetails
+      };
       
       updateData.stallDetails = stallDetails;
+      console.log('🏪 Updated stallDetails with price:', stallDetails);
+    }
+
+    // Handle metadata update
+    if (updateData.metadata) {
+      let metadata = exhibitor.metadata || {};
+      
+      // Parse if it's a string
+      if (typeof metadata === 'string') {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch {
+          metadata = {};
+        }
+      }
+      
+      // Merge with new data
+      metadata = {
+        ...metadata,
+        ...updateData.metadata
+      };
+      
+      updateData.metadata = metadata;
     }
 
     // Use raw SQL to avoid Sequelize issues
@@ -494,9 +516,21 @@ async updateExhibitor(req, res) {
       updates.push('boothNumber = ?');
       values.push(updateData.boothNumber);
     }
+    if (updateData.website !== undefined) {
+      updates.push('website = ?');
+      values.push(updateData.website);
+    }
+    if (updateData.address !== undefined) {
+      updates.push('address = ?');
+      values.push(updateData.address);
+    }
     if (updateData.stallDetails !== undefined) {
       updates.push('stallDetails = ?');
       values.push(JSON.stringify(updateData.stallDetails));
+    }
+    if (updateData.metadata !== undefined) {
+      updates.push('metadata = ?');
+      values.push(JSON.stringify(updateData.metadata));
     }
     if (updateData.status !== undefined) {
       updates.push('status = ?');
@@ -531,7 +565,17 @@ async updateExhibitor(req, res) {
           response.stallDetails = {};
         }
       }
-      response.boothPrice = response.stallDetails.price || ''; // ADD THIS LINE
+    }
+    
+    // Parse metadata
+    if (response.metadata) {
+      if (typeof response.metadata === 'string') {
+        try {
+          response.metadata = JSON.parse(response.metadata);
+        } catch {
+          response.metadata = {};
+        }
+      }
     }
     
     // Map "approved" back to "active" for frontend
