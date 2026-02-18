@@ -19,6 +19,7 @@ router.use('/stall', stallRoutes);
 
 // ==================== PROFILE ROUTES ====================
 
+// In exhibitorDashboard.js - GET /profile
 router.get('/profile', async (req, res) => {
   try {
     const modelFactory = require('../models');
@@ -33,24 +34,90 @@ router.get('/profile', async (req, res) => {
       });
     }
 
-    // Convert to plain object first (VERY IMPORTANT)
+    // Convert to plain object
     const exhibitorData = exhibitor.toJSON();
 
     // Safely parse stallDetails
     let stallDetails = {};
-
     if (exhibitorData.stallDetails) {
       if (typeof exhibitorData.stallDetails === 'string') {
         try {
           stallDetails = JSON.parse(exhibitorData.stallDetails);
         } catch (err) {
-          console.error('❌ JSON parse error:', err.message);
+          console.error('❌ JSON parse error for stallDetails:', err.message);
           stallDetails = {};
         }
       } else {
         stallDetails = exhibitorData.stallDetails;
       }
     }
+
+    // Safely parse metadata
+    let metadata = {};
+    if (exhibitorData.metadata) {
+      if (typeof exhibitorData.metadata === 'string') {
+        try {
+          metadata = JSON.parse(exhibitorData.metadata);
+        } catch (err) {
+          console.error('❌ JSON parse error for metadata:', err.message);
+          metadata = {};
+        }
+      } else {
+        metadata = exhibitorData.metadata;
+      }
+    }
+
+    // Build contact person from metadata
+    const contactPerson = {
+      name: metadata.contact_name || metadata.contactPerson?.name || exhibitorData.name || '',
+      jobTitle: metadata.contact_job_title || metadata.contactPerson?.jobTitle || '',
+      email: exhibitorData.email || metadata.email || '',
+      phone: exhibitorData.phone || metadata.phone || '',
+      alternatePhone: metadata.alternate_phone || metadata.contactPerson?.alternatePhone || ''
+    };
+
+    // Build exhibition object
+    const exhibition = {
+      pavilion: metadata.pavilion || metadata.exhibition?.pavilion || '',
+      hall: metadata.hall || metadata.exhibition?.hall || '',
+      standNumber: exhibitorData.boothNumber || metadata.boothNumber || metadata.exhibition?.standNumber || '',
+      floorPlanUrl: metadata.floor_plan_url || metadata.exhibition?.floorPlanUrl || ''
+    };
+
+    // Build address object
+    const address = {
+      street: metadata.address_street || metadata.address?.street || '',
+      city: metadata.address_city || metadata.address?.city || '',
+      state: metadata.address_state || metadata.address?.state || '',
+      country: metadata.address_country || metadata.address?.country || '',
+      countryCode: metadata.address_country_code || metadata.address?.countryCode || '',
+      postalCode: metadata.address_postal_code || metadata.address?.postalCode || ''
+    };
+
+// Parse sector
+let sectorArray = [];
+if (exhibitorData.sector) {
+  if (typeof exhibitorData.sector === 'string') {
+    sectorArray = exhibitorData.sector.split(',').map((s) => s.trim()).filter(Boolean);
+  } else if (Array.isArray(exhibitorData.sector)) {
+    sectorArray = exhibitorData.sector;
+  }
+} else if (metadata.sector) {
+  if (typeof metadata.sector === 'string') {
+    sectorArray = metadata.sector.split(',').map((s) => s.trim()).filter(Boolean);
+  } else if (Array.isArray(metadata.sector)) {
+    sectorArray = metadata.sector;
+  }
+}
+
+    // Build social media object
+    const socialMedia = {
+      website: exhibitorData.website || metadata.website || metadata.socialMedia?.website || '',
+      linkedin: metadata.linkedin || metadata.socialMedia?.linkedin || '',
+      twitter: metadata.twitter || metadata.socialMedia?.twitter || '',
+      facebook: metadata.facebook || metadata.socialMedia?.facebook || '',
+      instagram: metadata.instagram || metadata.socialMedia?.instagram || ''
+    };
 
     res.json({
       success: true,
@@ -60,21 +127,47 @@ router.get('/profile', async (req, res) => {
         email: exhibitorData.email,
         phone: exhibitorData.phone || '',
         company: exhibitorData.company,
-        sector: exhibitorData.sector || '',
+        sector: sectorArray,
         boothNumber: exhibitorData.boothNumber || '',
         website: exhibitorData.website || '',
         address: exhibitorData.address || '',
-        description: exhibitorData.description || '',
+        description: metadata.about || exhibitorData.description || '',
         status: exhibitorData.status || 'active',
         createdAt: exhibitorData.createdAt,
         updatedAt: exhibitorData.updatedAt,
 
-        // ✅ Booth fields
+        // Company info from metadata
+        shortName: metadata.shortName || metadata.short_name || '',
+        registrationNumber: metadata.registrationNumber || metadata.registration_number || '',
+        yearEstablished: metadata.yearEstablished || metadata.year_established || '',
+        companySize: metadata.companySize || metadata.company_size || '',
+        companyType: metadata.companyType || metadata.company_type || '',
+
+        // Contact person
+        contactPerson: contactPerson,
+
+        // Exhibition
+        exhibition: exhibition,
+
+        // Address
+        address: address,
+
+        // Business details
+        about: metadata.about || '',
+        mission: metadata.mission || '',
+        vision: metadata.vision || '',
+
+        // Social media
+        socialMedia: socialMedia,
+
+        // ✅ Booth fields from stallDetails
         stallDetails: stallDetails,
-        boothSize: stallDetails.size || '',
-        boothType: stallDetails.type || 'standard',
-        boothDimensions: stallDetails.dimensions || '',
-        boothNotes: stallDetails.notes || ''
+        boothSize: stallDetails.size || metadata.boothSize || metadata.booth_size || '',
+        boothType: stallDetails.type || metadata.boothType || metadata.booth_type || 'standard',
+        boothDimensions: stallDetails.dimensions || metadata.boothDimensions || metadata.booth_dimensions || '',
+        boothNotes: stallDetails.notes || metadata.boothNotes || metadata.booth_notes || '',
+        boothStatus: metadata.boothStatus || metadata.booth_status || stallDetails.status || 'pending',
+        boothPrice: stallDetails.price || metadata.boothPrice || metadata.booth_price || '' // CRITICAL: Include price
       }
     });
 
@@ -499,6 +592,59 @@ router.post('/requirements', async (req, res) => {
   }
 });
 
+
+// Add this to exhibitorDashboard.js
+router.get('/booth', async (req, res) => {
+  try {
+    const modelFactory = require('../models');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+
+    const exhibitor = await Exhibitor.findByPk(req.user.id);
+
+    if (!exhibitor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Exhibitor not found'
+      });
+    }
+
+    // Safely parse stallDetails
+    let stallDetails = {};
+    if (exhibitor.stallDetails) {
+      if (typeof exhibitor.stallDetails === 'string') {
+        try {
+          stallDetails = JSON.parse(exhibitor.stallDetails);
+        } catch (err) {
+          console.error('❌ JSON parse error for stallDetails:', err.message);
+          stallDetails = {};
+        }
+      } else {
+        stallDetails = exhibitor.stallDetails;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        boothNumber: exhibitor.boothNumber || '',
+        stallDetails: stallDetails,
+        size: stallDetails.size || '',
+        type: stallDetails.type || 'standard',
+        dimensions: stallDetails.dimensions || '',
+        notes: stallDetails.notes || '',
+        price: stallDetails.price || '', // CRITICAL: Include price
+        status: stallDetails.status || 'pending'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ BOOTH ERROR:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 // ==================== MANUAL ROUTES ====================
 
 // Get manual
