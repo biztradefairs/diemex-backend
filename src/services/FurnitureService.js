@@ -1,3 +1,4 @@
+const { Op } = require('sequelize'); // IMPORTANT: Add this line
 const { v4: uuidv4 } = require('uuid');
 const cloudinaryService = require('./CloudinaryService');
 
@@ -66,15 +67,15 @@ class FurnitureService {
 
       const whereClause = {};
 
-      if (filters.category && filters.category !== 'all') {
+      if (filters.category && filters.category !== 'all' && filters.category !== 'undefined') {
         whereClause.category = filters.category;
       }
 
-      if (filters.inStock !== undefined) {
+      if (filters.inStock !== undefined && filters.inStock !== 'undefined') {
         whereClause.inStock = filters.inStock === 'true';
       }
 
-      if (filters.search) {
+      if (filters.search && filters.search.trim() !== '') {
         whereClause[Op.or] = [
           { description: { [Op.like]: `%${filters.search}%` } },
           { code: { [Op.like]: `%${filters.search}%` } }

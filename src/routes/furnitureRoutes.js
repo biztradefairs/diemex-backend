@@ -30,14 +30,26 @@ const upload = multer({
 });
 
 // ======================================================
+// TEST ROUTE - To verify routes are working
+// ======================================================
+router.get('/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Furniture API is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ======================================================
 // PUBLIC ROUTES (Accessible without authentication)
 // ======================================================
 
 // Get statistics
 router.get('/statistics', furnitureController.getStatistics);
 
-// Get all furniture with filters
+// Get all furniture with filters - handle both with and without trailing slash
 router.get('/', furnitureController.getAllFurniture);
+router.get('', furnitureController.getAllFurniture);
 
 // Search furniture
 router.get('/search', furnitureController.searchFurniture);
@@ -55,6 +67,13 @@ router.get('/:id', furnitureController.getFurniture);
 // Create furniture
 router.post(
   '/',
+  authenticate,
+  authorize(['admin']),
+  upload.single('image'),
+  furnitureController.createFurniture
+);
+router.post(
+  '',
   authenticate,
   authorize(['admin']),
   upload.single('image'),

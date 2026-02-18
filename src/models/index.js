@@ -79,11 +79,11 @@ const modelFactories = {
   },
 
   // ADD THIS - Furniture model
-  Furniture: () => {
-    const FurnitureFactory = require('./mysql/Furniture');
-    const sequelize = database.getConnection('mysql');
-    return FurnitureFactory(sequelize);
-  },
+ Furniture: () => {
+  const FurnitureFactory = require('./mysql/Furniture');
+  const sequelize = database.getConnection('mysql');
+  return FurnitureFactory(sequelize);
+},
 
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
