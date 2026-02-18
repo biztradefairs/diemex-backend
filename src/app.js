@@ -21,6 +21,7 @@ const emailService = require('./services/EmailService');
 const floorPlanImageRoutes = require('./routes/floorPlanImage');
 const uploadRoutes = require('./routes/upload');
 const manualRoutes = require('./routes/manualRoutes');
+const manualPDFRoutes = require('./routes/manualPDFRoutes');
 
 class AppServer {
   constructor() {
@@ -347,6 +348,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
     this.app.use('/api/floor-plan', floorPlanImageRoutes);
     this.app.use('/api/manuals', manualRoutes);
+    this.app.use('/api/manuals/pdfs', manualPDFRoutes);
     
     // ======================
     // Documentation & Info
