@@ -1,9 +1,475 @@
 // src/controllers/manualController.js
 const manualService = require('../services/manualService');
-const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
+// In-memory storage for text sections (replace with database later)
+let textSections = [
+  {
+    id: '1',
+    title: 'Event Overview',
+    content: 'Welcome to the Annual Tech Expo 2024. This event brings together industry leaders, innovators, and technology enthusiasts from around the world.',
+    category: 'general',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '2',
+    title: 'Setup Schedule',
+    content: 'Exhibitor setup: January 28, 2024 (8:00 AM - 6:00 PM)\nEvent days: January 29-31, 2024 (9:00 AM - 5:00 PM)\nBreakdown: February 1, 2024 (8:00 AM - 6:00 PM)',
+    category: 'setup',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '3',
+    title: 'Rules & Regulations',
+    content: '1. All displays must be within allocated stall boundaries\n2. Fire regulations must be strictly followed\n3. No amplified sound without prior approval\n4. All materials must be fire-retardant\n5. No blocking of aisles or emergency exits',
+    category: 'rules',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '4',
+    title: 'Contact Information',
+    content: 'Event Coordinator: Sarah Johnson\nPhone: +1 (555) 123-4567\nEmail: sarah@techexpo2024.com\nEmergency Contact: Security Desk - Extension 911',
+    category: 'contact',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '5',
+    title: 'Electrical Requirements',
+    content: 'Standard stalls include 2 power outlets (110V). Additional power requirements must be requested at least 2 weeks before the event.',
+    category: 'setup',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: '6',
+    title: 'Shipping & Logistics',
+    content: 'All shipments must arrive between January 25-27, 2024. Use the provided shipping labels and include your stall number on all packages.',
+    category: 'general',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
 
 class ManualController {
-  // Create new manual
+  // ==================== TEXT SECTIONS METHODS ====================
+
+  // Get all text sections
+  async getAllSections(req, res) {
+    try {
+      // Filter by category if provided
+      let sections = textSections;
+      
+      if (req.query.category && req.query.category !== 'all') {
+        sections = textSections.filter(s => s.category === req.query.category);
+      }
+
+      // Search if provided
+      if (req.query.search) {
+        const searchTerm = req.query.search.toLowerCase();
+        sections = sections.filter(s => 
+          s.title.toLowerCase().includes(searchTerm) || 
+          s.content.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      res.json({
+        success: true,
+        data: sections,
+        count: sections.length
+      });
+    } catch (error) {
+      console.error('Error in getAllSections:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to fetch sections',
+        data: []
+      });
+    }
+  }
+
+  // Get single section by ID
+  async getSectionById(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const section = textSections.find(s => s.id === id);
+      
+      if (!section) {
+        return res.status(404).json({
+          success: false,
+          message: 'Section not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: section
+      });
+    } catch (error) {
+      console.error('Error in getSectionById:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to fetch section'
+      });
+    }
+  }
+
+  // Create new text section
+  async createSection(req, res) {
+    try {
+      const { title, content, category } = req.body;
+      
+      // Validation
+      if (!title || !title.trim()) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Title is required' 
+        });
+      }
+
+      if (!content || !content.trim()) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Content is required' 
+        });
+      }
+
+      // Create new section
+      const newSection = {
+        id: uuidv4(),
+        title: title.trim(),
+        content: content.trim(),
+        category: category || 'general',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // Add to array (replace with database insert)
+      textSections.push(newSection);
+      
+      console.log('✅ Created new section:', newSection);
+
+      res.status(201).json({
+        success: true,
+        data: newSection,
+        message: 'Manual section created successfully'
+      });
+    } catch (error) {
+      console.error('❌ Error in createSection:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to create section'
+      });
+    }
+  }
+
+  // Update text section
+  async updateSection(req, res) {
+    try {
+      const { id } = req.params;
+      const { title, content, category } = req.body;
+
+      // Find section
+      const sectionIndex = textSections.findIndex(s => s.id === id);
+      
+      if (sectionIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: 'Section not found'
+        });
+      }
+
+      // Update section
+      textSections[sectionIndex] = {
+        ...textSections[sectionIndex],
+        title: title || textSections[sectionIndex].title,
+        content: content || textSections[sectionIndex].content,
+        category: category || textSections[sectionIndex].category,
+        updatedAt: new Date().toISOString()
+      };
+
+      res.json({
+        success: true,
+        data: textSections[sectionIndex],
+        message: 'Section updated successfully'
+      });
+    } catch (error) {
+      console.error('Error in updateSection:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to update section'
+      });
+    }
+  }
+
+  // Delete text section
+  async deleteSection(req, res) {
+    try {
+      const { id } = req.params;
+
+      const sectionIndex = textSections.findIndex(s => s.id === id);
+      
+      if (sectionIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: 'Section not found'
+        });
+      }
+
+      // Remove section
+      textSections.splice(sectionIndex, 1);
+
+      res.json({
+        success: true,
+        message: 'Section deleted successfully'
+      });
+    } catch (error) {
+      console.error('Error in deleteSection:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to delete section'
+      });
+    }
+  }
+
+  // Bulk delete sections
+  async bulkDeleteSections(req, res) {
+    try {
+      const { ids } = req.body;
+      
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide an array of section IDs to delete'
+        });
+      }
+
+      const results = [];
+      const errors = [];
+      
+      for (const id of ids) {
+        const index = textSections.findIndex(s => s.id === id);
+        if (index !== -1) {
+          textSections.splice(index, 1);
+          results.push(id);
+        } else {
+          errors.push({ id, error: 'Section not found' });
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Deleted ${results.length} sections, ${errors.length} failed`,
+        data: {
+          successful: results,
+          failed: errors
+        }
+      });
+    } catch (error) {
+      console.error('Error in bulkDeleteSections:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to bulk delete sections'
+      });
+    }
+  }
+
+  // ==================== PDF METHODS ====================
+
+  // Upload PDF (using existing manualService)
+  async uploadPDF(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No file uploaded' 
+        });
+      }
+
+      const { title, category, description } = req.body;
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Title is required'
+        });
+      }
+
+      console.log('Uploading PDF:', {
+        title,
+        category,
+        file: req.file.originalname
+      });
+
+      // Use existing manualService to handle upload
+      const result = await manualService.createManual(
+        { 
+          title: title.trim(),
+          description: description || '',
+          category: category || 'general',
+          type: 'pdf',
+          status: 'published'
+        }, 
+        req.file
+      );
+
+      res.status(201).json({
+        success: true,
+        data: result.data,
+        message: 'PDF uploaded successfully'
+      });
+    } catch (error) {
+      console.error('Error in uploadPDF:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to upload PDF'
+      });
+    }
+  }
+
+  // Get all PDFs
+  async getAllPDFs(req, res) {
+    try {
+      // Get all manuals and filter for PDFs
+      const result = await manualService.getAllManuals({});
+      
+      // You might want to add a type field to distinguish PDFs
+      const pdfs = result.data.filter(manual => 
+        manual.mime_type === 'application/pdf' || 
+        manual.category?.toLowerCase().includes('pdf')
+      );
+
+      res.json({
+        success: true,
+        data: pdfs,
+        count: pdfs.length
+      });
+    } catch (error) {
+      console.error('Error in getAllPDFs:', error);
+      res.status(500).json({ 
+        success: false, 
+        data: [],
+        message: error.message || 'Failed to fetch PDFs'
+      });
+    }
+  }
+
+  // Get PDF by ID
+  async getPDFById(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const result = await manualService.getManualById(id);
+      
+      if (!result.data || result.data.mime_type !== 'application/pdf') {
+        return res.status(404).json({
+          success: false,
+          message: 'PDF not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result.data
+      });
+    } catch (error) {
+      console.error('Error in getPDFById:', error);
+      
+      if (error.message === 'Manual not found') {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'PDF not found' 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to fetch PDF'
+      });
+    }
+  }
+
+  // Delete PDF
+  async deletePDF(req, res) {
+    try {
+      const { id } = req.params;
+      
+      // First check if it's a PDF
+      const manual = await manualService.getManualById(id);
+      
+      if (!manual.data || manual.data.mime_type !== 'application/pdf') {
+        return res.status(404).json({
+          success: false,
+          message: 'PDF not found'
+        });
+      }
+
+      const result = await manualService.deleteManual(id);
+      
+      res.json({
+        success: true,
+        message: result.message || 'PDF deleted successfully'
+      });
+    } catch (error) {
+      console.error('Error in deletePDF:', error);
+      
+      if (error.message === 'Manual not found') {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'PDF not found' 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to delete PDF'
+      });
+    }
+  }
+
+  // Download PDF
+  async downloadPDF(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const result = await manualService.downloadManual(id);
+      
+      // Redirect to the file URL or send file
+      if (result.fileUrl) {
+        return res.redirect(result.fileUrl);
+      }
+
+      res.json({
+        success: true,
+        data: {
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName
+        }
+      });
+    } catch (error) {
+      console.error('Error in downloadPDF:', error);
+      
+      if (error.message === 'Manual not found') {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'PDF not found' 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to download PDF'
+      });
+    }
+  }
+
+  // ==================== EXISTING METHODS ====================
+  // (Keep all your existing methods here - createManual, getAllManuals, etc.)
+  
   async createManual(req, res) {
     try {
       if (!req.file) {
@@ -38,7 +504,6 @@ class ManualController {
     }
   }
 
-  // Get all manuals with optional filters
   async getAllManuals(req, res) {
     try {
       const filters = {
@@ -47,7 +512,6 @@ class ManualController {
         search: req.query.search
       };
       
-      // Remove undefined filters
       Object.keys(filters).forEach(key => 
         filters[key] === undefined && delete filters[key]
       );
@@ -66,13 +530,12 @@ class ManualController {
       console.error('Error in getAllManuals:', error);
       res.status(500).json({ 
         success: false, 
-        data: [], // Return empty array on error
+        data: [],
         message: error.message || 'Failed to fetch manuals'
       });
     }
   }
 
-  // Get single manual by ID
   async getManual(req, res) {
     try {
       const { id } = req.params;
@@ -84,8 +547,6 @@ class ManualController {
         });
       }
 
-      console.log('Fetching manual with ID:', id);
-      
       const result = await manualService.getManualById(id);
       
       res.json({
@@ -109,7 +570,6 @@ class ManualController {
     }
   }
 
-  // Update manual
   async updateManual(req, res) {
     try {
       const { id } = req.params;
@@ -121,8 +581,6 @@ class ManualController {
         });
       }
 
-      console.log('Updating manual with ID:', id);
-      
       const result = await manualService.updateManual(
         id, 
         req.body, 
@@ -151,7 +609,6 @@ class ManualController {
     }
   }
 
-  // Delete manual
   async deleteManual(req, res) {
     try {
       const { id } = req.params;
@@ -163,8 +620,6 @@ class ManualController {
         });
       }
 
-      console.log('Deleting manual with ID:', id);
-      
       const result = await manualService.deleteManual(id);
       
       res.json({
@@ -188,7 +643,6 @@ class ManualController {
     }
   }
 
-  // Download manual
   async downloadManual(req, res) {
     try {
       const { id } = req.params;
@@ -200,11 +654,8 @@ class ManualController {
         });
       }
 
-      console.log('Downloading manual with ID:', id);
-      
       const result = await manualService.downloadManual(id);
       
-      // Return in the format expected by frontend
       return res.json({
         success: true,
         data: {
@@ -233,7 +684,6 @@ class ManualController {
     }
   }
 
-  // Get manual preview information
   async getPreview(req, res) {
     try {
       const { id } = req.params;
@@ -245,8 +695,6 @@ class ManualController {
         });
       }
 
-      console.log('Getting preview for manual ID:', id);
-      
       const manual = await manualService.getManualById(id);
       const previewUrl = manualService.getPreviewUrl(manual.data);
       
@@ -277,11 +725,8 @@ class ManualController {
     }
   }
 
-  // Get statistics (public now)
   async getStatistics(req, res) {
     try {
-      console.log('Fetching manual statistics');
-      
       const result = await manualService.getStatistics();
       
       res.json({
@@ -290,7 +735,6 @@ class ManualController {
       });
     } catch (error) {
       console.error('Error in getStatistics:', error);
-      // Return default stats on error
       res.status(200).json({ 
         success: true,
         data: {
@@ -304,7 +748,6 @@ class ManualController {
     }
   }
 
-  // Bulk delete manuals
   async bulkDeleteManuals(req, res) {
     try {
       const { ids } = req.body;
@@ -316,8 +759,6 @@ class ManualController {
         });
       }
 
-      console.log('Bulk deleting manuals with IDs:', ids);
-      
       const results = [];
       const errors = [];
       
@@ -347,7 +788,6 @@ class ManualController {
     }
   }
 
-  // Update manual status
   async updateManualStatus(req, res) {
     try {
       const { id } = req.params;
@@ -367,8 +807,6 @@ class ManualController {
         });
       }
 
-      console.log(`Updating manual ${id} status to: ${status}`);
-      
       const result = await manualService.updateManual(id, { status });
       
       res.json({
@@ -393,7 +831,6 @@ class ManualController {
     }
   }
 
-  // Get manuals by category
   async getManualsByCategory(req, res) {
     try {
       const { category } = req.params;
@@ -405,8 +842,6 @@ class ManualController {
         });
       }
 
-      console.log(`Fetching manuals in category: ${category}`);
-      
       const result = await manualService.getAllManuals({ category });
       
       res.json({
@@ -424,16 +859,12 @@ class ManualController {
     }
   }
 
-  // Get recent manuals
   async getRecentManuals(req, res) {
     try {
       const limit = parseInt(req.query.limit) || 5;
       
-      console.log(`Fetching ${limit} recent manuals`);
-      
       const result = await manualService.getAllManuals({});
       
-      // Sort by last_updated and take the most recent
       const recentManuals = result.data
         .sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))
         .slice(0, limit);
@@ -452,7 +883,6 @@ class ManualController {
     }
   }
 
-  // Search manuals
   async searchManuals(req, res) {
     try {
       const { q } = req.query;
@@ -464,8 +894,6 @@ class ManualController {
         });
       }
 
-      console.log(`Searching manuals for: ${q}`);
-      
       const result = await manualService.getAllManuals({ search: q });
       
       res.json({
@@ -483,7 +911,6 @@ class ManualController {
     }
   }
 
-  // Get manual download count
   async getDownloadCount(req, res) {
     try {
       const { id } = req.params;
@@ -495,8 +922,6 @@ class ManualController {
         });
       }
 
-      console.log(`Fetching download count for manual ID: ${id}`);
-      
       const manual = await manualService.getManualById(id);
       
       res.json({
@@ -525,5 +950,4 @@ class ManualController {
   }
 }
 
-// Make sure to export the instance
 module.exports = new ManualController();

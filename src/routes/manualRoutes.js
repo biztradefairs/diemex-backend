@@ -34,10 +34,82 @@ const upload = multer({
 });
 
 // ======================================================
-// PUBLIC ROUTES (Accessible without authentication)
+// TEXT SECTIONS ROUTES (for exhibitor manual content)
 // ======================================================
 
-// Get statistics - MOVED TO TOP to avoid conflict
+// Get all text sections (public)
+router.get('/sections', manualController.getAllSections);
+
+// Get single section by ID (public)
+router.get('/sections/:id', manualController.getSectionById);
+
+// Create new text section (admin only)
+router.post(
+  '/sections',
+  authenticate,
+  authorize(['admin']),
+  manualController.createSection
+);
+
+// Update text section (admin only)
+router.put(
+  '/sections/:id',
+  authenticate,
+  authorize(['admin']),
+  manualController.updateSection
+);
+
+// Delete text section (admin only)
+router.delete(
+  '/sections/:id',
+  authenticate,
+  authorize(['admin']),
+  manualController.deleteSection
+);
+
+// Bulk delete sections (admin only)
+router.delete(
+  '/sections/bulk/delete',
+  authenticate,
+  authorize(['admin']),
+  manualController.bulkDeleteSections
+);
+
+// ======================================================
+// PDF ROUTES (separate from text sections)
+// ======================================================
+
+// Get all PDFs (public)
+router.get('/pdfs', manualController.getAllPDFs);
+
+// Get PDF by ID (public)
+router.get('/pdfs/:id', manualController.getPDFById);
+
+// Download PDF (public)
+router.get('/pdfs/:id/download', manualController.downloadPDF);
+
+// Upload PDF (admin only)
+router.post(
+  '/pdfs/upload',
+  authenticate,
+  authorize(['admin']),
+  upload.single('file'),
+  manualController.uploadPDF
+);
+
+// Delete PDF (admin only)
+router.delete(
+  '/pdfs/:id',
+  authenticate,
+  authorize(['admin']),
+  manualController.deletePDF
+);
+
+// ======================================================
+// EXISTING PUBLIC ROUTES
+// ======================================================
+
+// Get statistics
 router.get('/statistics/overview', manualController.getStatistics);
 
 // Get all manuals with filters
@@ -65,7 +137,7 @@ router.get('/:id/download-count', manualController.getDownloadCount);
 router.get('/:id', manualController.getManual);
 
 // ======================================================
-// ADMIN ROUTES (Protected)
+// EXISTING ADMIN ROUTES (Protected)
 // ======================================================
 
 // Create manual
