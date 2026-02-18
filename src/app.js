@@ -22,6 +22,7 @@ const floorPlanImageRoutes = require('./routes/floorPlanImage');
 const uploadRoutes = require('./routes/upload');
 const manualRoutes = require('./routes/manualRoutes');
 const manualPDFRoutes = require('./routes/manualPDFRoutes');
+const furnitureRoutes = require('./routes/furnitureRoutes');
 
 class AppServer {
   constructor() {
@@ -349,6 +350,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     this.app.use('/api/floor-plan', floorPlanImageRoutes);
     this.app.use('/api/manuals', manualRoutes);
     this.app.use('/api/manuals/pdfs', manualPDFRoutes);
+    this.app.use('/api/admin/furniture', furnitureRoutes);
     
     // ======================
     // Documentation & Info
