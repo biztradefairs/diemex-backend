@@ -10,47 +10,32 @@ module.exports = (sequelize) => {
     category: {
       type: DataTypes.ENUM('A', 'B'),
       allowNull: false,
-      unique: true,
-      validate: {
-        isIn: [['A', 'B']]
-      }
+      unique: true
     },
     ratePerDay: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'rate_per_day'
     },
     workingHours: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 8,
-      validate: {
-        min: 1,
-        max: 24
-      }
+      field: 'working_hours'
     },
     description: {
-      type: DataTypes.TEXT,
-      allowNull: true
+      type: DataTypes.TEXT
     },
     isActive: {
       type: DataTypes.BOOLEAN,
-      defaultValue: true
+      defaultValue: true,
+      field: 'is_active'
     }
   }, {
-    tableName: 'HostessCategories',
+    tableName: 'hostess_categories',
     timestamps: true,
-    indexes: [
-      {
-        fields: ['category']
-      },
-      {
-        fields: ['isActive']
-      }
-    ]
+    underscored: true
   });
 
   return HostessCategory;
