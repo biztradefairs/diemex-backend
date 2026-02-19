@@ -7,10 +7,10 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    chargesPerShift: {
+    ratePerStaffPerDay: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 0,
+      defaultValue: 1200,
       validate: {
         min: 0
       }
@@ -18,22 +18,19 @@ module.exports = (sequelize) => {
     shiftHours: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 10,
+      defaultValue: 8,
       validate: {
         min: 1,
         max: 24
       }
     },
-    description: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      defaultValue: 'Charges per shift (10 hours)'
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
     }
   }, {
     tableName: 'HousekeepingConfigs',
-    timestamps: true,
-    updatedAt: 'updatedAt',
-    createdAt: 'createdAt'
+    timestamps: true
   });
 
   return HousekeepingConfig;
