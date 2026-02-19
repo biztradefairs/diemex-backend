@@ -25,12 +25,22 @@ class HousekeepingService {
 
       if (!config) {
         config = await HousekeepingConfig.create({
-          chargesPerShift: 2000,
+          ratePerStaffPerDay: 2000,
           shiftHours: 10
         });
       }
 
-      return { success: true, data: config };
+      // 🔥 Return frontend-compatible structure
+      return {
+        success: true,
+        data: {
+          id: config.id,
+          chargesPerShift: config.ratePerStaffPerDay,
+          shiftHours: config.shiftHours,
+          createdAt: config.createdAt,
+          updatedAt: config.updatedAt
+        }
+      };
     } catch (error) {
       throw new Error(`Error fetching housekeeping config: ${error.message}`);
     }
@@ -47,17 +57,17 @@ class HousekeepingService {
 
       if (!config) {
         config = await HousekeepingConfig.create({
-          chargesPerShift: parseInt(chargesPerShift) || 0,
+          ratePerStaffPerDay: parseInt(chargesPerShift) || 0,
           shiftHours: parseInt(shiftHours) || 10
         });
       } else {
         await config.update({
-          chargesPerShift: parseInt(chargesPerShift) || config.chargesPerShift,
+          ratePerStaffPerDay: parseInt(chargesPerShift) || config.ratePerStaffPerDay,
           shiftHours: shiftHours ? parseInt(shiftHours) : config.shiftHours
         });
       }
 
-      return { success: true, data: config };
+      return this.getConfig();
     } catch (error) {
       throw new Error(`Error updating housekeeping config: ${error.message}`);
     }
@@ -123,21 +133,17 @@ class HousekeepingService {
 
       if (config) {
         await config.update({
-          chargesPerShift: 2000,
+          ratePerStaffPerDay: 2000,
           shiftHours: 10
         });
       } else {
         config = await HousekeepingConfig.create({
-          chargesPerShift: 2000,
+          ratePerStaffPerDay: 2000,
           shiftHours: 10
         });
       }
 
-      return {
-        success: true,
-        data: config,
-        message: 'Rate reset to default (₹2000 per 10-hour shift)'
-      };
+      return this.getConfig();
     } catch (error) {
       throw new Error(`Error resetting rate: ${error.message}`);
     }
