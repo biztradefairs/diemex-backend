@@ -7,19 +7,16 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    costPerConnection: {
+    ratePerConnection: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'rate_per_connection'
     }
   }, {
-    tableName: 'WaterConnectionConfigs',
+    tableName: 'water_connection_configs',
     timestamps: true,
-    updatedAt: 'updatedAt',
-    createdAt: 'createdAt'
+    underscored: true
   });
 
   return WaterConnectionConfig;
