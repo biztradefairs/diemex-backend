@@ -101,7 +101,11 @@ RentalItem: () => {
   const sequelize = database.getConnection('mysql');
   return RentalItemFactory(sequelize);
 },
-
+HostessCategory: () => {
+  const HostessCategoryFactory = require('./mysql/HostessCategory');
+  const sequelize = database.getConnection('mysql');
+  return HostessCategoryFactory(sequelize);
+},
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
@@ -199,7 +203,8 @@ function getModel(name) {
     Furniture: 'Furniture', // Add this
     CompressedAirOption: 'CompressedAirOption',
     ElectricalRate: 'ElectricalRate',
-    RentalItem: 'RentalItem'
+    RentalItem: 'RentalItem',
+    HostessCategory: 'HostessCategory'
   };
 
   if (altNames[name] && models[altNames[name]]) {
