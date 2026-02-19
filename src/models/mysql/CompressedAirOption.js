@@ -10,51 +10,39 @@ module.exports = (sequelize) => {
     cfmRange: {
       type: DataTypes.STRING,
       allowNull: false,
-      validate: {
-        notEmpty: true
-      }
+      field: 'cfm_range'   // ✅ maps to DB column
     },
     costPerConnection: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'cost_per_connection'   // ✅
     },
     powerKW: {
       type: DataTypes.FLOAT,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'power_kw'   // ✅
     },
     isActive: {
       type: DataTypes.BOOLEAN,
-      defaultValue: true
+      defaultValue: true,
+      field: 'is_active'   // ✅
     },
     displayOrder: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
-      validate: {
-        min: 1
-      }
+      field: 'display_order'   // ✅
     }
   }, {
     tableName: 'compressed_air_options',
     timestamps: true,
+    underscored: true,   // 🔥 important for created_at, updated_at
     indexes: [
-      {
-        fields: ['displayOrder']
-      },
-      {
-        fields: ['isActive']
-      },
-      {
-        fields: ['cfmRange']
-      }
+      { fields: ['display_order'] },
+      { fields: ['is_active'] },
+      { fields: ['cfm_range'] }
     ]
   });
 
