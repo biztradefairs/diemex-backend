@@ -16,40 +16,31 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'rate_per_kw'
     },
     effectiveFrom: {
       type: DataTypes.DATEONLY,
-      allowNull: false
+      allowNull: false,
+      field: 'effective_from'
     },
     effectiveTo: {
       type: DataTypes.DATEONLY,
-      allowNull: true
+      allowNull: true,
+      field: 'effective_to'
     },
     isActive: {
       type: DataTypes.BOOLEAN,
-      defaultValue: true
+      defaultValue: true,
+      field: 'is_active'
     },
     description: {
       type: DataTypes.TEXT,
       allowNull: true
     }
   }, {
-    tableName: 'ElectricalRates',
+    tableName: 'electrical_rates',
     timestamps: true,
-    indexes: [
-      {
-        fields: ['type']
-      },
-      {
-        fields: ['isActive']
-      },
-      {
-        fields: ['effectiveFrom']
-      }
-    ]
+    underscored: true
   });
 
   return ElectricalRate;
