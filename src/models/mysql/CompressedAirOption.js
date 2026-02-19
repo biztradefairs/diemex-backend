@@ -43,7 +43,7 @@ module.exports = (sequelize) => {
       }
     }
   }, {
-    tableName: 'CompressedAirOptions',
+    tableName: 'compressed_air_options',
     timestamps: true,
     indexes: [
       {
