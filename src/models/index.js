@@ -96,6 +96,11 @@ ElectricalRate: () => {
   const sequelize = database.getConnection('mysql');
   return ElectricalRateFactory(sequelize);
 },
+RentalItem: () => {
+  const RentalItemFactory = require('./mysql/RentalItem');
+  const sequelize = database.getConnection('mysql');
+  return RentalItemFactory(sequelize);
+},
 
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
@@ -193,7 +198,8 @@ function getModel(name) {
     Manual: 'Manual',
     Furniture: 'Furniture', // Add this
     CompressedAirOption: 'CompressedAirOption',
-    ElectricalRate: 'ElectricalRate'
+    ElectricalRate: 'ElectricalRate',
+    RentalItem: 'RentalItem'
   };
 
   if (altNames[name] && models[altNames[name]]) {
