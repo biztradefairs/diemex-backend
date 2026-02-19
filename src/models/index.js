@@ -106,6 +106,11 @@ HostessCategory: () => {
   const sequelize = database.getConnection('mysql');
   return HostessCategoryFactory(sequelize);
 },
+SecurityGuardConfig: () => {
+  const SecurityGuardConfigFactory = require('./mysql/SecurityGuardConfig');
+  const sequelize = database.getConnection('mysql');
+  return SecurityGuardConfigFactory(sequelize);
+},
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
@@ -204,7 +209,8 @@ function getModel(name) {
     CompressedAirOption: 'CompressedAirOption',
     ElectricalRate: 'ElectricalRate',
     RentalItem: 'RentalItem',
-    HostessCategory: 'HostessCategory'
+    HostessCategory: 'HostessCategory',
+    SecurityGuardConfig: 'SecurityGuardConfig'
   };
 
   if (altNames[name] && models[altNames[name]]) {
