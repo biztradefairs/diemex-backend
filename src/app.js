@@ -23,6 +23,7 @@ const uploadRoutes = require('./routes/upload');
 const manualRoutes = require('./routes/manualRoutes');
 const manualPDFRoutes = require('./routes/manualPDFRoutes');
 const furnitureRoutes = require('./routes/furnitureRoutes');
+const compressedAirRoutes = require('./routes/compressedAirRoutes');
 
 class AppServer {
   constructor() {
@@ -351,6 +352,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     this.app.use('/api/manuals', manualRoutes);
     this.app.use('/api/manuals/pdfs', manualPDFRoutes);
     this.app.use('/api/admin/furniture', furnitureRoutes);
+    this.app.use('/api/admin/compressed-air', compressedAirRoutes);
     
     // ======================
     // Documentation & Info

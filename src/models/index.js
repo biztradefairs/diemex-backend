@@ -84,6 +84,12 @@ const modelFactories = {
   const sequelize = database.getConnection('mysql');
   return FurnitureFactory(sequelize);
 },
+// ADD THIS inside modelFactories object
+CompressedAirOption: () => {
+  const CompressedAirOptionFactory = require('./mysql/CompressedAirOption');
+  const sequelize = database.getConnection('mysql');
+  return CompressedAirOptionFactory(sequelize);
+},
 
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
@@ -179,7 +185,8 @@ function getModel(name) {
     FloorPlan: 'MongoFloorPlan',
     User: 'MongoUser',
     Manual: 'Manual',
-    Furniture: 'Furniture' // Add this
+    Furniture: 'Furniture', // Add this
+    CompressedAirOption: 'CompressedAirOption'
   };
 
   if (altNames[name] && models[altNames[name]]) {
