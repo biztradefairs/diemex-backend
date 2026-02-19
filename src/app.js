@@ -29,6 +29,7 @@ const rentalItemRoutes = require('./routes/rentalItemRoutes');
 const hostessCategoryRoutes = require('./routes/hostessCategoryRoutes');
 const securityGuardRoutes = require('./routes/securityGuardRoutes');
 const waterConnectionRoutes = require('./routes/waterConnectionRoutes');
+const housekeepingRoutes = require('./routes/housekeepingRoutes');
 
 class AppServer {
   constructor() {
@@ -363,6 +364,7 @@ class AppServer {
     this.app.use('/api/admin/hostess-rates', hostessCategoryRoutes);
     this.app.use('/api/admin/security-guard', securityGuardRoutes);
     this.app.use('/api/admin/water-connection', waterConnectionRoutes);
+    this.app.use('/api/admin/housekeeping', housekeepingRoutes);
 
     // ======================
     // Documentation & Info
