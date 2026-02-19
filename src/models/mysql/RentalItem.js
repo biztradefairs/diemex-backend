@@ -11,24 +11,17 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      validate: {
-        notEmpty: true
-      }
+      field: 'item_key'
     },
     description: {
       type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notEmpty: true
-      }
+      allowNull: false
     },
     costFor3Days: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      validate: {
-        min: 0
-      }
+      field: 'cost_for_3_days'
     },
     category: {
       type: DataTypes.ENUM('AV', 'IT', 'Other'),
@@ -37,41 +30,27 @@ module.exports = (sequelize) => {
     },
     imageUrl: {
       type: DataTypes.STRING,
-      allowNull: true
+      field: 'image_url'
     },
     cloudinaryPublicId: {
       type: DataTypes.STRING,
-      allowNull: true
+      field: 'cloudinary_public_id'
     },
     isActive: {
       type: DataTypes.BOOLEAN,
-      defaultValue: true
+      defaultValue: true,
+      field: 'is_active'
     },
     displayOrder: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 1,
-      validate: {
-        min: 1
-      }
+      field: 'display_order'
     }
   }, {
-    tableName: 'RentalItems',
+    tableName: 'rental_items',
     timestamps: true,
-    indexes: [
-      {
-        fields: ['itemKey']
-      },
-      {
-        fields: ['category']
-      },
-      {
-        fields: ['isActive']
-      },
-      {
-        fields: ['displayOrder']
-      }
-    ]
+    underscored: true
   });
 
   return RentalItem;
