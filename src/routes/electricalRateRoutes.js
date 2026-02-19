@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const electricalRateController = require('../controllers/ElectricalRateController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, authenticateAny } = require('../middleware/auth');
 
 // ======================================================
 // TEST ROUTE - To verify routes are working
@@ -22,7 +22,12 @@ router.get('/test', (req, res) => {
 router.get('/statistics', electricalRateController.getStatistics);
 
 // Get active rate by type
-router.get('/active/:type', electricalRateController.getActiveRate);
+router.get(
+  '/active/:type',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  electricalRateController.getActiveRate
+);
 
 // Get all rates with filters - handle both with and without trailing slash
 router.get('/', electricalRateController.getAllRates);

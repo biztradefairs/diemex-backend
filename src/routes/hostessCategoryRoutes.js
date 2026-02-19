@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const hostessCategoryController = require('../controllers/HostessCategoryController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, authenticateAny } = require('../middleware/auth');
 
 // ======================================================
 // TEST ROUTE - To verify routes are working
@@ -13,6 +13,14 @@ router.get('/test', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+router.get(
+  '/',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  hostessCategoryController.getAllCategories
+);
+
 
 // ======================================================
 // PUBLIC ROUTES (Accessible without authentication)

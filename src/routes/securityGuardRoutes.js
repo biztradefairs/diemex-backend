@@ -1,37 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const securityGuardController = require('../controllers/SecurityGuardController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authenticateAny, authorize } = require('../middleware/auth');
 
-// ======================================================
-// TEST ROUTE - To verify routes are working
-// ======================================================
-router.get('/test', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Security Guard API is working!',
-    timestamp: new Date().toISOString()
-  });
-});
+/* ===============================
+   SHARED ROUTES
+================================= */
 
-// ======================================================
-// PUBLIC ROUTES (Accessible without authentication)
-// ======================================================
+router.get(
+  '/config',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  securityGuardController.getConfig
+);
 
-// Get current configuration
-router.get('/config', securityGuardController.getConfig);
-
-// Calculate cost for guards
 router.post('/calculate', securityGuardController.calculateCost);
 
-// Get rate history
-router.get('/history', securityGuardController.getRateHistory);
+/* ===============================
+   ADMIN ONLY
+================================= */
 
-// ======================================================
-// ADMIN ROUTES (Protected)
-// ======================================================
-
-// Update configuration
 router.put(
   '/config',
   authenticate,
@@ -39,7 +27,6 @@ router.put(
   securityGuardController.updateConfig
 );
 
-// Reset to default rate
 router.post(
   '/reset',
   authenticate,
