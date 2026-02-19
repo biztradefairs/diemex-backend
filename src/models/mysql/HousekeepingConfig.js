@@ -9,7 +9,7 @@ module.exports = (sequelize) => {
     },
 
     // ✅ MAIN FIELD
-    chargesPerShift: {
+    ratePerStaffPerDay: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 2000,
