@@ -26,6 +26,7 @@ const furnitureRoutes = require('./routes/furnitureRoutes');
 const compressedAirRoutes = require('./routes/compressedAirRoutes');
 const electricalRateRoutes = require('./routes/electricalRateRoutes');
 const rentalItemRoutes = require('./routes/rentalItemRoutes');
+const hostessCategoryRoutes = require('./routes/hostessCategoryRoutes');
 
 class AppServer {
   constructor() {
@@ -357,6 +358,7 @@ class AppServer {
     this.app.use('/api/admin/compressed-air', compressedAirRoutes);
     this.app.use('/api/admin/electrical-rates', electricalRateRoutes);
     this.app.use('/api/admin/rental-items', rentalItemRoutes);
+    this.app.use('/api/admin/hostess-rates', hostessCategoryRoutes);
 
     // ======================
     // Documentation & Info
