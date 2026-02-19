@@ -111,6 +111,11 @@ SecurityGuardConfig: () => {
   const sequelize = database.getConnection('mysql');
   return SecurityGuardConfigFactory(sequelize);
 },
+WaterConnectionConfig: () => {
+  const WaterConnectionConfigFactory = require('./mysql/WaterConnectionConfig');
+  const sequelize = database.getConnection('mysql');
+  return WaterConnectionConfigFactory(sequelize);
+},
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
@@ -210,7 +215,8 @@ function getModel(name) {
     ElectricalRate: 'ElectricalRate',
     RentalItem: 'RentalItem',
     HostessCategory: 'HostessCategory',
-    SecurityGuardConfig: 'SecurityGuardConfig'
+    SecurityGuardConfig: 'SecurityGuardConfig',
+    WaterConnectionConfig: 'WaterConnectionConfig'
   };
 
   if (altNames[name] && models[altNames[name]]) {
