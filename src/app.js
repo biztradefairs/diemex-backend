@@ -24,6 +24,7 @@ const manualRoutes = require('./routes/manualRoutes');
 const manualPDFRoutes = require('./routes/manualPDFRoutes');
 const furnitureRoutes = require('./routes/furnitureRoutes');
 const compressedAirRoutes = require('./routes/compressedAirRoutes');
+const electricalRateRoutes = require('./routes/electricalRateRoutes');
 
 class AppServer {
   constructor() {
@@ -32,7 +33,7 @@ class AppServer {
     this.port = process.env.PORT || 5000;
     this.env = process.env.NODE_ENV || 'development';
     this.isShuttingDown = false;
-    
+
     // Bind methods
     this.initialize = this.initialize.bind(this);
     this.connectDatabase = this.connectDatabase.bind(this);
@@ -47,11 +48,11 @@ class AppServer {
     this.databaseTest = this.databaseTest.bind(this);
     this.testExhibitorCreation = this.testExhibitorCreation.bind(this);
     this.modelList = this.modelList.bind(this);
-    
+
     // Handle uncaught exceptions
     process.on('uncaughtException', this.handleUncaughtException.bind(this));
     process.on('unhandledRejection', this.handleUnhandledRejection.bind(this));
-    
+
     this.initialize();
   }
 
@@ -65,25 +66,25 @@ class AppServer {
       console.log(`🗄️ Database Type: ${process.env.DB_TYPE || 'mysql'}`);
       console.log(`🌐 Port: ${this.port}`);
       console.log('='.repeat(60));
-      
+
       // Step 1: Connect to database
       await this.connectDatabase();
-      
+
       // Step 2: Initialize models
       await this.initializeModels();
-      
+
       // Step 3: Setup middleware
       this.setupMiddleware();
-      
+
       // Step 4: Setup routes
       this.setupRoutes();
-      
+
       // Step 5: Setup error handling
       this.setupErrorHandling();
-      
+
       // Step 6: Start server
       await this.start();
-      
+
     } catch (error) {
       console.error(`❌ Failed to initialize server: ${error.message}`);
       console.error(error.stack);
@@ -93,21 +94,21 @@ class AppServer {
 
   async connectDatabase() {
     console.log('\n🔗 Connecting to database...');
-    
+
     try {
       await database.connect();
       console.log('✅ Database connected successfully');
-      
+
       // Test database connection
       const sequelize = database.getConnection('mysql');
       if (sequelize) {
         await sequelize.authenticate();
         console.log('✅ Database authentication successful');
       }
-      
+
     } catch (error) {
       console.error(`❌ Database connection failed: ${error.message}`);
-      
+
       // If in development, try to continue with mock data
       if (this.env === 'development') {
         console.warn('⚠️ Continuing in development mode with limited functionality');
@@ -120,13 +121,13 @@ class AppServer {
   async initializeModels() {
     try {
       console.log('\n📦 Initializing models...');
-      
+
       const modelFactory = require('./models');
-      
+
       // Initialize models
       const models = modelFactory.init();
       console.log(`✅ Models initialized: ${Object.keys(models).length} models loaded`);
-      
+
       // Sync models with database (development only)
       if (this.env === 'development') {
         console.log('🔄 Syncing database models...');
@@ -142,7 +143,7 @@ class AppServer {
           }
         }
       }
-      
+
       // Test email service
       console.log('\n📧 Testing email service...');
       try {
@@ -153,10 +154,10 @@ class AppServer {
       } catch (emailError) {
         console.warn('⚠️ Email service not available:', emailError.message);
       }
-      
+
     } catch (error) {
       console.error(`❌ Failed to initialize models: ${error.message}`);
-      
+
       // If in development, log error but continue
       if (this.env === 'development') {
         console.warn('⚠️ Continuing in development mode with limited functionality');
@@ -168,25 +169,25 @@ class AppServer {
 
   setupMiddleware() {
     console.log('\n⚙️ Setting up middleware...');
-    
+
     // Security headers
     this.app.use(helmet({
       contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false
     }));
-    
+
     const corsOptions = {
       origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        
+
         const allowedOrigins = [
           'http://localhost:3000',
           'http://localhost:3001',
           'http://127.0.0.1:3000',
           process.env.FRONTEND_URL
         ].filter(Boolean);
-        
+
         if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
           callback(null, true);
         } else {
@@ -202,68 +203,68 @@ class AppServer {
     this.app.use(cors(corsOptions));
     // Pre-flight requests
     this.app.options('*', cors(corsOptions));
-    
+
     // HTTP request logging
     this.app.use(morgan(this.env === 'development' ? 'dev' : 'combined'));
-    
+
     // Body parsing
-    this.app.use(express.json({ 
+    this.app.use(express.json({
       limit: '50mb',
       verify: (req, res, buf) => {
         req.rawBody = buf.toString();
       }
     }));
-    
-    this.app.use(express.urlencoded({ 
-      extended: true, 
-      limit: '50mb' 
+
+    this.app.use(express.urlencoded({
+      extended: true,
+      limit: '50mb'
     }));
 
 
-this.app.get('/api/test/manuals-setup', async (req, res) => {
-  try {
-    const models = require('./models');
-    models.init();
-    
-    const { Manual } = models.getAllModels();
-    
-    if (!Manual) {
-      return res.status(500).json({
-        success: false,
-        error: 'Manual model not found',
-        loadedModels: Object.keys(models.getAllModels())
-      });
-    }
+    this.app.get('/api/test/manuals-setup', async (req, res) => {
+      try {
+        const models = require('./models');
+        models.init();
 
-    // Try to query the table
-    const count = await Manual.count();
-    
-    // Try to get table info
-    const tableInfo = await Manual.sequelize.query(
-      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Manuals'",
-      { type: Manual.sequelize.QueryTypes.SELECT }
-    );
+        const { Manual } = models.getAllModels();
 
-    res.json({
-      success: true,
-      message: 'Manual model is working',
-      tableExists: tableInfo[0].count > 0,
-      recordCount: count,
-      loadedModels: Object.keys(models.getAllModels())
+        if (!Manual) {
+          return res.status(500).json({
+            success: false,
+            error: 'Manual model not found',
+            loadedModels: Object.keys(models.getAllModels())
+          });
+        }
+
+        // Try to query the table
+        const count = await Manual.count();
+
+        // Try to get table info
+        const tableInfo = await Manual.sequelize.query(
+          "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Manuals'",
+          { type: Manual.sequelize.QueryTypes.SELECT }
+        );
+
+        res.json({
+          success: true,
+          message: 'Manual model is working',
+          tableExists: tableInfo[0].count > 0,
+          recordCount: count,
+          loadedModels: Object.keys(models.getAllModels())
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+      }
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-    
+
     // Static files
     const uploadsPath = path.join(__dirname, '../uploads');
     const publicPath = path.join(__dirname, '../public');
-    
+
     // Create directories if they don't exist
     const fs = require('fs');
     [uploadsPath, publicPath].forEach(dir => {
@@ -272,15 +273,15 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         console.log(`📁 Created directory: ${dir}`);
       }
     });
-    
+
     this.app.use('/uploads', express.static(uploadsPath));
     this.app.use('/public', express.static(publicPath));
     this.app.use('/api/upload', uploadRoutes);
-    
+
     // Request logging middleware
     this.app.use((req, res, next) => {
       const startTime = Date.now();
-      
+
       // Log request details
       if (this.env === 'development') {
         console.log(`📨 ${req.method} ${req.originalUrl}`);
@@ -288,18 +289,18 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           console.log('📦 Body:', JSON.stringify(req.body).substring(0, 200) + '...');
         }
       }
-      
+
       // Add response logging
       const originalSend = res.send;
-      res.send = function(body) {
+      res.send = function (body) {
         const duration = Date.now() - startTime;
         console.log(`✅ ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
         originalSend.call(this, body);
       };
-      
+
       next();
     });
-    
+
     // Health check middleware
     this.app.use((req, res, next) => {
       if (this.isShuttingDown) {
@@ -311,37 +312,37 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
       }
       next();
     });
-    
+
     console.log('✅ Middleware setup complete');
   }
 
   setupRoutes() {
     console.log('\n🚀 Loading API routes...');
-    
+
     // ======================
     // System Status Endpoints
     // ======================
-    
+
     // Health check
     this.app.get('/health', this.healthCheck);
-    
+
     // Database test
     this.app.get('/api/db-test', this.databaseTest);
-    
+
     // Model list
     this.app.get('/api/models', this.modelList);
-    
+
     // Test exhibitor creation
     this.app.post('/api/test-exhibitor', this.testExhibitorCreation);
-    
+
     // ======================
     // API Routes
     // ======================
-    
+
     // Authentication routes
     this.app.use('/api/auth', authRoutes);
     this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
-    
+
     // Protected API routes
     this.app.use('/api/users', userRoutes);
     this.app.use('/api/exhibitors', exhibitorRoutes);
@@ -353,11 +354,12 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     this.app.use('/api/manuals/pdfs', manualPDFRoutes);
     this.app.use('/api/admin/furniture', furnitureRoutes);
     this.app.use('/api/admin/compressed-air', compressedAirRoutes);
-    
+    this.app.use('/api/admin/electrical-rates', electricalRateRoutes);
+
     // ======================
     // Documentation & Info
     // ======================
-    
+
     // API documentation
     this.app.get('/api', (req, res) => {
       res.json({
@@ -375,7 +377,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         documentation: 'See /api/docs for API documentation'
       });
     });
-    
+
     // API documentation
     this.app.get('/api/docs', (req, res) => {
       const docs = {
@@ -414,19 +416,19 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           }
         }
       };
-      
+
       res.json({
         success: true,
         data: docs
       });
     });
-    
+
     // Fix for exhibitor login route
     this.app.post('/auth/exhibitor/login', (req, res, next) => {
       req.url = '/api/auth/exhibitor/login';
       this.app._router.handle(req, res, next);
     });
-    
+
     console.log('✅ API routes loaded successfully');
   }
 
@@ -439,7 +441,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
       const modelFactory = require('./models');
       let dbStatus = 'unknown';
       let exhibitorCount = 0;
-      
+
       try {
         const Exhibitor = modelFactory.getModel('Exhibitor');
         exhibitorCount = await Exhibitor.count();
@@ -447,7 +449,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
       } catch (dbError) {
         dbStatus = 'disconnected';
       }
-      
+
       const health = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -459,7 +461,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         nodeVersion: process.version,
         platform: process.platform
       };
-      
+
       res.json(health);
     } catch (error) {
       res.status(500).json({
@@ -474,10 +476,10 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     try {
       const modelFactory = require('./models');
       const Exhibitor = modelFactory.getModel('Exhibitor');
-      
+
       // Test basic operations
       const count = await Exhibitor.count();
-      
+
       // Try to create and delete a test record
       const testRecord = await Exhibitor.create({
         name: 'Database Test',
@@ -486,9 +488,9 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         password: 'test123',
         status: 'active'
       });
-      
+
       await testRecord.destroy();
-      
+
       res.json({
         success: true,
         message: 'Database connection is working properly',
@@ -513,7 +515,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     try {
       const modelFactory = require('./models');
       const Exhibitor = modelFactory.getModel('Exhibitor');
-      
+
       const testData = {
         name: 'Test Exhibitor ' + Date.now(),
         email: `test-exhibitor-${Date.now()}@example.com`,
@@ -524,15 +526,15 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         boothNumber: 'TEST-' + Math.floor(Math.random() * 1000),
         status: 'active'
       };
-      
+
       const exhibitor = await Exhibitor.create(testData);
-      
+
       // Remove sensitive data
       const responseData = exhibitor.toJSON();
       delete responseData.password;
       delete responseData.resetPasswordToken;
       delete responseData.resetPasswordExpires;
-      
+
       res.json({
         success: true,
         message: 'Test exhibitor created successfully',
@@ -553,7 +555,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
     try {
       const modelFactory = require('./models');
       const models = modelFactory.getAllModels();
-      
+
       const modelInfo = {};
       Object.keys(models).forEach(modelName => {
         const model = models[modelName];
@@ -563,7 +565,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           associations: Object.keys(model.associations || {})
         };
       });
-      
+
       res.json({
         success: true,
         count: Object.keys(models).length,
@@ -579,7 +581,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
 
   setupErrorHandling() {
     console.log('\n⚠️ Setting up error handling...');
-    
+
     // 404 Handler
     this.app.use((req, res, next) => {
       console.warn(`❌ 404 Not Found: ${req.method} ${req.originalUrl}`);
@@ -599,23 +601,23 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         method: req.method,
         body: req.body
       });
-      
+
       // Default error status
       const statusCode = error.statusCode || error.status || 500;
-      
+
       // Prepare error response
       const errorResponse = {
         success: false,
         error: error.message || 'Internal server error',
         timestamp: new Date().toISOString()
       };
-      
+
       // Add stack trace in development
       if (this.env === 'development') {
         errorResponse.stack = error.stack;
         errorResponse.details = error.errors ? error.errors.map(e => e.message) : undefined;
       }
-      
+
       // Handle specific error types
       if (error.name === 'ValidationError') {
         errorResponse.error = 'Validation failed';
@@ -628,10 +630,10 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         errorResponse.error = 'Duplicate entry';
         errorResponse.details = error.errors ? error.errors.map(e => e.message) : undefined;
       }
-      
+
       res.status(statusCode).json(errorResponse);
     });
-    
+
     console.log('✅ Error handling setup complete');
   }
 
@@ -644,11 +646,11 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         console.log(`📊 Health Check: http://localhost:${this.port}/health`);
         console.log(`📚 API Docs: http://localhost:${this.port}/api/docs`);
         console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
-        
+
         // Check email configuration
         const hasEmailConfig = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
         console.log(`📧 Email Service: ${hasEmailConfig ? '✅ Configured' : '❌ Not configured'}`);
-        
+
         console.log('='.repeat(60));
         console.log('\n📋 Available Endpoints:');
         console.log('├── POST /api/exhibitors                 - Create exhibitor (sends email)');
@@ -657,16 +659,16 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
         console.log('├── POST /api/auth/exhibitor/login      - Exhibitor login');
         console.log('└── POST /api/auth/login                - Admin login');
         console.log('='.repeat(60));
-        
+
         // Check/create default admin user
         await this.checkDefaultAdmin();
-        
+
         resolve();
       });
 
       this.server.on('error', (error) => {
         console.error(`❌ Server failed to start: ${error.message}`);
-        
+
         // Handle specific port errors
         if (error.code === 'EADDRINUSE') {
           console.error(`💡 Port ${this.port} is already in use. Try a different port:`);
@@ -674,7 +676,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           console.error(`   Or kill the process using port ${this.port}:`);
           console.error(`   lsof -ti:${this.port} | xargs kill -9`);
         }
-        
+
         reject(error);
       });
     });
@@ -683,20 +685,20 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
   async checkDefaultAdmin() {
     try {
       console.log('\n👤 Checking default admin user...');
-      
+
       const modelFactory = require('./models');
       const User = modelFactory.getModel('User');
       const bcrypt = require('bcryptjs');
-      
+
       // Check if admin exists
       let admin = await User.findOne({ where: { email: 'admin@example.com' } });
-      
+
       if (!admin) {
         console.log('👤 Creating default admin user...');
-        
+
         // Create default admin
         const hashedPassword = await bcrypt.hash('admin123', 10);
-        
+
         admin = await User.create({
           name: 'Administrator',
           email: 'admin@example.com',
@@ -705,13 +707,13 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           status: 'active',
           phone: '+1234567890'
         });
-        
+
         console.log('✅ Default admin user created');
         console.log(`   📧 Email: ${admin.email}`);
         console.log(`   🔑 Password: admin123`);
       } else {
         console.log('✅ Admin user already exists');
-        
+
         // Update password if needed
         if (!admin.password || admin.password.length < 20) {
           console.log('🔄 Updating admin password...');
@@ -720,9 +722,9 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           console.log('✅ Admin password updated');
         }
       }
-      
+
       console.log('✅ Admin user check completed');
-      
+
     } catch (error) {
       console.error(`⚠️ Admin check failed: ${error.message}`);
       console.log('ℹ️ Continuing without admin user...');
@@ -736,7 +738,7 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
   handleUncaughtException(error) {
     console.error('💥 Uncaught Exception:', error);
     console.error(error.stack);
-    
+
     // Attempt graceful shutdown
     if (!this.isShuttingDown) {
       this.isShuttingDown = true;
@@ -751,23 +753,23 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
   handleUnhandledRejection(reason, promise) {
     console.error('💥 Unhandled Rejection at:', promise);
     console.error('Reason:', reason);
-    
+
     // Log but don't exit for unhandled rejections
     console.log('⚠️ Unhandled rejection logged, continuing...');
   }
 
   async stop() {
     if (this.isShuttingDown) return;
-    
+
     this.isShuttingDown = true;
     console.log('\n🛑 Stopping server gracefully...');
-    
+
     return new Promise((resolve) => {
       // Close server
       if (this.server) {
         this.server.close(async () => {
           console.log('✅ HTTP server closed');
-          
+
           try {
             // Close database connections
             await database.disconnect();
@@ -775,11 +777,11 @@ this.app.get('/api/test/manuals-setup', async (req, res) => {
           } catch (dbError) {
             console.error('❌ Error closing database:', dbError.message);
           }
-          
+
           console.log('✅ Server stopped gracefully');
           resolve();
         });
-        
+
         // Force close after 10 seconds
         setTimeout(() => {
           console.log('⚠️ Forcing server shutdown...');
@@ -810,8 +812,8 @@ const appServer = new AppServer();
 global.appServer = appServer;
 
 // Export for testing
-module.exports = { 
-  app: appServer.app, 
+module.exports = {
+  app: appServer.app,
   server: appServer.server,
-  AppServer 
+  AppServer
 };
