@@ -1,4 +1,3 @@
-// models/mysql/WaterConnectionConfig.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -12,12 +11,14 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 15000,
-      field: 'cost_per_connection' // This will create column 'cost_per_connection' in database
+      field: 'cost_per_connection'
     }
   }, {
     tableName: 'water_connection_configs',
     timestamps: true,
-    underscored: true
+    underscored: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
   });
 
   return WaterConnectionConfig;

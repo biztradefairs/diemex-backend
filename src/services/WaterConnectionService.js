@@ -1,82 +1,106 @@
+const { v4: uuidv4 } = require('uuid');
+
 class WaterConnectionService {
   constructor() {
     this.WaterConnectionConfig = null;
+    this.initialized = false;
   }
 
-  async getWaterConnectionModel() {
-    if (!this.WaterConnectionConfig) {
-      try {
-        const models = require('../models');
-        if (!models.getAllModels().WaterConnectionConfig) {
-          console.log('🔄 WaterConnectionConfig model not found, initializing models...');
-          models.init();
-        }
-        this.WaterConnectionConfig = models.getModel('WaterConnectionConfig');
-        console.log('✅ WaterConnectionConfig model loaded in service');
-      } catch (error) {
-        console.error('❌ Failed to load WaterConnectionConfig model:', error);
-        throw new Error('WaterConnectionConfig model not available');
-      }
-    }
-    return this.WaterConnectionConfig;
-  }
+  async initialize() {
+    if (this.initialized) return;
 
-  // Get the current configuration (there should only be one record)
-  async getConfig() {
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      // Get the first record (there should only be one)
-      let config = await WaterConnectionConfig.findOne();
-
-      // If no config exists, create a default one
-      if (!config) {
-        config = await WaterConnectionConfig.create({
-          costPerConnection: 15000 // Default rate
+      const models = require('../models');
+      
+      // Initialize models if not already done
+      if (!models.getAllModels().WaterConnectionConfig) {
+        models.init();
+      }
+      
+      this.WaterConnectionConfig = models.getModel('WaterConnectionConfig');
+      
+      // Sync the model (create table if not exists)
+      await this.WaterConnectionConfig.sync({ alter: true });
+      console.log('✅ WaterConnectionConfig model synced');
+      
+      // Create default config if none exists
+      const count = await this.WaterConnectionConfig.count();
+      if (count === 0) {
+        await this.WaterConnectionConfig.create({
+          costPerConnection: 15000
         });
         console.log('✅ Created default water connection config');
       }
+      
+      this.initialized = true;
+    } catch (error) {
+      console.error('❌ Failed to initialize WaterConnectionService:', error);
+      throw error;
+    }
+  }
 
-      return { success: true, data: config };
+  async getConfig() {
+    await this.initialize();
+    
+    try {
+      let config = await this.WaterConnectionConfig.findOne();
+      
+      if (!config) {
+        config = await this.WaterConnectionConfig.create({
+          costPerConnection: 15000
+        });
+      }
+      
+      return { 
+        success: true, 
+        data: {
+          id: config.id,
+          costPerConnection: config.costPerConnection,
+          createdAt: config.created_at || config.createdAt,
+          updatedAt: config.updated_at || config.updatedAt
+        }
+      };
     } catch (error) {
       console.error('Error in getConfig:', error);
       throw new Error(`Error fetching water connection config: ${error.message}`);
     }
   }
 
-  // Update the configuration
   async updateConfig(costPerConnection) {
+    await this.initialize();
+    
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      // Get the first record (there should only be one)
-      let config = await WaterConnectionConfig.findOne();
-
+      let config = await this.WaterConnectionConfig.findOne();
+      
       if (!config) {
-        // Create new config if doesn't exist
-        config = await WaterConnectionConfig.create({
-          costPerConnection: parseInt(costPerConnection) || 0
+        config = await this.WaterConnectionConfig.create({
+          costPerConnection: parseInt(costPerConnection)
         });
       } else {
-        // Update existing config
-        await config.update({
-          costPerConnection: parseInt(costPerConnection) || 0
-        });
+        config.costPerConnection = parseInt(costPerConnection);
+        await config.save();
       }
-
-      return { success: true, data: config };
+      
+      return { 
+        success: true, 
+        data: {
+          id: config.id,
+          costPerConnection: config.costPerConnection,
+          createdAt: config.created_at || config.createdAt,
+          updatedAt: config.updated_at || config.updatedAt
+        }
+      };
     } catch (error) {
       console.error('Error in updateConfig:', error);
       throw new Error(`Error updating water connection config: ${error.message}`);
     }
   }
 
-  // Calculate total cost for multiple connections
   async calculateCost(numberOfConnections) {
+    await this.initialize();
+    
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      const config = await WaterConnectionConfig.findOne();
+      const config = await this.WaterConnectionConfig.findOne();
       if (!config) {
         throw new Error('Water connection configuration not found');
       }
@@ -98,48 +122,50 @@ class WaterConnectionService {
     }
   }
 
-  // Get rate history
   async getRateHistory() {
+    await this.initialize();
+    
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      // For now, just return the current config with timestamps
-      const config = await WaterConnectionConfig.findOne();
+      const configs = await this.WaterConnectionConfig.findAll({
+        order: [['updated_at', 'DESC']],
+        limit: 10
+      });
       
-      return {
-        success: true,
-        data: config ? [{
-          costPerConnection: config.costPerConnection,
-          updatedAt: config.updatedAt,
-          createdAt: config.createdAt
-        }] : []
-      };
+      const history = configs.map(config => ({
+        costPerConnection: config.costPerConnection,
+        updatedAt: config.updated_at || config.updatedAt
+      }));
+      
+      return { success: true, data: history };
     } catch (error) {
       console.error('Error in getRateHistory:', error);
       return { success: true, data: [] };
     }
   }
 
-  // Reset to default rate
   async resetToDefault() {
+    await this.initialize();
+    
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      let config = await WaterConnectionConfig.findOne();
+      let config = await this.WaterConnectionConfig.findOne();
       
       if (config) {
-        await config.update({
-          costPerConnection: 15000 // Default rate
-        });
+        config.costPerConnection = 15000;
+        await config.save();
       } else {
-        config = await WaterConnectionConfig.create({
+        config = await this.WaterConnectionConfig.create({
           costPerConnection: 15000
         });
       }
 
       return { 
         success: true, 
-        data: config,
+        data: {
+          id: config.id,
+          costPerConnection: config.costPerConnection,
+          createdAt: config.created_at || config.createdAt,
+          updatedAt: config.updated_at || config.updatedAt
+        },
         message: 'Rate reset to default value (₹15000)'
       };
     } catch (error) {
@@ -148,12 +174,11 @@ class WaterConnectionService {
     }
   }
 
-  // Bulk calculation for multiple connection types (if needed in future)
   async bulkCalculate(connections) {
+    await this.initialize();
+    
     try {
-      const WaterConnectionConfig = await this.getWaterConnectionModel();
-
-      const config = await WaterConnectionConfig.findOne();
+      const config = await this.WaterConnectionConfig.findOne();
       if (!config) {
         throw new Error('Water connection configuration not found');
       }
@@ -177,6 +202,28 @@ class WaterConnectionService {
     } catch (error) {
       console.error('Error in bulkCalculate:', error);
       throw new Error(`Error in bulk calculation: ${error.message}`);
+    }
+  }
+
+  async getStatistics() {
+    await this.initialize();
+    
+    try {
+      const config = await this.WaterConnectionConfig.findOne();
+      const totalUpdates = await this.WaterConnectionConfig.count();
+      
+      return {
+        success: true,
+        data: {
+          currentRate: config?.costPerConnection || 15000,
+          createdAt: config?.created_at || config?.createdAt,
+          lastUpdated: config?.updated_at || config?.updatedAt,
+          totalUpdates
+        }
+      };
+    } catch (error) {
+      console.error('Error in getStatistics:', error);
+      throw new Error(`Error fetching statistics: ${error.message}`);
     }
   }
 }

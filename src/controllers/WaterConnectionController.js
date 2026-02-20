@@ -4,8 +4,7 @@ class WaterConnectionController {
   // Get current configuration
   async getConfig(req, res) {
     try {
-      console.log('Fetching water connection configuration');
-      
+      console.log('📊 Fetching water connection configuration');
       const result = await waterConnectionService.getConfig();
       
       res.json({
@@ -13,7 +12,7 @@ class WaterConnectionController {
         data: result.data
       });
     } catch (error) {
-      console.error('Error in getConfig:', error);
+      console.error('❌ Error in getConfig:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch water connection configuration'
@@ -33,16 +32,16 @@ class WaterConnectionController {
         });
       }
 
-      if (costPerConnection < 0) {
+      const cost = parseInt(costPerConnection);
+      if (isNaN(cost) || cost < 0) {
         return res.status(400).json({
           success: false,
-          message: 'Cost cannot be negative'
+          message: 'Cost must be a valid positive number'
         });
       }
 
-      console.log('Updating water connection cost to:', costPerConnection);
-      
-      const result = await waterConnectionService.updateConfig(costPerConnection);
+      console.log('📝 Updating water connection cost to:', cost);
+      const result = await waterConnectionService.updateConfig(cost);
       
       res.json({
         success: true,
@@ -50,7 +49,7 @@ class WaterConnectionController {
         message: 'Water connection rate updated successfully'
       });
     } catch (error) {
-      console.error('Error in updateConfig:', error);
+      console.error('❌ Error in updateConfig:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to update water connection rate'
@@ -70,54 +69,17 @@ class WaterConnectionController {
         });
       }
 
-      const result = await waterConnectionService.calculateCost(connections);
+      const result = await waterConnectionService.calculateCost(parseInt(connections));
       
       res.json({
         success: true,
         data: result.data
       });
     } catch (error) {
-      console.error('Error in calculateCost:', error);
+      console.error('❌ Error in calculateCost:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to calculate cost'
-      });
-    }
-  }
-
-  // Bulk calculate for multiple connection types
-  async bulkCalculate(req, res) {
-    try {
-      const { connections } = req.body;
-      
-      if (!connections || !Array.isArray(connections) || connections.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Please provide an array of connections'
-        });
-      }
-
-      // Validate each connection
-      for (const conn of connections) {
-        if (!conn.quantity || conn.quantity < 1) {
-          return res.status(400).json({
-            success: false,
-            message: 'Each connection must have a valid quantity'
-          });
-        }
-      }
-
-      const result = await waterConnectionService.bulkCalculate(connections);
-      
-      res.json({
-        success: true,
-        data: result.data
-      });
-    } catch (error) {
-      console.error('Error in bulkCalculate:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: error.message || 'Failed to calculate bulk costs'
       });
     }
   }
@@ -132,7 +94,7 @@ class WaterConnectionController {
         data: result.data
       });
     } catch (error) {
-      console.error('Error in getRateHistory:', error);
+      console.error('❌ Error in getRateHistory:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch rate history'
@@ -151,7 +113,7 @@ class WaterConnectionController {
         message: result.message || 'Rate reset to default successfully'
       });
     } catch (error) {
-      console.error('Error in resetToDefault:', error);
+      console.error('❌ Error in resetToDefault:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to reset to default'
@@ -159,25 +121,56 @@ class WaterConnectionController {
     }
   }
 
-  // Get statistics (if needed)
+  // Get statistics
   async getStatistics(req, res) {
     try {
-      const config = await waterConnectionService.getConfig();
+      const result = await waterConnectionService.getStatistics();
       
-      // You can expand this with more stats if needed
       res.json({
         success: true,
-        data: {
-          currentRate: config.data.costPerConnection,
-          lastUpdated: config.data.updatedAt,
-          createdAt: config.data.createdAt
-        }
+        data: result.data
       });
     } catch (error) {
-      console.error('Error in getStatistics:', error);
+      console.error('❌ Error in getStatistics:', error);
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch statistics'
+      });
+    }
+  }
+
+  // Bulk calculate
+  async bulkCalculate(req, res) {
+    try {
+      const { connections } = req.body;
+      
+      if (!connections || !Array.isArray(connections) || connections.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide an array of connections'
+        });
+      }
+
+      for (const conn of connections) {
+        if (!conn.quantity || conn.quantity < 1) {
+          return res.status(400).json({
+            success: false,
+            message: 'Each connection must have a valid quantity'
+          });
+        }
+      }
+
+      const result = await waterConnectionService.bulkCalculate(connections);
+      
+      res.json({
+        success: true,
+        data: result.data
+      });
+    } catch (error) {
+      console.error('❌ Error in bulkCalculate:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || 'Failed to calculate bulk costs'
       });
     }
   }
