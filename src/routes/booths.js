@@ -14,7 +14,7 @@ const upload = multer({
    GLOBAL FLOOR PLAN (ALL ROLES)
 ========================================= */
 
-router.get('/floor-plan', authenticateAny, boothController.getFloorPlan);
+router.get('/', authenticateAny, boothController.getFloorPlan);
 
 
 /* =========================================
