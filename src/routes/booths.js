@@ -13,6 +13,7 @@ const upload = multer({
 /* =========================================
    GLOBAL FLOOR PLAN (ALL ROLES)
 ========================================= */
+router.get('/', boothController.getFloorPlan);
 
 router.get('/', authenticateAny, boothController.getFloorPlan);
 
