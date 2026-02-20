@@ -1,39 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const waterConnectionController = require('../controllers/WaterConnectionController');
-const { authenticate, authenticateAny, authorize } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 
-/* ===============================
-   SHARED ROUTES
-================================= */
+// ======================================================
+// PUBLIC ROUTES (No authentication required)
+// ======================================================
 
-router.get(
-  '/config',
-  authenticateAny,
-  authorize(['admin', 'exhibitor']),
-  waterConnectionController.getConfig
-);
+// Get current configuration
+router.get('/config', waterConnectionController.getConfig);
 
+// Calculate cost for connections
 router.post('/calculate', waterConnectionController.calculateCost);
+
+// Bulk calculate for multiple connection types
 router.post('/calculate/bulk', waterConnectionController.bulkCalculate);
+
+// Get rate history
+router.get('/history', waterConnectionController.getRateHistory);
+
+// Get statistics
 router.get('/statistics', waterConnectionController.getStatistics);
 
-/* ===============================
-   ADMIN ONLY
-================================= */
+// ======================================================
+// ADMIN ROUTES (Authentication required)
+// ======================================================
 
-router.put(
-  '/config',
-  authenticate,
-  authorize(['admin']),
-  waterConnectionController.updateConfig
-);
+// Update configuration
+router.put('/config', authenticate, authorize(['admin']), waterConnectionController.updateConfig);
 
-router.post(
-  '/reset',
-  authenticate,
-  authorize(['admin']),
-  waterConnectionController.resetToDefault
-);
+// Reset to default rate
+router.post('/reset', authenticate, authorize(['admin']), waterConnectionController.resetToDefault);
 
 module.exports = router;
