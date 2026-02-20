@@ -121,6 +121,12 @@ HousekeepingConfig: () => {
   const sequelize = database.getConnection('mysql');
   return HousekeepingConfigFactory(sequelize);
 },
+// Inside modelFactories object, add:
+SecurityDeposit: () => {
+  const SecurityDepositFactory = require('./mysql/SecurityDeposit');
+  const sequelize = database.getConnection('mysql');
+  return SecurityDepositFactory(sequelize);
+},
   // MongoDB models
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
@@ -222,7 +228,8 @@ function getModel(name) {
     HostessCategory: 'HostessCategory',
     SecurityGuardConfig: 'SecurityGuardConfig',
     WaterConnectionConfig: 'WaterConnectionConfig',
-    HousekeepingConfig: 'HousekeepingConfig'
+    HousekeepingConfig: 'HousekeepingConfig',
+     SecurityDeposit: 'SecurityDeposit'
   };
 
   if (altNames[name] && models[altNames[name]]) {
