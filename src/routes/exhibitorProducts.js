@@ -2,7 +2,29 @@ const express = require('express');
 const router = express.Router();
 const { authenticateExhibitor } = require('../middleware/auth');
 
-// Get all products for exhibitor
+// Get all products for exhibitor (public endpoint for directory)
+router.get('/:exhibitorId', async (req, res) => {
+  try {
+    const modelFactory = require('../models');
+    const Product = modelFactory.getModel('Product');
+    
+    const products = await Product.findAll({
+      where: { exhibitorId: req.params.exhibitorId }
+    });
+    
+    res.json({
+      success: true,
+      data: products
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Protected endpoints (require auth)
 router.get('/', authenticateExhibitor, async (req, res) => {
   try {
     const modelFactory = require('../models');
@@ -24,7 +46,6 @@ router.get('/', authenticateExhibitor, async (req, res) => {
   }
 });
 
-// Add product
 router.post('/', authenticateExhibitor, async (req, res) => {
   try {
     const modelFactory = require('../models');
@@ -47,7 +68,6 @@ router.post('/', authenticateExhibitor, async (req, res) => {
   }
 });
 
-// Delete product
 router.delete('/:id', authenticateExhibitor, async (req, res) => {
   try {
     const modelFactory = require('../models');
