@@ -1,43 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const waterConnectionController = require('../controllers/WaterConnectionController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authenticateAny, authorize } = require('../middleware/auth');
 
-// ======================================================
-// TEST ROUTE - To verify routes are working
-// ======================================================
-router.get('/test', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Water Connection API is working!',
-    timestamp: new Date().toISOString()
-  });
-});
+/* ===============================
+   SHARED ROUTES
+================================= */
 
-// ======================================================
-// PUBLIC ROUTES (Accessible without authentication)
-// ======================================================
+router.get(
+  '/config',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  waterConnectionController.getConfig
+);
 
-// Get current configuration
-router.get('/config', waterConnectionController.getConfig);
-
-// Calculate cost for connections
 router.post('/calculate', waterConnectionController.calculateCost);
-
-// Bulk calculate for multiple connection types
 router.post('/calculate/bulk', waterConnectionController.bulkCalculate);
-
-// Get rate history
-router.get('/history', waterConnectionController.getRateHistory);
-
-// Get statistics
 router.get('/statistics', waterConnectionController.getStatistics);
 
-// ======================================================
-// ADMIN ROUTES (Protected)
-// ======================================================
+/* ===============================
+   ADMIN ONLY
+================================= */
 
-// Update configuration
 router.put(
   '/config',
   authenticate,
@@ -45,7 +29,6 @@ router.put(
   waterConnectionController.updateConfig
 );
 
-// Reset to default rate
 router.post(
   '/reset',
   authenticate,
