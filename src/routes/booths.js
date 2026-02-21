@@ -1,3 +1,4 @@
+// index.js (or whatever your main router file is named)
 const express = require('express');
 const router = express.Router();
 const boothController = require('../controllers/FloorPlanController');
@@ -11,12 +12,10 @@ const upload = multer({
 });
 
 /* =========================================
-   GLOBAL FLOOR PLAN (ALL ROLES)
+   PUBLIC ROUTES (NO AUTH REQUIRED)
 ========================================= */
+// Get floor plan - public access
 router.get('/', boothController.getFloorPlan);
-
-router.get('/', authenticateAny, boothController.getFloorPlan);
-
 
 /* =========================================
    ADMIN / EDITOR / VIEWER ROUTES
@@ -27,7 +26,7 @@ router.use(authenticate);
 
 // Get all booths
 router.get(
-  '/',
+  '/booths',
   authorize(['admin', 'editor', 'viewer']),
   boothController.getAllBooths
 );
@@ -39,7 +38,7 @@ router.get(
   boothController.getBoothStatistics
 );
 
-// Upload floor plan image
+// Upload floor plan image - IMPORTANT: This must come BEFORE any parameterized routes
 router.post(
   '/upload-image',
   authorize(['admin', 'editor']),
