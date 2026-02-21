@@ -15,16 +15,77 @@ class BoothService {
     return this._floorPlanModel;
   }
 
-  // Upload floor plan image to Cloudinary
+  // Upload floor plan image to Cloudinary - FIXED VERSION
   async uploadFloorPlanImage(imageFile, userId) {
     try {
       console.log('📤 Uploading floor plan image to Cloudinary...');
       
-      // Upload to Cloudinary
-      const uploadResult = await cloudinaryService.uploadFile(imageFile.buffer, {
-        folder: 'exhibition-floor-plans',
-        resource_type: 'image'
+      // Debug the incoming file
+      console.log('Image file details:', {
+        hasBuffer: !!imageFile?.buffer,
+        hasOriginalname: !!imageFile?.originalname,
+        mimetype: imageFile?.mimetype,
+        size: imageFile?.size,
+        constructor: imageFile?.constructor?.name,
+        keys: imageFile ? Object.keys(imageFile) : []
       });
+
+      // Handle different possible input formats
+      let buffer;
+      let filename = 'floor-plan.jpg';
+
+      if (Buffer.isBuffer(imageFile)) {
+        // If it's already a buffer
+        buffer = imageFile;
+      } else if (imageFile && imageFile.buffer) {
+        // If it's a Multer file with buffer property
+        buffer = imageFile.buffer;
+        filename = imageFile.originalname || filename;
+      } else if (imageFile && imageFile.data) {
+        // If it's a file with data property
+        buffer = Buffer.isBuffer(imageFile.data) 
+          ? imageFile.data 
+          : Buffer.from(imageFile.data);
+        filename = imageFile.name || filename;
+      } else if (imageFile && imageFile instanceof ArrayBuffer) {
+        // If it's an ArrayBuffer
+        buffer = Buffer.from(imageFile);
+      } else if (imageFile && imageFile._buf) {
+        // Some formats use _buf
+        buffer = Buffer.from(imageFile._buf);
+      } else if (imageFile && typeof imageFile === 'object' && imageFile.type) {
+        // Try to handle as Blob-like object
+        if (imageFile.arrayBuffer) {
+          const arrayBuffer = await imageFile.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+          filename = imageFile.name || filename;
+        }
+      } else {
+        // Last resort: try to convert whatever it is to buffer
+        try {
+          buffer = Buffer.from(imageFile);
+        } catch (err) {
+          console.error('Cannot convert to buffer:', err);
+          throw new Error('Unsupported file format. Expected a file with buffer property or Buffer instance.');
+        }
+      }
+
+      // Validate buffer
+      if (!buffer || buffer.length === 0) {
+        throw new Error('Invalid file buffer - buffer is empty');
+      }
+
+      console.log(`✅ Buffer prepared: ${buffer.length} bytes for file ${filename}`);
+
+      // Upload to Cloudinary
+      const uploadResult = await cloudinaryService.uploadFile(buffer, {
+        folder: 'exhibition-floor-plans',
+        resource_type: 'image',
+        filename: filename,
+        public_id: `floor-plan-${Date.now()}`
+      });
+
+      console.log('✅ Cloudinary upload successful:', uploadResult.url);
 
       // Create or update floor plan with image
       let floorPlan = await this.FloorPlan.findOne({
@@ -36,8 +97,8 @@ class BoothService {
           name: 'Main Exhibition Floor',
           baseImageUrl: uploadResult.url,
           cloudinaryPublicId: uploadResult.publicId,
-          imageWidth: uploadResult.width,
-          imageHeight: uploadResult.height,
+          imageWidth: uploadResult.width || 1200,
+          imageHeight: uploadResult.height || 800,
           booths: [],
           referencePoints: [],
           isActive: true,
@@ -48,6 +109,7 @@ class BoothService {
         if (floorPlan.cloudinaryPublicId) {
           try {
             await cloudinaryService.deleteFile(floorPlan.cloudinaryPublicId);
+            console.log('✅ Old image deleted from Cloudinary');
           } catch (error) {
             console.warn('Failed to delete old image:', error.message);
           }
@@ -56,8 +118,8 @@ class BoothService {
         // Update with new image
         floorPlan.baseImageUrl = uploadResult.url;
         floorPlan.cloudinaryPublicId = uploadResult.publicId;
-        floorPlan.imageWidth = uploadResult.width;
-        floorPlan.imageHeight = uploadResult.height;
+        floorPlan.imageWidth = uploadResult.width || floorPlan.imageWidth;
+        floorPlan.imageHeight = uploadResult.height || floorPlan.imageHeight;
         floorPlan.updatedBy = userId;
         await floorPlan.save();
       }
@@ -472,65 +534,6 @@ class BoothService {
       throw error;
     }
   }
-  // services/BoothService.js - Add this method
-// async saveFloorPlan(booths, userId) {
-//   try {
-//     const model = this.FloorPlan;
-//     if (!model) throw new Error('FloorPlan model not available');
-
-//     const floorPlan = await model.findOne({
-//       where: { isActive: true }
-//     });
-
-//     if (!floorPlan) {
-//       throw new Error('No active floor plan found');
-//     }
-
-//     // Update the booths with any new metadata
-//     const existingBooths = floorPlan.booths || [];
-    
-//     // Merge existing booths with updated ones
-//     const updatedBooths = booths.map(newBooth => {
-//       const existingBooth = existingBooths.find(b => b.id === newBooth.id);
-//       return {
-//         ...existingBooth,
-//         ...newBooth,
-//         // Preserve important fields
-//         id: newBooth.id || existingBooth?.id,
-//         boothNumber: newBooth.boothNumber || existingBooth?.boothNumber,
-//         xPercent: newBooth.xPercent ?? existingBooth?.xPercent,
-//         yPercent: newBooth.yPercent ?? existingBooth?.yPercent,
-//         widthPercent: newBooth.widthPercent ?? existingBooth?.widthPercent,
-//         heightPercent: newBooth.heightPercent ?? existingBooth?.heightPercent,
-//         // Update metadata with latest values
-//         metadata: {
-//           ...existingBooth?.metadata,
-//           ...newBooth.metadata,
-//           companyName: newBooth.companyName || newBooth.metadata?.companyName || existingBooth?.companyName,
-//           status: newBooth.status || newBooth.metadata?.status || existingBooth?.status || 'available',
-//           amenities: newBooth.metadata?.amenities || existingBooth?.metadata?.amenities || [],
-//           restrictions: newBooth.metadata?.restrictions || existingBooth?.metadata?.restrictions || []
-//         }
-//       };
-//     });
-
-//     floorPlan.booths = updatedBooths;
-//     floorPlan.updatedBy = userId;
-//     await floorPlan.save();
-
-//     return {
-//       success: true,
-//       data: {
-//         id: floorPlan.id,
-//         booths: floorPlan.booths
-//       },
-//       message: 'Floor plan saved successfully'
-//     };
-//   } catch (error) {
-//     console.error('❌ Save floor plan error:', error);
-//     throw error;
-//   }
-// }
 
   // Delete booth
   async deleteBooth(boothId, userId) {
