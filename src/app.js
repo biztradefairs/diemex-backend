@@ -181,13 +181,14 @@ class AppServer {
     console.log('\n📁 Setting up static file serving...');
 
     // Define upload directories
-    const uploadDirs = [
-      { name: 'brochures', path: path.join(__dirname, 'uploads', 'brochures') },
-      { name: 'manuals', path: path.join(__dirname, 'uploads', 'manuals') },
-      { name: 'images', path: path.join(__dirname, 'uploads', 'images') },
-      { name: 'floor-plans', path: path.join(__dirname, 'uploads', 'floor-plans') },
-      { name: 'public', path: path.join(__dirname, 'public') }
-    ];
+const uploadBase = path.join(process.cwd(), 'uploads');
+
+const uploadDirs = [
+  { name: 'brochures', path: path.join(uploadBase, 'brochures') },
+  { name: 'manuals', path: path.join(uploadBase, 'manuals') },
+  { name: 'images', path: path.join(uploadBase, 'images') },
+  { name: 'floor-plans', path: path.join(uploadBase, 'floor-plans') }
+];
 
     // Create directories if they don't exist
     uploadDirs.forEach(dir => {
@@ -246,7 +247,7 @@ class AppServer {
     console.log(`📂 Uploads directory: ${path.join(__dirname, 'uploads')}`);
     
     // List files in brochures directory for debugging
-    const brochuresPath = path.join(__dirname, 'uploads', 'brochures');
+   const brochuresPath = path.join(process.cwd(), 'uploads', 'brochures');
     if (fs.existsSync(brochuresPath)) {
       const files = fs.readdirSync(brochuresPath);
       console.log(`📄 Brochures directory contains ${files.length} files:`);
