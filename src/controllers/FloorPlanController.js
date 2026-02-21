@@ -32,26 +32,35 @@ class BoothController {
     }
   }
 
-  // Upload floor plan image
-  async uploadFloorPlanImage(req, res) {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          error: 'No image file provided'
-        });
-      }
+// controllers/FloorPlanController.js
 
-      const result = await boothService.uploadFloorPlanImage(req.file.buffer, req.user?.id);
-      res.status(201).json(result);
-    } catch (error) {
-      res.status(400).json({
+async uploadFloorPlanImage(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
         success: false,
-        error: error.message
+        error: 'No image file provided'
       });
     }
-  }
 
+    console.log('Controller received file:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
+
+    // Pass the ENTIRE req.file object, not just the buffer
+    const result = await boothService.uploadFloorPlanImage(req.file, req.user?.id);
+    
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('Controller upload error:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
   // Export floor plan
   async exportFloorPlan(req, res) {
     try {
