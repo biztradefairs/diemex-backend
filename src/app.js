@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
 const database = require('./config/database');
+const fs = require('fs');
 require('express-async-errors');
 
 // Import routes
@@ -16,7 +17,6 @@ const articleRoutes = require('./routes/articles');
 const exhibitorAuthRoutes = require('./routes/exhibitorAuth');
 const boothRoutes = require('./routes/booths');
 const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
-// Import services for initialization
 const emailService = require('./services/EmailService');
 const floorPlanImageRoutes = require('./routes/floorPlanImage');
 const uploadRoutes = require('./routes/upload');
@@ -31,6 +31,7 @@ const securityGuardRoutes = require('./routes/securityGuardRoutes');
 const waterConnectionRoutes = require('./routes/waterConnectionRoutes');
 const housekeepingRoutes = require('./routes/housekeepingRoutes');
 const securityDepositRoutes = require('./routes/securityDepositRoutes');
+const brochureRoutes = require('./routes/brochureRoutes'); // Add this
 
 class AppServer {
   constructor() {
@@ -54,6 +55,7 @@ class AppServer {
     this.databaseTest = this.databaseTest.bind(this);
     this.testExhibitorCreation = this.testExhibitorCreation.bind(this);
     this.modelList = this.modelList.bind(this);
+    this.serveStaticFiles = this.serveStaticFiles.bind(this);
 
     // Handle uncaught exceptions
     process.on('uncaughtException', this.handleUncaughtException.bind(this));
@@ -173,6 +175,86 @@ class AppServer {
     }
   }
 
+  // New method to serve static files with proper configuration
+  serveStaticFiles() {
+    console.log('Static uploads path:', path.join(process.cwd(), 'uploads'));
+    console.log('\n📁 Setting up static file serving...');
+
+    // Define upload directories
+    const uploadDirs = [
+      { name: 'brochures', path: path.join(__dirname, 'uploads', 'brochures') },
+      { name: 'manuals', path: path.join(__dirname, 'uploads', 'manuals') },
+      { name: 'images', path: path.join(__dirname, 'uploads', 'images') },
+      { name: 'floor-plans', path: path.join(__dirname, 'uploads', 'floor-plans') },
+      { name: 'public', path: path.join(__dirname, 'public') }
+    ];
+
+    // Create directories if they don't exist
+    uploadDirs.forEach(dir => {
+      if (!fs.existsSync(dir.path)) {
+        fs.mkdirSync(dir.path, { recursive: true });
+        console.log(`📁 Created directory: uploads/${dir.name}`);
+      }
+    });
+
+    // Serve static files with proper caching headers
+    const staticOptions = {
+      maxAge: this.env === 'production' ? '1d' : 0,
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, filePath) => {
+        // Set proper content type for PDFs
+        if (filePath.endsWith('.pdf')) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline');
+        }
+        // Cache control
+        res.setHeader('Cache-Control', this.env === 'production' 
+          ? 'public, max-age=86400' 
+          : 'no-cache, no-store, must-revalidate');
+      }
+    };
+
+    // Serve from uploads directory
+    this.app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), staticOptions));
+    
+    // Serve from public directory
+    this.app.use('/public', express.static(path.join(__dirname, 'public'), staticOptions));
+
+    // Add debug endpoint to check file existence
+    this.app.get('/api/check-file/:type/:filename', (req, res) => {
+      const { type, filename } = req.params;
+      const filePath = path.join(__dirname, 'uploads', type, filename);
+      
+      const exists = fs.existsSync(filePath);
+      const stats = exists ? fs.statSync(filePath) : null;
+      
+      res.json({
+        success: exists,
+        path: filePath,
+        exists,
+        stats: stats ? {
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime
+        } : null,
+        url: `/uploads/${type}/${filename}`
+      });
+    });
+
+    console.log('✅ Static file serving configured');
+    console.log(`📂 Uploads directory: ${path.join(__dirname, 'uploads')}`);
+    
+    // List files in brochures directory for debugging
+    const brochuresPath = path.join(__dirname, 'uploads', 'brochures');
+    if (fs.existsSync(brochuresPath)) {
+      const files = fs.readdirSync(brochuresPath);
+      console.log(`📄 Brochures directory contains ${files.length} files:`);
+      files.slice(0, 5).forEach(file => console.log(`   - ${file}`));
+      if (files.length > 5) console.log(`   ... and ${files.length - 5} more`);
+    }
+  }
+
   setupMiddleware() {
     console.log('\n⚙️ Setting up middleware...');
 
@@ -226,6 +308,8 @@ class AppServer {
       limit: '50mb'
     }));
 
+    // Serve static files
+    this.serveStaticFiles();
 
     this.app.get('/api/test/manuals-setup', async (req, res) => {
       try {
@@ -266,23 +350,6 @@ class AppServer {
         });
       }
     });
-
-    // Static files
-const uploadsPath = path.join(__dirname, 'uploads');
-const publicPath = path.join(__dirname, 'public');
-
-    // Create directories if they don't exist
-    const fs = require('fs');
-    [uploadsPath, publicPath].forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`📁 Created directory: ${dir}`);
-      }
-    });
-
-    this.app.use('/uploads', express.static(uploadsPath));
-    this.app.use('/public', express.static(publicPath));
-    this.app.use('/api/upload', uploadRoutes);
 
     // Request logging middleware
     this.app.use((req, res, next) => {
@@ -357,6 +424,7 @@ const publicPath = path.join(__dirname, 'public');
     this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
     this.app.use('/api/floor-plan', boothRoutes);
     this.app.use('/api/floor-plan', floorPlanImageRoutes);
+    this.app.use('/api/upload', uploadRoutes);
     this.app.use('/api/manuals', manualRoutes);
     this.app.use('/api/manuals/pdfs', manualPDFRoutes);
     this.app.use('/api/admin/furniture', furnitureRoutes);
@@ -368,6 +436,7 @@ const publicPath = path.join(__dirname, 'public');
     this.app.use('/api/admin/water-connection', waterConnectionRoutes);
     this.app.use('/api/admin/housekeeping', housekeepingRoutes);
     this.app.use('/api/admin/security-deposit', securityDepositRoutes);
+    this.app.use('/api/brochures', brochureRoutes); // Add brochure routes
 
     // ======================
     // Documentation & Info
@@ -385,7 +454,8 @@ const publicPath = path.join(__dirname, 'public');
           users: '/api/users',
           exhibitors: '/api/exhibitors',
           articles: '/api/articles',
-          exhibitorDashboard: '/api/exhibitorDashboard'
+          exhibitorDashboard: '/api/exhibitorDashboard',
+          brochures: '/api/brochures'
         },
         documentation: 'See /api/docs for API documentation'
       });
@@ -426,6 +496,11 @@ const publicPath = path.join(__dirname, 'public');
             create: 'POST /api/users',
             update: 'PUT /api/users/:id',
             delete: 'DELETE /api/users/:id'
+          },
+          brochures: {
+            getAll: 'GET /api/brochures',
+            create: 'POST /api/brochures',
+            delete: 'DELETE /api/brochures/:id'
           }
         }
       };
@@ -659,6 +734,7 @@ const publicPath = path.join(__dirname, 'public');
         console.log(`📊 Health Check: http://localhost:${this.port}/health`);
         console.log(`📚 API Docs: http://localhost:${this.port}/api/docs`);
         console.log(`🗄️ Database: ${process.env.DB_TYPE || 'mysql'}`);
+        console.log(`📁 Static Files: http://localhost:${this.port}/uploads/`);
 
         // Check email configuration
         const hasEmailConfig = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
@@ -670,7 +746,9 @@ const publicPath = path.join(__dirname, 'public');
         console.log('├── POST /api/exhibitors/:id/resend-credentials - Resend credentials email');
         console.log('├── GET  /api/exhibitors                - List exhibitors');
         console.log('├── POST /api/auth/exhibitor/login      - Exhibitor login');
-        console.log('└── POST /api/auth/login                - Admin login');
+        console.log('├── POST /api/auth/login                - Admin login');
+        console.log('├── GET  /uploads/brochures/:filename   - Access brochures');
+        console.log('└── GET  /api/check-file/:type/:filename - Check file existence');
         console.log('='.repeat(60));
 
         // Check/create default admin user
