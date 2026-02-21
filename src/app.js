@@ -774,54 +774,45 @@ const uploadDirs = [
     });
   }
 
-  async checkDefaultAdmin() {
-    try {
-      console.log('\n👤 Checking default admin user...');
+async checkDefaultAdmin() {
+  try {
+    console.log('\n👤 Checking default admin user...');
 
-      const modelFactory = require('./models');
-      const User = modelFactory.getModel('User');
-      const bcrypt = require('bcryptjs');
+    const modelFactory = require('./models');
+    const User = modelFactory.getModel('User');
 
-      // Check if admin exists
-      let admin = await User.findOne({ where: { email: 'admin@example.com' } });
+    let admin = await User.findOne({
+      where: { email: 'admin@example.com' }
+    });
 
-      if (!admin) {
-        console.log('👤 Creating default admin user...');
+    if (!admin) {
+      console.log('👤 Creating default admin user...');
 
-        // Create default admin
-        const hashedPassword = await bcrypt.hash('admin123', 10);
+      await User.create({
+        name: 'Administrator',
+        email: 'admin@example.com',
+        password: 'admin123',   // 🔥 PLAIN PASSWORD
+        role: 'admin',
+        status: 'active'
+      });
 
-        admin = await User.create({
-          name: 'Administrator',
-          email: 'admin@example.com',
-          password: hashedPassword,
-          role: 'admin',
-          status: 'active',
-          phone: '+1234567890'
-        });
-
-        console.log('✅ Default admin user created');
-        console.log(`   📧 Email: ${admin.email}`);
-        console.log(`   🔑 Password: admin123`);
-      } else {
-        console.log('✅ Admin user already exists');
-
-        // Update password if needed
-        if (!admin.password || admin.password.length < 20) {
-          console.log('🔄 Updating admin password...');
-          const hashedPassword = await bcrypt.hash('admin123', 10);
-          await admin.update({ password: hashedPassword });
-          console.log('✅ Admin password updated');
-        }
-      }
-
-      console.log('✅ Admin user check completed');
-
-    } catch (error) {
-      console.error(`⚠️ Admin check failed: ${error.message}`);
-      console.log('ℹ️ Continuing without admin user...');
+      console.log('✅ Default admin user created');
+    } else {
+      console.log('🔄 Resetting admin password...');
+      await admin.update({
+        password: 'admin123'   // 🔥 PLAIN PASSWORD
+      });
+      console.log('✅ Admin password reset completed');
     }
+
+    console.log('📧 Email: admin@example.com');
+    console.log('🔑 Password: admin123');
+    console.log('✅ Admin user check completed');
+
+  } catch (error) {
+    console.error(`⚠️ Admin check failed: ${error.message}`);
   }
+}
 
   // ======================
   // Error Handlers

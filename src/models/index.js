@@ -1,133 +1,126 @@
+// ======================================================
+// MODELS INDEX FILE - COMPLETE VERSION
+// ======================================================
+
 const database = require('../config/database');
 
 let models = {};
 let initialized = false;
 
-// Model factory functions
+// ======================================================
+// MODEL FACTORIES
+// ======================================================
+
 const modelFactories = {
-  // MySQL / Sequelize models
+  // ================= MYSQL MODELS =================
+
   User: () => {
-    const UserFactory = require('./mysql/User');
-    const sequelize = database.getConnection('mysql');
-    return UserFactory(sequelize);
+    const factory = require('./mysql/User');
+    return factory(database.getConnection('mysql'));
   },
 
   Article: () => {
-    const ArticleFactory = require('./mysql/Article');
-    const sequelize = database.getConnection('mysql');
-    return ArticleFactory(sequelize);
+    const factory = require('./mysql/Article');
+    return factory(database.getConnection('mysql'));
   },
 
   Exhibitor: () => {
-    const ExhibitorFactory = require('./mysql/Exhibitor');
-    const sequelize = database.getConnection('mysql');
-    return ExhibitorFactory(sequelize);
+    const factory = require('./mysql/Exhibitor');
+    return factory(database.getConnection('mysql'));
   },
 
   Invoice: () => {
-    const InvoiceFactory = require('./mysql/Invoice');
-    const sequelize = database.getConnection('mysql');
-    return InvoiceFactory(sequelize);
+    const factory = require('./mysql/Invoice');
+    return factory(database.getConnection('mysql'));
   },
 
   Payment: () => {
-    const PaymentFactory = require('./mysql/Payment');
-    const sequelize = database.getConnection('mysql');
-    return PaymentFactory(sequelize);
+    const factory = require('./mysql/Payment');
+    return factory(database.getConnection('mysql'));
   },
 
   Media: () => {
-    const MediaFactory = require('./mysql/Media');
-    const sequelize = database.getConnection('mysql');
-    return MediaFactory(sequelize);
+    const factory = require('./mysql/Media');
+    return factory(database.getConnection('mysql'));
   },
 
   FloorPlan: () => {
-    const FloorPlanFactory = require('./mysql/FloorPlan');
-    const sequelize = database.getConnection('mysql');
-    return FloorPlanFactory(sequelize);
+    const factory = require('./mysql/FloorPlan');
+    return factory(database.getConnection('mysql'));
   },
 
   Product: () => {
-    const ProductFactory = require('./mysql/Product');
-    const sequelize = database.getConnection('mysql');
-    return ProductFactory(sequelize);
+    const factory = require('./mysql/Product');
+    return factory(database.getConnection('mysql'));
   },
 
   Brand: () => {
-    const BrandFactory = require('./mysql/Brand');
-    const sequelize = database.getConnection('mysql');
-    return BrandFactory(sequelize);
+    const factory = require('./mysql/Brand');
+    return factory(database.getConnection('mysql'));
   },
 
   Brochure: () => {
-    const BrochureFactory = require('./mysql/Brochure');
-    const sequelize = database.getConnection('mysql');
-    return BrochureFactory(sequelize);
+    const factory = require('./mysql/Brochure');
+    return factory(database.getConnection('mysql'));
   },
 
   Requirement: () => {
-    const RequirementFactory = require('./mysql/Requirement');
-    const sequelize = database.getConnection('mysql');
-    return RequirementFactory(sequelize);
+    const factory = require('./mysql/Requirement');
+    return factory(database.getConnection('mysql'));
   },
 
   Manual: () => {
-    const ManualFactory = require('./mysql/Manual');
-    const sequelize = database.getConnection('mysql');
-    return ManualFactory(sequelize);
+    const factory = require('./mysql/Manual');
+    return factory(database.getConnection('mysql'));
   },
 
-  // ADD THIS - Furniture model
- Furniture: () => {
-  const FurnitureFactory = require('./mysql/Furniture');
-  const sequelize = database.getConnection('mysql');
-  return FurnitureFactory(sequelize);
-},
-// ADD THIS inside modelFactories object
-CompressedAirOption: () => {
-  const CompressedAirOptionFactory = require('./mysql/CompressedAirOption');
-  const sequelize = database.getConnection('mysql');
-  return CompressedAirOptionFactory(sequelize);
-},
-// ADD THIS inside modelFactories object
-ElectricalRate: () => {
-  const ElectricalRateFactory = require('./mysql/ElectricalRate');
-  const sequelize = database.getConnection('mysql');
-  return ElectricalRateFactory(sequelize);
-},
-RentalItem: () => {
-  const RentalItemFactory = require('./mysql/RentalItem');
-  const sequelize = database.getConnection('mysql');
-  return RentalItemFactory(sequelize);
-},
-HostessCategory: () => {
-  const HostessCategoryFactory = require('./mysql/HostessCategory');
-  const sequelize = database.getConnection('mysql');
-  return HostessCategoryFactory(sequelize);
-},
-SecurityGuardConfig: () => {
-  const SecurityGuardConfigFactory = require('./mysql/SecurityGuardConfig');
-  const sequelize = database.getConnection('mysql');
-  return SecurityGuardConfigFactory(sequelize);
-},
-WaterConnectionConfig: () => {
-  const WaterConnectionConfigFactory = require('./mysql/WaterConnectionConfig');
-  const sequelize = database.getConnection('mysql');
-  return WaterConnectionConfigFactory(sequelize);
-},
-HousekeepingConfig: () => {
-  const HousekeepingConfigFactory = require('./mysql/HousekeepingConfig');
-  const sequelize = database.getConnection('mysql');
-  return HousekeepingConfigFactory(sequelize);
-},
-// Inside modelFactories object, add:
-SecurityDeposit: () => {
-  const SecurityDepositFactory = require('./mysql/SecurityDeposit');
-  const sequelize = database.getConnection('mysql');
-  return SecurityDepositFactory(sequelize);
-},
-  // MongoDB models
+  Furniture: () => {
+    const factory = require('./mysql/Furniture');
+    return factory(database.getConnection('mysql'));
+  },
+
+  CompressedAirOption: () => {
+    const factory = require('./mysql/CompressedAirOption');
+    return factory(database.getConnection('mysql'));
+  },
+
+  ElectricalRate: () => {
+    const factory = require('./mysql/ElectricalRate');
+    return factory(database.getConnection('mysql'));
+  },
+
+  RentalItem: () => {
+    const factory = require('./mysql/RentalItem');
+    return factory(database.getConnection('mysql'));
+  },
+
+  HostessCategory: () => {
+    const factory = require('./mysql/HostessCategory');
+    return factory(database.getConnection('mysql'));
+  },
+
+  SecurityGuardConfig: () => {
+    const factory = require('./mysql/SecurityGuardConfig');
+    return factory(database.getConnection('mysql'));
+  },
+
+  WaterConnectionConfig: () => {
+    const factory = require('./mysql/WaterConnectionConfig');
+    return factory(database.getConnection('mysql'));
+  },
+
+  HousekeepingConfig: () => {
+    const factory = require('./mysql/HousekeepingConfig');
+    return factory(database.getConnection('mysql'));
+  },
+
+  SecurityDeposit: () => {
+    const factory = require('./mysql/SecurityDeposit');
+    return factory(database.getConnection('mysql'));
+  },
+
+  // ================= MONGO MODELS =================
+
   MongoUser: () => require('./mongodb/User'),
   MongoAuditLog: () => require('./mongodb/AuditLog'),
   MongoNotification: () => require('./mongodb/Notification'),
@@ -136,117 +129,127 @@ SecurityDeposit: () => {
   MongoPayment: () => require('./mongodb/Payment'),
   MongoMedia: () => require('./mongodb/Media'),
   MongoAlert: () => require('./mongodb/Alert')
-  
 };
 
-function init() {
-  if (initialized) {
-    return models;
-  }
+// ======================================================
+// INITIALIZE MODELS
+// ======================================================
+
+async function init() {
+  if (initialized) return models;
 
   const dbType = process.env.DB_TYPE || 'mysql';
+  console.log(`📦 Initializing models (DB_TYPE=${dbType})`);
 
-  // MySQL Models
+  // ================= MYSQL =================
   if (dbType === 'mysql' || dbType === 'both') {
     const sequelize = database.getConnection('mysql');
 
     if (!sequelize) {
-      throw new Error('MySQL connection not available');
+      throw new Error('❌ MySQL connection not available');
     }
 
-    // Load all MySQL models
-    Object.keys(modelFactories).forEach((modelName) => {
+    console.log('🔄 Loading MySQL models...');
+
+    for (const modelName of Object.keys(modelFactories)) {
       if (!modelName.startsWith('Mongo')) {
         try {
           models[modelName] = modelFactories[modelName]();
           console.log(`✅ Loaded model: ${modelName}`);
         } catch (err) {
-          console.warn(`⚠️ Failed to load model ${modelName}: ${err.message}`);
+          console.error(`❌ Failed loading model ${modelName}:`, err.message);
         }
       }
-    });
+    }
 
-    // Set up associations
-    Object.keys(models).forEach(modelName => {
-      if (models[modelName].associate) {
+    // ================= ASSOCIATIONS =================
+    console.log('🔗 Setting up associations...');
+    for (const modelName of Object.keys(models)) {
+      if (models[modelName]?.associate) {
         try {
           models[modelName].associate(models);
-          console.log(`✅ Associated model: ${modelName}`);
+          console.log(`✅ Associated: ${modelName}`);
         } catch (err) {
-          console.warn(`⚠️ Failed to associate model ${modelName}: ${err.message}`);
+          console.warn(`⚠️ Association failed for ${modelName}:`, err.message);
         }
       }
-    });
+    }
 
-    // Sync models (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      sequelize
-        .sync({ alter: true })
-        .then(() => console.log('✅ MySQL models synced'))
-        .catch(err => console.error('❌ MySQL sync failed:', err.message));
+    // ================= AUTO SYNC =================
+    console.log('🗄️ Syncing database models...');
+
+    try {
+      await sequelize.sync({
+        alter: process.env.NODE_ENV === 'development',
+        force: false
+      });
+
+      console.log('✅ Database synced successfully');
+    } catch (syncError) {
+      console.error('❌ Database sync failed:', syncError.message);
     }
   }
 
-  // MongoDB Models
+  // ================= MONGODB =================
   if (dbType === 'mongodb' || dbType === 'both') {
-    Object.keys(modelFactories).forEach((modelName) => {
+    console.log('🔄 Loading MongoDB models...');
+
+    for (const modelName of Object.keys(modelFactories)) {
       if (modelName.startsWith('Mongo')) {
         try {
           models[modelName] = modelFactories[modelName]();
-          console.log(`✅ Loaded MongoDB model: ${modelName}`);
+          console.log(`✅ Loaded Mongo model: ${modelName}`);
         } catch (err) {
-          console.warn(`⚠️ Failed to load MongoDB model ${modelName}: ${err.message}`);
+          console.error(`❌ Failed Mongo model ${modelName}:`, err.message);
         }
       }
-    });
+    }
   }
 
   initialized = true;
-  console.log(`🎯 Total models loaded: ${Object.keys(models).length}`);
-  console.log('📋 Loaded models:', Object.keys(models).join(', '));
-  
+
+  console.log('🎯 Models initialized successfully');
+  console.log('📋 Available models:', Object.keys(models).join(', '));
+
   return models;
 }
+
+// ======================================================
+// GET MODEL
+// ======================================================
 
 function getModel(name) {
   if (!initialized) {
     throw new Error('Models not initialized. Call init() first.');
   }
 
-  if (models[name]) {
-    return models[name];
-  }
+  if (models[name]) return models[name];
 
-  const altNames = {
-    FloorPlan: 'MongoFloorPlan',
-    User: 'MongoUser',
-    Manual: 'Manual',
-    Furniture: 'Furniture', // Add this
-    CompressedAirOption: 'CompressedAirOption',
-    ElectricalRate: 'ElectricalRate',
-    RentalItem: 'RentalItem',
-    HostessCategory: 'HostessCategory',
-    SecurityGuardConfig: 'SecurityGuardConfig',
-    WaterConnectionConfig: 'WaterConnectionConfig',
-    HousekeepingConfig: 'HousekeepingConfig',
-     SecurityDeposit: 'SecurityDeposit'
-  };
-
-  if (altNames[name] && models[altNames[name]]) {
-    return models[altNames[name]];
-  }
-
-  throw new Error(`Model "${name}" not found. Available models: ${Object.keys(models).join(', ')}`);
+  throw new Error(
+    `Model "${name}" not found. Available: ${Object.keys(models).join(', ')}`
+  );
 }
+
+// ======================================================
+// GET ALL MODELS
+// ======================================================
 
 function getAllModels() {
   return models;
 }
 
+// ======================================================
+// CLEAR MODELS (FOR TESTING)
+// ======================================================
+
 function clear() {
   models = {};
   initialized = false;
 }
+
+// ======================================================
+// EXPORTS
+// ======================================================
 
 module.exports = {
   init,

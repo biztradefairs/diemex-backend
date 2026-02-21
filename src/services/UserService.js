@@ -154,57 +154,51 @@ class UserService {
     }
   }
 
-  async login(email, password) {
-    try {
-      const user = await this.User.findOne({ 
-        where: { email }
-      });
-      
-      if (!user) {
-        throw new Error('Invalid credentials');
-      }
+async login(email, password) {
+  try {
+    // Always normalize email
+    email = email.trim().toLowerCase();
 
-      // Check password
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        throw new Error('Invalid credentials');
-      }
+    const user = await this.User.findOne({
+      where: { email },
+      attributes: { include: ['password'] } // IMPORTANT
+    });
 
-      // Check user status
-      if (user.status !== 'active') {
-        throw new Error('Account is inactive');
-      }
-
-      // Update last login
-      user.lastLogin = new Date();
-      await user.save();
-
-      // Send activity log (only if Kafka is enabled)
-      if (process.env.ENABLE_KAFKA === 'true') {
-        try {
-          const kafkaProducer = require('../kafka/producer');
-          await kafkaProducer.send('user-activity', {
-            key: user.id,
-            value: JSON.stringify({
-              userId: user.id,
-              action: 'LOGIN',
-              timestamp: new Date().toISOString()
-            })
-          });
-        } catch (kafkaError) {
-          console.warn('Kafka not available for activity log:', kafkaError.message);
-        }
-      }
-
-      // Return user without password
-      const userData = user.toJSON();
-      delete userData.password;
-      
-      return userData;
-    } catch (error) {
-      throw new Error(`Login failed: ${error.message}`);
+    if (!user) {
+      throw new Error('Invalid credentials');
     }
+
+    if (!user.password) {
+      console.error('❌ Password field missing from DB query');
+      throw new Error('Invalid credentials');
+    }
+
+    // Compare password using bcryptjs
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      console.log('❌ Password mismatch');
+      throw new Error('Invalid credentials');
+    }
+
+    if (user.status !== 'active') {
+      throw new Error('Account is inactive');
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Remove password before returning
+    const userData = user.toJSON();
+    delete userData.password;
+
+    return userData;
+
+  } catch (error) {
+    throw new Error(`Login failed: ${error.message}`);
   }
+}
 
   async getUsersCount() {
     try {
