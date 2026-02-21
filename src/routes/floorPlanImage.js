@@ -19,7 +19,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     }
 
     // ✅ Use your CloudinaryService correctly
-    const uploadResult = await cloudinaryService.uploadImage(req.file.buffer);
+    const uploadResult = await cloudinaryService.uploadFile(req.file.buffer);
 
     let floorPlan = await FloorPlan.findOne({
       where: { isActive: true }

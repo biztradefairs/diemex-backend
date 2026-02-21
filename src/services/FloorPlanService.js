@@ -21,7 +21,7 @@ class BoothService {
       console.log('📤 Uploading floor plan image to Cloudinary...');
       
       // Upload to Cloudinary
-      const uploadResult = await cloudinaryService.uploadImage(imageFile, {
+      const uploadResult = await cloudinaryService.uploadFile(imageFile.buffer, {
         folder: 'exhibition-floor-plans',
         resource_type: 'image'
       });
@@ -47,7 +47,7 @@ class BoothService {
         // Delete old image from Cloudinary if exists
         if (floorPlan.cloudinaryPublicId) {
           try {
-            await cloudinaryService.deleteImage(floorPlan.cloudinaryPublicId);
+            await cloudinaryService.deleteFile(floorPlan.cloudinaryPublicId);
           } catch (error) {
             console.warn('Failed to delete old image:', error.message);
           }
@@ -371,7 +371,7 @@ class BoothService {
         // Delete image from Cloudinary
         if (floorPlan.cloudinaryPublicId) {
           try {
-            await cloudinaryService.deleteImage(floorPlan.cloudinaryPublicId);
+            await cloudinaryService.deleteFile(floorPlan.cloudinaryPublicId);
           } catch (error) {
             console.warn('Failed to delete image:', error.message);
           }
