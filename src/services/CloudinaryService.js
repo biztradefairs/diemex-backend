@@ -53,24 +53,24 @@ class CloudinaryService {
   // ================================
   // Delete File
   // ================================
-  async deleteFile(publicId) {
-    try {
-      const result = await cloudinary.uploader.destroy(publicId, {
-        resource_type: 'raw'
-      });
+ async deleteFile(publicId, resourceType = 'image') {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType
+    });
 
-      if (result.result !== 'ok') {
-        throw new Error(result.result);
-      }
-
-      console.log('🗑️ Deleted from Cloudinary:', publicId);
-      return true;
-
-    } catch (error) {
-      console.error('❌ Cloudinary delete error:', error.message);
-      throw new Error(`Delete failed: ${error.message}`);
+    if (result.result !== 'ok') {
+      throw new Error(result.result);
     }
+
+    console.log('🗑️ Deleted from Cloudinary:', publicId);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Cloudinary delete error:', error.message);
+    throw new Error(`Delete failed: ${error.message}`);
   }
+}
 
   // ================================
   // Test Connection

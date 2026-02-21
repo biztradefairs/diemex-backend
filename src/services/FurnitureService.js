@@ -34,13 +34,13 @@ class FurnitureService {
 
       // Upload image to Cloudinary if file exists
       if (file) {
-        const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
+        const uploadResult = await cloudinaryService.uploadFile(file.buffer, {
           folder: 'exhibition-furniture',
           resource_type: 'image',
           access_mode: 'public'
         });
-        imageUrl = uploadResult.secure_url || uploadResult.url;
-        cloudinaryPublicId = uploadResult.public_id;
+        imageUrl = uploadResult.url;
+       cloudinaryPublicId = uploadResult.publicId;
       }
 
       const furniture = await Furniture.create({
@@ -122,20 +122,20 @@ class FurnitureService {
       if (file) {
         // Delete old image from Cloudinary if exists
         if (furniture.cloudinaryPublicId) {
-          await cloudinaryService.deleteImage(furniture.cloudinaryPublicId).catch(() => {
+          await cloudinaryService.deleteFile(furniture.cloudinaryPublicId).catch(() => {
             console.log('Failed to delete old image from Cloudinary, but continuing...');
           });
         }
 
         // Upload new image
-        const uploadResult = await cloudinaryService.uploadImage(file.buffer, {
+        const uploadResult = await cloudinaryService.uploadFile(file.buffer, {
           folder: 'exhibition-furniture',
           resource_type: 'image',
           access_mode: 'public'
         });
 
-        updateData.imageUrl = uploadResult.secure_url || uploadResult.url;
-        updateData.cloudinaryPublicId = uploadResult.public_id;
+        updateData.imageUrl = uploadResult.url;
+        updateData.cloudinaryPublicId = uploadResult.publicId;
       }
 
       // Update fields
@@ -164,7 +164,7 @@ class FurnitureService {
 
       // Delete image from Cloudinary if exists
       if (furniture.cloudinaryPublicId) {
-        await cloudinaryService.deleteImage(furniture.cloudinaryPublicId).catch((error) => {
+        await cloudinaryService.deleteFile(furniture.cloudinaryPublicId).catch((error) => {
           console.log('Failed to delete from Cloudinary:', error.message);
         });
       }
@@ -234,7 +234,7 @@ class FurnitureService {
           const furniture = await Furniture.findByPk(id);
           if (furniture) {
             if (furniture.cloudinaryPublicId) {
-              await cloudinaryService.deleteImage(furniture.cloudinaryPublicId).catch(() => {});
+              await cloudinaryService.deleteFile(furniture.cloudinaryPublicId).catch(() => {});
             }
             await furniture.destroy();
             results.push(id);
