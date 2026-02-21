@@ -102,7 +102,7 @@ class BoothService {
           booths: [],
           referencePoints: [],
           isActive: true,
-          createdBy: userId
+          createdBy: userId ? Number(userId) : null
         });
       } else {
         // Delete old image from Cloudinary if exists
