@@ -225,7 +225,7 @@ const uploadDirs = [
     // Add debug endpoint to check file existence
     this.app.get('/api/check-file/:type/:filename', (req, res) => {
       const { type, filename } = req.params;
-      const filePath = path.join(__dirname, 'uploads', type, filename);
+      const filePath = path.join(process.cwd(), 'uploads', type, filename);
       
       const exists = fs.existsSync(filePath);
       const stats = exists ? fs.statSync(filePath) : null;

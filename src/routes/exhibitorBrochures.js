@@ -5,19 +5,24 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// ===============================
-// Multer Configuration
-// ===============================
+// ======================================================
+// 📁 Upload Directory (Global & Safe)
+// ======================================================
+const uploadBaseDir = path.join(process.cwd(), 'uploads');
+const brochureUploadDir = path.join(uploadBaseDir, 'brochures');
+
+// Ensure base upload folder exists
+if (!fs.existsSync(brochureUploadDir)) {
+  fs.mkdirSync(brochureUploadDir, { recursive: true });
+  console.log('📁 Created brochures upload directory:', brochureUploadDir);
+}
+
+// ======================================================
+// 📦 Multer Configuration
+// ======================================================
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    console.log('Multer upload path:', uploadDir);
-    const uploadDir = path.join(process.cwd(), 'uploads/brochures');
-
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    cb(null, uploadDir);
+    cb(null, brochureUploadDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix =
@@ -28,7 +33,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage: storage,
+  storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     const allowedTypes =
@@ -42,7 +47,7 @@ const upload = multer({
       allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
-      return cb(null, true);
+      cb(null, true);
     } else {
       cb(
         new Error(
@@ -53,9 +58,9 @@ const upload = multer({
   },
 });
 
-// ===============================
-// GET All (Logged-in Exhibitor)
-// ===============================
+// ======================================================
+// 📥 GET All Brochures (Logged-in Exhibitor)
+// ======================================================
 router.get('/', authenticateExhibitor, async (req, res) => {
   try {
     const modelFactory = require('../models');
@@ -79,9 +84,9 @@ router.get('/', authenticateExhibitor, async (req, res) => {
   }
 });
 
-// ===============================
-// CREATE Brochure
-// ===============================
+// ======================================================
+// 📤 CREATE Brochure
+// ======================================================
 router.post(
   '/',
   authenticateExhibitor,
@@ -93,7 +98,7 @@ router.post(
 
       const { title, description, isPublic = true } = req.body;
 
-      // 🔥 Required validations
+      // Validation
       if (!title) {
         return res.status(400).json({
           success: false,
@@ -112,9 +117,8 @@ router.post(
       const filePath = `/uploads/brochures/${req.file.filename}`;
       const fileUrl = `${baseUrl}${filePath}`;
 
-      // ✅ IMPORTANT: match Sequelize fields
       const brochure = await Brochure.create({
-        name: title, // must match model
+        name: title,
         description: description || '',
         isPublic:
           isPublic === 'true' || isPublic === true,
@@ -124,7 +128,7 @@ router.post(
         fileSize: req.file.size,
         fileType: req.file.mimetype,
         filePath: filePath,
-        fileUrl: fileUrl, // REQUIRED
+        fileUrl: fileUrl,
       });
 
       res.json({
@@ -142,9 +146,9 @@ router.post(
   }
 );
 
-// ===============================
-// DELETE Brochure
-// ===============================
+// ======================================================
+// 🗑 DELETE Brochure
+// ======================================================
 router.delete('/:id', authenticateExhibitor, async (req, res) => {
   try {
     const modelFactory = require('../models');
@@ -164,16 +168,13 @@ router.delete('/:id', authenticateExhibitor, async (req, res) => {
       });
     }
 
-    // Delete file from disk
+    // Remove file from disk
     if (brochure.filePath) {
-      const fullPath = path.join(
-        __dirname,
-        '../..',
-        brochure.filePath
-      );
+      const fullPath = path.join(process.cwd(), brochure.filePath);
 
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
+        console.log('🗑 Deleted file:', fullPath);
       }
     }
 
