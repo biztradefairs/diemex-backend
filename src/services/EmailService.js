@@ -3,9 +3,17 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
-    // Console-only mode (no SMTP)
-    this.transporter = null;
-    console.log('📧 Email Service initialized (Console Mode - Credentials displayed below)');
+    // Initialize transporter with SMTP settings
+    this.transporter = nodemailer.createTransport({
+     service: 'gmail',
+      secure:  'true',
+      auth: {
+        user: "mondalrohan201@gmail.com", // Your email
+        pass: "fmvg vbvc bbcq mycy", // Your password or app-specific password
+      },
+    });
+    
+    console.log('📧 Email Service initialized (SMTP Mode)');
   }
 
   async sendEmail(to, subject, html) {
@@ -16,28 +24,41 @@ class EmailService {
       console.log(`📨 To: ${to}`);
       console.log(`📝 Subject: ${subject}`);
       
-      // Log to console first
+      // Extract password for logging
       const text = html.replace(/<[^>]*>/g, '');
       const passwordMatch = text.match(/Password:\s*([^\n\r]+)/i);
       if (passwordMatch) {
         console.log(`🔑 PASSWORD: ${passwordMatch[1].trim()}`);
       }
       
-      // Console-only mode (no SMTP)
-      console.log(`✅ EMAIL DISPLAYED IN CONSOLE (Not sent via SMTP)`);
+      // ACTUALLY SEND THE EMAIL via SMTP
+      const mailOptions = {
+        from: `"Bengaluru Fitness Festival" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+        to: to,
+        subject: subject,
+        html: html,
+      };
+      
+      const info = await this.transporter.sendMail(mailOptions);
+      
+      console.log(`✅ EMAIL SENT SUCCESSFULLY via SMTP`);
+      console.log(`📨 Message ID: ${info.messageId}`);
       console.log(`📨 To: ${to}`);
       console.log(`🔑 Password: ${passwordMatch ? passwordMatch[1].trim() : 'Not found'}`);
       console.log('='.repeat(70) + '\n');
       
       return {
-        messageId: 'console-' + Date.now(),
+        messageId: info.messageId,
         accepted: [to],
-        response: 'Email displayed in console (no SMTP)'
+        response: 'Email sent via SMTP'
       };
       
     } catch (error) {
-      console.error('❌ Error preparing email:', error.message);
+      console.error('❌ Error sending email:', error.message);
       console.log('='.repeat(70) + '\n');
+      
+      // FALLBACK: Log to console if SMTP fails
+      console.log('⚠️ FALLBACK: Email logged to console only');
       
       return {
         messageId: 'error-' + Date.now(),
@@ -62,6 +83,47 @@ class EmailService {
     `;
     
     return this.sendEmail(exhibitor.email, subject, html);
+  }
+
+  // Add method to send visitor registration to exhibitor
+  async sendVisitorRegistrationToExhibitor(exhibitorEmail, visitorData) {
+    const subject = 'New Visitor Registration - Exhibition';
+    const html = `
+      <h2>New Visitor Registration</h2>
+      <p>A new visitor has registered for your exhibition:</p>
+      <hr>
+      <p><strong>Name:</strong> ${visitorData.name}</p>
+      <p><strong>Designation:</strong> ${visitorData.designation}</p>
+      <p><strong>Company:</strong> ${visitorData.company}</p>
+      <p><strong>Email:</strong> ${visitorData.email}</p>
+      <p><strong>Mobile:</strong> ${visitorData.mobile}</p>
+      <p><strong>Country:</strong> ${visitorData.country}</p>
+      <p><strong>City:</strong> ${visitorData.city}</p>
+      <hr>
+      <p>Please contact them for further communication.</p>
+    `;
+    
+    return this.sendEmail(exhibitorEmail, subject, html);
+  }
+
+  // Add method to send confirmation to visitor
+  async sendVisitorConfirmation(visitorData) {
+    const subject = 'Registration Confirmed - Exhibition';
+    const html = `
+      <h2>Registration Confirmed!</h2>
+      <p>Dear ${visitorData.name},</p>
+      <p>Thank you for registering for the exhibition. Your registration has been confirmed.</p>
+      <hr>
+      <p><strong>Registration Details:</strong></p>
+      <p><strong>Name:</strong> ${visitorData.name}</p>
+      <p><strong>Company:</strong> ${visitorData.company}</p>
+      <p><strong>Email:</strong> ${visitorData.email}</p>
+      <hr>
+      <p>We look forward to seeing you at the event!</p>
+      <p>Best regards,<br/>Exhibition Team</p>
+    `;
+    
+    return this.sendEmail(visitorData.email, subject, html);
   }
 }
 

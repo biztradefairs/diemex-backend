@@ -414,8 +414,8 @@ const uploadDirs = [
     // ======================
 
     // Authentication routes
-    this.app.use('/api/auth', authRoutes);
-    this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
+    this.app.use('/api/auth', authRoutes);  // Admin/user auth
+  this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes); 
 
     // Protected API routes
     this.app.use('/api/users', userRoutes);
@@ -780,10 +780,14 @@ async checkDefaultAdmin() {
 
     const modelFactory = require('./models');
     const User = modelFactory.getModel('User');
+    const bcrypt = require('bcryptjs');
 
     let admin = await User.findOne({
       where: { email: 'admin@example.com' }
     });
+
+    const plainPassword = 'admin123';
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
     if (!admin) {
       console.log('👤 Creating default admin user...');
@@ -791,22 +795,31 @@ async checkDefaultAdmin() {
       await User.create({
         name: 'Administrator',
         email: 'admin@example.com',
-        password: 'admin123',   // 🔥 PLAIN PASSWORD
+        password: hashedPassword,  // Use hashed password
         role: 'admin',
         status: 'active'
       });
 
       console.log('✅ Default admin user created');
     } else {
-      console.log('🔄 Resetting admin password...');
-      await admin.update({
-        password: 'admin123'   // 🔥 PLAIN PASSWORD
-      });
-      console.log('✅ Admin password reset completed');
+      console.log('🔄 Admin user already exists, checking if password update is needed...');
+      
+      // Check if the existing password needs to be updated
+      const isPasswordCorrect = await bcrypt.compare(plainPassword, admin.password);
+      
+      if (!isPasswordCorrect) {
+        console.log('🔄 Updating admin password...');
+        await admin.update({
+          password: hashedPassword  // Update with hashed password
+        });
+        console.log('✅ Admin password updated');
+      } else {
+        console.log('✅ Admin password is already correct');
+      }
     }
 
     console.log('📧 Email: admin@example.com');
-    console.log('🔑 Password: admin123');
+    console.log('🔑 Password: admin123 (hashed stored in database)');
     console.log('✅ Admin user check completed');
 
   } catch (error) {
