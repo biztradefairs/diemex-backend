@@ -390,136 +390,357 @@ const uploadDirs = [
     console.log('✅ Middleware setup complete');
   }
 
-  setupRoutes() {
-    console.log('\n🚀 Loading API routes...');
+// In your setupRoutes() method, add these debug routes after the system status endpoints
 
-    // ======================
-    // System Status Endpoints
-    // ======================
+setupRoutes() {
+  console.log('\n🚀 Loading API routes...');
 
-    // Health check
-    this.app.get('/health', this.healthCheck);
+  // ======================
+  // System Status Endpoints
+  // ======================
 
-    // Database test
-    this.app.get('/api/db-test', this.databaseTest);
+  // Health check
+  this.app.get('/health', this.healthCheck);
+  this.app.get('/api/health', this.healthCheck); // Add this for compatibility
 
-    // Model list
-    this.app.get('/api/models', this.modelList);
+  // Database test
+  this.app.get('/api/db-test', this.databaseTest);
 
-    // Test exhibitor creation
-    this.app.post('/api/test-exhibitor', this.testExhibitorCreation);
+  // Model list
+  this.app.get('/api/models', this.modelList);
 
-    // ======================
-    // API Routes
-    // ======================
+  // Test exhibitor creation
+  this.app.post('/api/test-exhibitor', this.testExhibitorCreation);
 
-    // Authentication routes
-    this.app.use('/api/auth', authRoutes);  // Admin/user auth
-  this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes); 
-
-    // Protected API routes
-    this.app.use('/api/users', userRoutes);
-    this.app.use('/api/exhibitors', exhibitorRoutes);
-    this.app.use('/api/articles', articleRoutes);
-    this.app.use('/api/booths', boothRoutes);
-    this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
-    this.app.use('/api/floor-plan', boothRoutes);
-    // this.app.use('/api/floor-plan', floorPlanImageRoutes);
-    this.app.use('/api/upload', uploadRoutes);
-    this.app.use('/api/manuals', manualRoutes);
-    this.app.use('/api/manuals/pdfs', manualPDFRoutes);
-    this.app.use('/api/admin/furniture', furnitureRoutes);
-    this.app.use('/api/admin/compressed-air', compressedAirRoutes);
-    this.app.use('/api/admin/electrical-rates', electricalRateRoutes);
-    this.app.use('/api/admin/rental-items', rentalItemRoutes);
-    this.app.use('/api/admin/hostess-rates', hostessCategoryRoutes);
-    this.app.use('/api/admin/security-guard', securityGuardRoutes);
-    this.app.use('/api/admin/water-connection', waterConnectionRoutes);
-    this.app.use('/api/admin/housekeeping', housekeepingRoutes);
-    this.app.use('/api/admin/security-deposit', securityDepositRoutes);
-    this.app.use('/api/brochures', brochureRoutes); // Add brochure routes
-
-    // ======================
-    // Documentation & Info
-    // ======================
-
-    // API documentation
-    this.app.get('/api', (req, res) => {
-      res.json({
-        success: true,
-        message: 'Exhibition Admin API',
-        version: '1.0.0',
-        environment: this.env,
-        endpoints: {
-          auth: '/api/auth',
-          users: '/api/users',
-          exhibitors: '/api/exhibitors',
-          articles: '/api/articles',
-          exhibitorDashboard: '/api/exhibitorDashboard',
-          brochures: '/api/brochures'
-        },
-        documentation: 'See /api/docs for API documentation'
-      });
-    });
-
-    // API documentation
-    this.app.get('/api/docs', (req, res) => {
-      const docs = {
-        api: {
-          version: '1.0.0',
-          baseUrl: '/api',
-          authentication: 'Bearer token required for protected routes'
-        },
-        endpoints: {
-          auth: {
-            login: 'POST /api/auth/login',
-            register: 'POST /api/auth/register',
-            profile: 'GET /api/auth/profile',
-            refresh: 'POST /api/auth/refresh'
-          },
-          exhibitorAuth: {
-            login: 'POST /api/auth/exhibitor/login',
-            profile: 'GET /api/auth/exhibitor/profile'
-          },
-          exhibitors: {
-            getAll: 'GET /api/exhibitors?page=1&limit=10&search=&sector=&status=',
-            getStats: 'GET /api/exhibitors/stats',
-            getById: 'GET /api/exhibitors/:id',
-            create: 'POST /api/exhibitors',
-            update: 'PUT /api/exhibitors/:id',
-            delete: 'DELETE /api/exhibitors/:id',
-            resendCredentials: 'POST /api/exhibitors/:id/resend-credentials',
-            bulkUpdate: 'POST /api/exhibitors/bulk/update-status'
-          },
-          users: {
-            getAll: 'GET /api/users',
-            getById: 'GET /api/users/:id',
-            create: 'POST /api/users',
-            update: 'PUT /api/users/:id',
-            delete: 'DELETE /api/users/:id'
-          },
-          brochures: {
-            getAll: 'GET /api/brochures',
-            create: 'POST /api/brochures',
-            delete: 'DELETE /api/brochures/:id'
+  // ======================
+  // DEBUG ROUTES - ADD THESE
+  // ======================
+  
+  // Debug: Check all registered routes
+  this.app.get('/api/debug/routes', (req, res) => {
+    const routes = [];
+    
+    function printRoutes(stack, basePath = '') {
+      stack.forEach(layer => {
+        if (layer.route) {
+          const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+          routes.push({
+            method: methods.join(','),
+            path: basePath + layer.route.path
+          });
+        } else if (layer.name === 'router' && layer.handle.stack) {
+          let prefix = '';
+          if (layer.regexp) {
+            const match = layer.regexp.toString().match(/\/\^\\\/([^\\/]+)/);
+            prefix = match ? '/' + match[1] : '';
           }
+          printRoutes(layer.handle.stack, basePath + prefix);
         }
-      };
+      });
+    }
+    
+    printRoutes(this.app._router.stack);
+    
+    res.json({
+      success: true,
+      baseUrl: `${req.protocol}://${req.get('host')}`,
+      routes: routes.sort((a, b) => a.path.localeCompare(b.path))
+    });
+  });
 
+  // Debug: Check admin user
+  this.app.get('/api/debug/check-admin', async (req, res) => {
+    try {
+      const modelFactory = require('./models');
+      const User = modelFactory.getModel('User');
+      const bcrypt = require('bcryptjs');
+      
+      const adminEmail = 'admin@example.com';
+      const admin = await User.findOne({ where: { email: adminEmail } });
+      
+      if (!admin) {
+        return res.json({
+          success: false,
+          exists: false,
+          message: 'Admin user not found'
+        });
+      }
+      
+      // Check if password is hashed properly
+      const testPassword = 'admin123';
+      const isValid = await bcrypt.compare(testPassword, admin.password);
+      
+      return res.json({
+        success: true,
+        exists: true,
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role,
+        status: admin.status,
+        passwordHashLength: admin.password.length,
+        passwordIsValid: isValid,
+        passwordStartsWith: admin.password.substring(0, 15) + '...',
+        isHashed: admin.password.startsWith('$2a$') || admin.password.startsWith('$2b$'),
+        createdAt: admin.createdAt,
+        updatedAt: admin.updatedAt
+      });
+      
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // Debug: Reset admin password (POST)
+  this.app.post('/api/debug/reset-admin', async (req, res) => {
+    try {
+      const modelFactory = require('./models');
+      const User = modelFactory.getModel('User');
+      const bcrypt = require('bcryptjs');
+      
+      const adminEmail = 'admin@example.com';
+      const adminPassword = 'admin123';
+      
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      
+      // Check if admin exists
+      let admin = await User.findOne({ where: { email: adminEmail } });
+      
+      if (!admin) {
+        // Create new admin
+        admin = await User.create({
+          name: 'Administrator',
+          email: adminEmail,
+          password: hashedPassword,
+          role: 'admin',
+          status: 'active'
+        });
+        
+        res.json({
+          success: true,
+          message: 'Admin user created successfully',
+          email: adminEmail,
+          password: adminPassword
+        });
+      } else {
+        // Update existing admin
+        await admin.update({ password: hashedPassword });
+        
+        // Verify the password works
+        const verifyPassword = await bcrypt.compare(adminPassword, admin.password);
+        
+        res.json({
+          success: true,
+          message: 'Admin password reset successfully',
+          email: adminEmail,
+          password: adminPassword,
+          verified: verifyPassword
+        });
+      }
+      
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // Debug: Test login directly (POST)
+  this.app.post('/api/debug/test-login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email and password required'
+        });
+      }
+      
+      const modelFactory = require('./models');
+      const User = modelFactory.getModel('User');
+      const bcrypt = require('bcryptjs');
+      const jwt = require('jsonwebtoken');
+      
+      const user = await User.findOne({ where: { email } });
+      
+      if (!user) {
+        return res.json({
+          success: false,
+          error: 'User not found',
+          email
+        });
+      }
+      
+      const isValid = await bcrypt.compare(password, user.password);
+      
+      if (!isValid) {
+        return res.json({
+          success: false,
+          error: 'Invalid password',
+          email,
+          passwordHash: user.password.substring(0, 15) + '...',
+          isHashed: user.password.startsWith('$2a$') || user.password.startsWith('$2b$')
+        });
+      }
+      
+      // Generate token
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '7d' }
+      );
+      
       res.json({
         success: true,
-        data: docs
+        message: 'Login successful',
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role
+        }
       });
-    });
+      
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
 
-    // Fix for exhibitor login route
-    this.app.post('/auth/exhibitor/login', (req, res, next) => {
-      req.url = '/api/auth/exhibitor/login';
-      this.app._router.handle(req, res, next);
-    });
+  // ======================
+  // API Routes
+  // ======================
 
-    console.log('✅ API routes loaded successfully');
-  }
+  // Authentication routes
+  this.app.use('/api/auth', authRoutes);
+  this.app.use('/api/auth/exhibitor', exhibitorAuthRoutes);
+  
+  // ALSO add direct /auth routes for compatibility with frontend
+  this.app.use('/auth', authRoutes);
+
+  // Protected API routes
+  this.app.use('/api/users', userRoutes);
+  this.app.use('/api/exhibitors', exhibitorRoutes);
+  this.app.use('/api/articles', articleRoutes);
+  this.app.use('/api/booths', boothRoutes);
+  this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
+  this.app.use('/api/floor-plan', boothRoutes);
+  this.app.use('/api/upload', uploadRoutes);
+  this.app.use('/api/manuals', manualRoutes);
+  this.app.use('/api/manuals/pdfs', manualPDFRoutes);
+  this.app.use('/api/admin/furniture', furnitureRoutes);
+  this.app.use('/api/admin/compressed-air', compressedAirRoutes);
+  this.app.use('/api/admin/electrical-rates', electricalRateRoutes);
+  this.app.use('/api/admin/rental-items', rentalItemRoutes);
+  this.app.use('/api/admin/hostess-rates', hostessCategoryRoutes);
+  this.app.use('/api/admin/security-guard', securityGuardRoutes);
+  this.app.use('/api/admin/water-connection', waterConnectionRoutes);
+  this.app.use('/api/admin/housekeeping', housekeepingRoutes);
+  this.app.use('/api/admin/security-deposit', securityDepositRoutes);
+  this.app.use('/api/brochures', brochureRoutes);
+
+  // ======================
+  // Documentation & Info
+  // ======================
+
+  // API documentation
+  this.app.get('/api', (req, res) => {
+    res.json({
+      success: true,
+      message: 'Exhibition Admin API',
+      version: '1.0.0',
+      environment: this.env,
+      endpoints: {
+        auth: '/api/auth',
+        users: '/api/users',
+        exhibitors: '/api/exhibitors',
+        articles: '/api/articles',
+        exhibitorDashboard: '/api/exhibitorDashboard',
+        brochures: '/api/brochures',
+        debug: '/api/debug/routes'
+      },
+      documentation: 'See /api/docs for API documentation'
+    });
+  });
+
+  // API documentation
+  this.app.get('/api/docs', (req, res) => {
+    const docs = {
+      api: {
+        version: '1.0.0',
+        baseUrl: '/api',
+        authentication: 'Bearer token required for protected routes'
+      },
+      endpoints: {
+        auth: {
+          login: 'POST /api/auth/login',
+          register: 'POST /api/auth/register',
+          profile: 'GET /api/auth/profile',
+          refresh: 'POST /api/auth/refresh'
+        },
+        exhibitorAuth: {
+          login: 'POST /api/auth/exhibitor/login',
+          profile: 'GET /api/auth/exhibitor/profile'
+        },
+        exhibitors: {
+          getAll: 'GET /api/exhibitors?page=1&limit=10&search=&sector=&status=',
+          getStats: 'GET /api/exhibitors/stats',
+          getById: 'GET /api/exhibitors/:id',
+          create: 'POST /api/exhibitors',
+          update: 'PUT /api/exhibitors/:id',
+          delete: 'DELETE /api/exhibitors/:id',
+          resendCredentials: 'POST /api/exhibitors/:id/resend-credentials',
+          bulkUpdate: 'POST /api/exhibitors/bulk/update-status'
+        },
+        users: {
+          getAll: 'GET /api/users',
+          getById: 'GET /api/users/:id',
+          create: 'POST /api/users',
+          update: 'PUT /api/users/:id',
+          delete: 'DELETE /api/users/:id'
+        },
+        brochures: {
+          getAll: 'GET /api/brochures',
+          create: 'POST /api/brochures',
+          delete: 'DELETE /api/brochures/:id'
+        },
+        debug: {
+          routes: 'GET /api/debug/routes',
+          checkAdmin: 'GET /api/debug/check-admin',
+          resetAdmin: 'POST /api/debug/reset-admin',
+          testLogin: 'POST /api/debug/test-login'
+        }
+      }
+    };
+
+    res.json({
+      success: true,
+      data: docs
+    });
+  });
+
+  // Fix for exhibitor login route
+  this.app.post('/auth/exhibitor/login', (req, res, next) => {
+    req.url = '/api/auth/exhibitor/login';
+    this.app._router.handle(req, res, next);
+  });
+
+  console.log('✅ API routes loaded successfully');
+  console.log('📌 Debug routes available at:');
+  console.log('   - GET  /api/debug/routes');
+  console.log('   - GET  /api/debug/check-admin');
+  console.log('   - POST /api/debug/reset-admin');
+  console.log('   - POST /api/debug/test-login');
+}
 
   // ======================
   // Route Handlers

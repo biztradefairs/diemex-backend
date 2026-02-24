@@ -5,64 +5,85 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { authenticate, authorize } = require('../middleware/auth');
 
-// Admin/User Login
+// Admin/User Login with debugging
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('\n🔐 LOGIN ATTEMPT');
+    console.log('📧 Email:', email);
+    console.log('🔑 Password provided:', password ? 'Yes' : 'No');
+    console.log('🌐 Origin:', req.get('origin'));
+    console.log('🔗 URL:', req.originalUrl);
+
     if (!email || !password) {
+      console.log('❌ Missing credentials');
       return res.status(400).json({
         success: false,
         error: 'Email and password are required'
       });
     }
 
-    console.log(`🔐 Login attempt for: ${email}`);
-
     const modelFactory = require('../models');
     const User = modelFactory.getModel('User');
 
-    // Find user by email
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() }
     });
 
     if (!user) {
-      console.log('❌ User not found');
+      console.log('❌ User not found in database');
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password'
       });
     }
 
-    console.log(`✅ User found: ${user.email}`);
-    console.log(`👤 Role: ${user.role}`);
-    console.log(`🔑 Stored password hash: ${user.password.substring(0, 20)}...`);
+    console.log('✅ User found:', user.email);
+    console.log('👤 Role:', user.role);
+    console.log('🔑 Stored password hash length:', user.password.length);
+    console.log('🔑 Stored password starts with:', user.password.substring(0, 10) + '...');
+    console.log('🔑 Is bcrypt hash?', user.password.startsWith('$2a$') || user.password.startsWith('$2b$'));
 
     // Compare password using bcrypt
     const isValidPassword = await bcrypt.compare(password, user.password);
 
-    console.log(`🔐 Password valid: ${isValidPassword}`);
+    console.log('🔐 Password valid:', isValidPassword);
 
     if (!isValidPassword) {
-      // For debugging - DO NOT USE IN PRODUCTION
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⚠️ Attempted password:', password);
-        // Test if the password might be stored as plain text
-        const isPlainTextMatch = password === user.password;
-        if (isPlainTextMatch) {
-          console.log('⚠️ WARNING: Password appears to be stored as plain text!');
+      // Check if password might be stored as plain text (debug only)
+      if (password === user.password) {
+        console.log('⚠️ WARNING: Password appears to be stored as plain text!');
+        console.log('🔄 Attempting to fix by re-hashing...');
+        
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await user.update({ password: hashedPassword });
+        console.log('✅ Password has been re-hashed');
+        
+        // Try again with the new hash
+        const recheck = await bcrypt.compare(password, user.password);
+        console.log('🔐 Re-check after rehash:', recheck);
+        
+        if (recheck) {
+          // Proceed with login
+          console.log('✅ Login successful after rehash');
+        } else {
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid email or password'
+          });
         }
+      } else {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password'
+        });
       }
-
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid email or password'
-      });
     }
 
     // Check if user is active
     if (user.status !== 'active') {
+      console.log('❌ User not active:', user.status);
       return res.status(403).json({
         success: false,
         error: 'Account is not active'
@@ -80,19 +101,20 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    // Remove sensitive data
-    const userData = user.toJSON();
-    delete userData.password;
-    delete userData.resetPasswordToken;
-    delete userData.resetPasswordExpires;
+    console.log('✅ Login successful, token generated');
 
-    console.log(`✅ Login successful for: ${email}`);
-
+    // Return user data (without password)
     res.json({
       success: true,
       data: {
         token,
-        user: userData
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          status: user.status
+        }
       }
     });
 
@@ -129,7 +151,7 @@ router.get('/profile', authenticate, async (req, res) => {
 });
 
 // Refresh token
-router.post('/refresh', authenticate, async (req, res) => {
+router.post('/refresh-token', authenticate, async (req, res) => {
   try {
     const newToken = jwt.sign(
       {
@@ -154,159 +176,12 @@ router.post('/refresh', authenticate, async (req, res) => {
   }
 });
 
-// Logout (optional - client side just discards token)
+// Logout
 router.post('/logout', authenticate, (req, res) => {
   res.json({
     success: true,
     message: 'Logged out successfully'
   });
-});
-
-// Change password
-router.post('/change-password', authenticate, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        error: 'Current password and new password are required'
-      });
-    }
-
-    const modelFactory = require('../models');
-    const User = modelFactory.getModel('User');
-
-    const user = await User.findByPk(req.user.id);
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
-
-    if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        error: 'Current password is incorrect'
-      });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password
-    await user.update({ password: hashedPassword });
-
-    res.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
-
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to change password'
-    });
-  }
-});
-
-// Forgot password (optional)
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const modelFactory = require('../models');
-    const User = modelFactory.getModel('User');
-    const crypto = require('crypto');
-
-    const user = await User.findOne({ where: { email } });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
-
-    // Save to user (you'll need to add these fields to your model)
-    await user.update({
-      resetPasswordToken: resetTokenHash,
-      resetPasswordExpires: new Date(Date.now() + 3600000) // 1 hour
-    });
-
-    // TODO: Send email with reset link
-    // const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-    res.json({
-      success: true,
-      message: 'Password reset email sent'
-    });
-
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process request'
-    });
-  }
-});
-
-// Reset password (optional)
-router.post('/reset-password', async (req, res) => {
-  try {
-    const { token, newPassword } = req.body;
-    const crypto = require('crypto');
-
-    const resetTokenHash = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
-
-    const modelFactory = require('../models');
-    const User = modelFactory.getModel('User');
-
-    const user = await User.findOne({
-      where: {
-        resetPasswordToken: resetTokenHash,
-        resetPasswordExpires: { [require('sequelize').Op.gt]: new Date() }
-      }
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid or expired token'
-      });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password and clear reset fields
-    await user.update({
-      password: hashedPassword,
-      resetPasswordToken: null,
-      resetPasswordExpires: null
-    });
-
-    res.json({
-      success: true,
-      message: 'Password reset successful'
-    });
-
-  } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to reset password'
-    });
-  }
 });
 
 module.exports = router;
