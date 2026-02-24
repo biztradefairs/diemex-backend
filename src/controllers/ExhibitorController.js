@@ -59,19 +59,21 @@ async createExhibitor(req, res) {
     console.log('🏪 Stall details with price:', stallDetails);
     
     // Create exhibitor
-    const exhibitor = await Exhibitor.create({
-      name: data.name.trim(),
-      email: data.email.toLowerCase().trim(),
-      company: data.company.trim(),
-      password: data.password,
-      _originalPassword: data.password,
-      phone: data.phone || '',
-      sector: data.sector || '',
-      boothNumber: data.boothNumber || '',
-      stallDetails: stallDetails, // Now includes price
-      status: data.status || 'pending',
-      metadata: {}
-    });
+    // const originalPassword = data.password;
+   const exhibitor = await Exhibitor.create({
+  name: data.name.trim(),
+  email: data.email.toLowerCase().trim(),
+  company: data.company.trim(),
+  password: originalPassword,
+  phone: data.phone || '',
+  sector: data.sector || '',
+  boothNumber: data.boothNumber || '',
+  stallDetails: stallDetails,
+  status: data.status || 'pending',
+  metadata: JSON.stringify({
+    originalPassword: originalPassword
+  })
+});
     
     console.log('✅ Exhibitor created:', exhibitor.email);
     console.log('🔑 Original password:', originalPassword);
