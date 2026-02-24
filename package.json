@@ -45,6 +45,7 @@
     "seed": "node src/database/seeders/seed.js"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "axios": "^1.5.0",
     "bcryptjs": "^2.4.3",
     "bull": "^4.11.5",
