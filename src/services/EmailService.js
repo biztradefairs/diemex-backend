@@ -1,70 +1,81 @@
 // services/EmailService.js
+
 const sgMail = require("@sendgrid/mail");
 
 class EmailService {
   constructor() {
     if (!process.env.SENDGRID_API_KEY) {
-      console.error("❌ SENDGRID_API_KEY is missing!");
+      console.error("❌ SENDGRID_API_KEY is missing in environment variables");
     }
 
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
     console.log("📧 Email Service initialized (SendGrid Mode)");
   }
 
-  async sendTemplateEmail(to, templateId, dynamicData) {
+  /**
+   * Generic HTML Email Sender (Keeps your existing routes working)
+   */
+  async sendEmail(to, subject, html) {
     try {
-      console.log("=".repeat(60));
-      console.log("📧 Sending Email");
-      console.log("To:", to);
-
       const msg = {
         to,
         from: process.env.SENDGRID_FROM,
-        templateId: templateId,
-        dynamicTemplateData: dynamicData,
+        subject,
+        html,
       };
 
       const response = await sgMail.send(msg);
 
-      console.log("✅ Email Sent Successfully");
-      console.log("=".repeat(60));
-
+      console.log("✅ Email sent successfully");
       return {
         success: true,
         messageId: response[0].headers["x-message-id"],
       };
     } catch (error) {
-      console.error("❌ Email Error:", error.response?.body || error.message);
-      return {
-        success: false,
-        error: error.message,
-      };
+      console.error("❌ SendEmail Error:", error.response?.body || error.message);
+      throw new Error("Failed to send email");
     }
   }
 
-  // ✅ Send OTP Email
-  async sendOTP(email, otp) {
-    return this.sendTemplateEmail(
-      email,
-      "d-ee834dddfdbe41d4b828db79cad0451b", // Your Template ID
-      {
-        name: "Visitor",
-        otp: otp,
-        event_name: "DIEMEX Exhibition 2026",
-      }
-    );
+  /**
+   * Dynamic Template Sender (Optional for future use)
+   */
+  async sendTemplateEmail(to, templateId, dynamicData) {
+    try {
+      const msg = {
+        to,
+        from: process.env.SENDGRID_FROM,
+        templateId,
+        dynamicTemplateData: dynamicData,
+      };
+
+      const response = await sgMail.send(msg);
+
+      console.log("✅ Template email sent successfully");
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+      };
+    } catch (error) {
+      console.error("❌ Template Email Error:", error.response?.body || error.message);
+      throw new Error("Failed to send template email");
+    }
   }
 
-  // ✅ Send Visitor Confirmation
-  async sendVisitorConfirmation(visitorData) {
-    return this.sendTemplateEmail(
-      visitorData.email,
-      "d-ee834dddfdbe41d4b828db79cad0451b", // You can create another template later
-      {
-        name: visitorData.name,
-        event_name: "DIEMEX Exhibition 2026",
+  /**
+   * Optional: Test connection
+   */
+  async testConnection() {
+    try {
+      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
+        throw new Error("SendGrid environment variables missing");
       }
-    );
+
+      console.log("📧 SendGrid configuration found");
+      return true;
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
