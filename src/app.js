@@ -32,6 +32,7 @@ const waterConnectionRoutes = require('./routes/waterConnectionRoutes');
 const housekeepingRoutes = require('./routes/housekeepingRoutes');
 const securityDepositRoutes = require('./routes/securityDepositRoutes');
 const brochureRoutes = require('./routes/brochureRoutes'); // Add this
+const visitorRoutes = require('./routes/visitorRoutes');
 
 class AppServer {
   constructor() {
@@ -647,6 +648,7 @@ setupRoutes() {
   this.app.use('/api/admin/housekeeping', housekeepingRoutes);
   this.app.use('/api/admin/security-deposit', securityDepositRoutes);
   this.app.use('/api/brochures', brochureRoutes);
+  this.app.use('/api/visitors', visitorRoutes);
 
   // ======================
   // Documentation & Info
