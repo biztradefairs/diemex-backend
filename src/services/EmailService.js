@@ -5,16 +5,14 @@ const sgMail = require("@sendgrid/mail");
 class EmailService {
   constructor() {
     if (!process.env.SENDGRID_API_KEY) {
-      console.error("❌ SENDGRID_API_KEY is missing in environment variables");
+      console.error("❌ SENDGRID_API_KEY missing");
     }
 
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
     console.log("📧 Email Service initialized (SendGrid Mode)");
   }
 
-  /**
-   * Generic HTML Email Sender (Keeps your existing routes working)
-   */
+  // ✅ Generic HTML Email
   async sendEmail(to, subject, html) {
     try {
       const msg = {
@@ -26,56 +24,78 @@ class EmailService {
 
       const response = await sgMail.send(msg);
 
-      console.log("✅ Email sent successfully");
+      console.log(`✅ Email sent to ${to}`);
       return {
         success: true,
         messageId: response[0].headers["x-message-id"],
       };
     } catch (error) {
-      console.error("❌ SendEmail Error:", error.response?.body || error.message);
-      throw new Error("Failed to send email");
+      console.error("❌ Email Error:", error.response?.body || error.message);
+      throw new Error("Email sending failed");
     }
   }
 
-  /**
-   * Dynamic Template Sender (Optional for future use)
-   */
-  async sendTemplateEmail(to, templateId, dynamicData) {
-    try {
-      const msg = {
-        to,
-        from: process.env.SENDGRID_FROM,
-        templateId,
-        dynamicTemplateData: dynamicData,
-      };
+  // ✅ Exhibitor Welcome Email
+  async sendExhibitorWelcome(exhibitor, plainPassword) {
+    const subject = "Exhibition Portal - Login Credentials";
 
-      const response = await sgMail.send(msg);
+    const html = `
+      <h2>Welcome to the Exhibition Portal</h2>
+      <p>Dear ${exhibitor.name},</p>
+      <p>Your exhibitor account has been created.</p>
+      <hr>
+      <p><strong>Email:</strong> ${exhibitor.email}</p>
+      <p><strong>Password:</strong> ${plainPassword}</p>
+      <hr>
+      <p>Please login and change your password immediately.</p>
+      <p>Best regards,<br/>Exhibition Team</p>
+    `;
 
-      console.log("✅ Template email sent successfully");
-      return {
-        success: true,
-        messageId: response[0].headers["x-message-id"],
-      };
-    } catch (error) {
-      console.error("❌ Template Email Error:", error.response?.body || error.message);
-      throw new Error("Failed to send template email");
-    }
+    return this.sendEmail(exhibitor.email, subject, html);
   }
 
-  /**
-   * Optional: Test connection
-   */
+  // ✅ Visitor OTP Email
+  async sendVisitorOTP(email, name, otp) {
+    const subject = "Your Verification Code for Exhibition Registration";
+
+    const html = `
+      <h2>Email Verification</h2>
+      <p>Dear ${name},</p>
+      <p>Your OTP is:</p>
+      <h1 style="font-size:32px; letter-spacing:5px; text-align:center;">${otp}</h1>
+      <p>This code expires in 5 minutes.</p>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
+  // ✅ Visitor Confirmation
+  async sendVisitorConfirmation(visitorData) {
+    const subject = "Registration Confirmed - Exhibition";
+
+    const html = `
+      <h2>Registration Confirmed</h2>
+      <p>Dear ${visitorData.name},</p>
+      <p>Your registration has been successfully completed.</p>
+      <hr>
+      <p><strong>Name:</strong> ${visitorData.name}</p>
+      <p><strong>Company:</strong> ${visitorData.company}</p>
+      <p><strong>Email:</strong> ${visitorData.email}</p>
+      <hr>
+      <p>We look forward to seeing you!</p>
+    `;
+
+    return this.sendEmail(visitorData.email, subject, html);
+  }
+
+  // ✅ Test connection (used in server.js)
   async testConnection() {
-    try {
-      if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
-        throw new Error("SendGrid environment variables missing");
-      }
-
-      console.log("📧 SendGrid configuration found");
-      return true;
-    } catch (error) {
-      throw error;
+    if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
+      throw new Error("SendGrid environment variables missing");
     }
+
+    console.log("📧 SendGrid configuration OK");
+    return true;
   }
 }
 
