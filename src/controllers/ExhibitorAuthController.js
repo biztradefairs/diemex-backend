@@ -163,126 +163,134 @@ class ExhibitorAuthController {
     }
   }
 
-  /**
-   * Request password reset (forgot password)
-   * POST /api/auth/exhibitor/forgot-password
-   */
-  async forgotPassword(req, res) {
-    try {
-      console.log('\n🔐 PASSWORD RESET REQUEST');
-      console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
-      
-      const { email, captchaToken } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          error: 'Email is required'
-        });
-      }
-
-      // Verify reCAPTCHA if enabled
-      if (captchaToken && process.env.RECAPTCHA_SECRET_KEY) {
-        try {
-          const recaptchaResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${captchaToken}`
-          });
-          const recaptchaData = await recaptchaResponse.json();
-          
-          if (!recaptchaData.success) {
-            console.log('❌ reCAPTCHA verification failed:', recaptchaData);
-            return res.status(400).json({
-              success: false,
-              error: 'reCAPTCHA verification failed'
-            });
-          }
-          console.log('✅ reCAPTCHA verified successfully');
-        } catch (recaptchaError) {
-          console.error('❌ reCAPTCHA error:', recaptchaError);
-          // Continue without reCAPTCHA if it fails (optional)
-        }
-      }
-
-      const modelFactory = require('../models');
-      const Exhibitor = modelFactory.getModel('Exhibitor');
-      
-      const cleanEmail = email.toLowerCase().trim();
-      console.log('📧 Searching for exhibitor with email:', cleanEmail);
-      
-      // Find exhibitor by email
-      const exhibitor = await Exhibitor.findOne({
-        where: { email: cleanEmail }
-      });
-
-      // Always return success (security best practice - don't reveal if email exists)
-      if (!exhibitor) {
-        console.log('❌ Exhibitor not found, but returning success for security');
-        return res.json({
-          success: true,
-          message: 'If your email is registered, you will receive a password reset link'
-        });
-      }
-
-      console.log('✅ Exhibitor found:', {
-        id: exhibitor.id,
-        name: exhibitor.name,
-        email: exhibitor.email,
-        status: exhibitor.status
-      });
-
-      // Generate reset token (valid for 1 hour)
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
-
-      console.log('🔑 Reset token generated:', resetToken.substring(0, 20) + '...');
-      console.log('⏰ Token expires:', resetTokenExpiry);
-
-      // Save token to exhibitor record
-      await exhibitor.update({
-        resetPasswordToken: resetToken,
-        resetPasswordExpires: resetTokenExpiry
-      });
-
-      // Create reset URL
-      const frontendUrl = process.env.FRONTEND_URL || 'https://dimex-ruby.vercel.app/';
-      const resetUrl = `${frontendUrl}/forgot-password/${resetToken}`;
-
-      console.log('🔗 Reset URL:', resetUrl);
-
-      // Send email using your email service
-      try {
-        const emailResult = await emailService.sendPasswordResetEmail(
-          exhibitor.email,
-          exhibitor.name || exhibitor.companyName || 'Exhibitor',
-          resetUrl
-        );
-
-        if (!emailResult.success) {
-          console.error('❌ Failed to send password reset email:', emailResult.error);
-          // Don't fail the request, but log it
-        } else {
-          console.log('✅ Password reset email sent successfully to:', exhibitor.email);
-        }
-      } catch (emailError) {
-        console.error('❌ Email service error:', emailError);
-        // Still return success to user for security
-      }
-
-      res.json({
-        success: true,
-        message: 'Password reset link sent to your email'
-      });
-
-    } catch (error) {
-      console.error('❌ Forgot password error:', error);
-      res.status(500).json({
+/**
+ * Request password reset (forgot password)
+ * POST /api/auth/exhibitor/forgot-password
+ */
+async forgotPassword(req, res) {
+  try {
+    console.log('\n🔐 PASSWORD RESET REQUEST');
+    console.log('📦 Request body:', JSON.stringify(req.body, null, 2));
+    
+    const { email, captchaToken } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        error: 'Failed to process password reset request'
+        error: 'Email is required'
       });
     }
+
+    // Verify reCAPTCHA if enabled
+    if (captchaToken && process.env.RECAPTCHA_SECRET_KEY) {
+      try {
+        const recaptchaResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${captchaToken}`
+        });
+        const recaptchaData = await recaptchaResponse.json();
+        
+        if (!recaptchaData.success) {
+          console.log('❌ reCAPTCHA verification failed:', recaptchaData);
+          return res.status(400).json({
+            success: false,
+            error: 'reCAPTCHA verification failed'
+          });
+        }
+        console.log('✅ reCAPTCHA verified successfully');
+      } catch (recaptchaError) {
+        console.error('❌ reCAPTCHA error:', recaptchaError);
+        // Continue without reCAPTCHA if it fails (optional)
+      }
+    }
+
+    const modelFactory = require('../models');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+    
+    const cleanEmail = email.toLowerCase().trim();
+    console.log('📧 Searching for exhibitor with email:', cleanEmail);
+    
+    // Find exhibitor by email
+    const exhibitor = await Exhibitor.findOne({
+      where: { email: cleanEmail }
+    });
+
+    // Return specific message if email not found
+    if (!exhibitor) {
+      console.log('❌ Exhibitor not found with email:', cleanEmail);
+      return res.status(404).json({
+        success: false,
+        error: 'Email not registered',
+        message: 'No account found with this email address. Please check your email or register as a new exhibitor.'
+      });
+    }
+
+    console.log('✅ Exhibitor found:', {
+      id: exhibitor.id,
+      name: exhibitor.name,
+      email: exhibitor.email,
+      status: exhibitor.status
+    });
+
+    // Generate reset token (valid for 1 hour)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+
+    console.log('🔑 Reset token generated:', resetToken.substring(0, 20) + '...');
+    console.log('⏰ Token expires:', resetTokenExpiry);
+
+    // Save token to exhibitor record
+    await exhibitor.update({
+      resetPasswordToken: resetToken,
+      resetPasswordExpires: resetTokenExpiry
+    });
+
+    // Create reset URL
+    const frontendUrl = process.env.FRONTEND_URL || 'https://dimex-ruby.vercel.app/';
+    const resetUrl = `${frontendUrl}/forgot-password/${resetToken}`;
+
+    console.log('🔗 Reset URL:', resetUrl);
+
+    // Send email using your email service
+    try {
+      const emailResult = await emailService.sendPasswordResetEmail(
+        exhibitor.email,
+        exhibitor.name || exhibitor.companyName || 'Exhibitor',
+        resetUrl
+      );
+
+      if (!emailResult.success) {
+        console.error('❌ Failed to send password reset email:', emailResult.error);
+        // Don't fail the request, but log it
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to send reset email. Please try again later.'
+        });
+      } else {
+        console.log('✅ Password reset email sent successfully to:', exhibitor.email);
+      }
+    } catch (emailError) {
+      console.error('❌ Email service error:', emailError);
+      return res.status(500).json({
+        success: false,
+        error: 'Email service error. Please try again later.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Password reset link sent to your email'
+    });
+
+  } catch (error) {
+    console.error('❌ Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process password reset request'
+    });
   }
+}
 
   /**
    * Reset password with token
