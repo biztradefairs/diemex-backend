@@ -246,8 +246,8 @@ class ExhibitorAuthController {
       });
 
       // Create reset URL
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
+      const frontendUrl = process.env.FRONTEND_URL || 'https://dimex-ruby.vercel.app/';
+      const resetUrl = `${frontendUrl}/forgot-password/${resetToken}`;
 
       console.log('🔗 Reset URL:', resetUrl);
 
