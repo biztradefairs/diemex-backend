@@ -332,7 +332,7 @@ router.post("/", async (req, res) => {
     
     // Also send notification to admin (optional)
     try {
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@diemex.com';
+      const adminEmail = 'pad9742@gmail.com'; // Send all admin notifications to this email
       await emailService.sendEmail(
         adminEmail,
         `New Form Submission: ${formType}`,
