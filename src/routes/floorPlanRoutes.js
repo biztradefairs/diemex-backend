@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const BoothService = require('../services/BoothService');
+const BoothService = require('../services/FloorPlanService');
 
 // Configure multer with memory storage and file size limit
 const upload = multer({ 
