@@ -43,11 +43,13 @@ module.exports = (sequelize) => {
     // Original image dimensions
     imageWidth: {
       type: DataTypes.INTEGER,
-      allowNull: true
+      allowNull: true,
+      field: 'image_width'
     },
     imageHeight: {
       type: DataTypes.INTEGER,
-      allowNull: true
+      allowNull: true,
+      field: 'image_height'
     },
     // Store fixed reference points for scaling
     referencePoints: {
@@ -68,12 +70,15 @@ module.exports = (sequelize) => {
     },
     createdBy: {
       type: DataTypes.INTEGER,
-      allowNull: true
+      allowNull: true,
+      field: 'created_by'
     },
     updatedBy: {
       type: DataTypes.INTEGER,
-      allowNull: true
+      allowNull: true,
+      field: 'updated_by'
     },
+
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
