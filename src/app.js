@@ -34,6 +34,7 @@ const securityDepositRoutes = require('./routes/securityDepositRoutes');
 const brochureRoutes = require('./routes/brochureRoutes'); // Add this
 const visitorRoutes = require('./routes/visitorRoutes');
 const contactRoutes = require("./routes/contact");
+const floorPlanRoutes = require('./routes/floorPlanRoutes');
 class AppServer {
   constructor() {
     this.app = express();
@@ -650,6 +651,7 @@ setupRoutes() {
   this.app.use('/api/brochures', brochureRoutes);
   this.app.use('/api/visitors', visitorRoutes);
   this.app.use("/api/contact", contactRoutes);
+  this.app.use('/api/floor-plan', floorPlanRoutes);
 
   // ======================
   // Documentation & Info
