@@ -636,7 +636,7 @@ setupRoutes() {
   this.app.use('/api/articles', articleRoutes);
   this.app.use('/api/booths', boothRoutes);
   this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
-  this.app.use('/api/floor-plan', boothRoutes);
+  // this.app.use('/api/floor-plan', boothRoutes);
   this.app.use('/api/upload', uploadRoutes);
   this.app.use('/api/manuals', manualRoutes);
   this.app.use('/api/manuals/pdfs', manualPDFRoutes);
