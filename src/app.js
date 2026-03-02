@@ -653,6 +653,7 @@ setupRoutes() {
   this.app.use('/api/visitors', visitorRoutes);
   this.app.use("/api/contact", contactRoutes);
   this.app.use('/api/floor-plan', floorPlanRoutes);
+  this.app.use('/api/exhibitor-credentials', exhibitorCredentialsRoutes);
 
   // ======================
   // Documentation & Info
