@@ -35,6 +35,7 @@ const brochureRoutes = require('./routes/brochureRoutes'); // Add this
 const visitorRoutes = require('./routes/visitorRoutes');
 const contactRoutes = require("./routes/contact");
 const floorPlanRoutes = require('./routes/floorPlanRoutes');
+const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
 class AppServer {
   constructor() {
     this.app = express();
