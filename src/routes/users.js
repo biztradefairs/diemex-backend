@@ -13,7 +13,7 @@ const validateUser = [
 
 // Public routes (no authentication required)
 router.post('/login', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').isEmail().normalizeEmail(), 
   body('password').notEmpty()
 ], userController.login);
 
