@@ -32,7 +32,12 @@ class EmailService {
     if (!this.initialized) {
       console.error("❌ Email service not initialized. Check your SendGrid configuration.");
       // For development, log instead of sending
-      console.log("📧 Would send email:", { to, subject, html });
+      console.log("📧 WOULD SEND EMAIL:", { 
+        to, 
+        subject, 
+        htmlLength: html.length,
+        from: process.env.SENDGRID_FROM 
+      });
       return { success: true, mock: true };
     }
 
@@ -44,8 +49,11 @@ class EmailService {
         html,
       };
 
-      console.log(`📧 Attempting to send email to: ${to}`);
-      console.log(`📧 Subject: ${subject}`);
+      console.log(`📧 Attempting to send email:`);
+      console.log(`   To: ${to}`);
+      console.log(`   From: ${process.env.SENDGRID_FROM}`);
+      console.log(`   Subject: ${subject}`);
+      console.log(`   HTML Length: ${html.length} characters`);
 
       const response = await sgMail.send(msg);
 
@@ -62,8 +70,7 @@ class EmailService {
       
       if (error.response) {
         console.error("- Status Code:", error.response.statusCode);
-        console.error("- Response Body:", error.response.body);
-        console.error("- Response Headers:", error.response.headers);
+        console.error("- Response Body:", JSON.stringify(error.response.body, null, 2));
       }
 
       return {
@@ -285,7 +292,6 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
 
-  // Your existing methods...
   async sendExhibitorWelcome(exhibitor, plainPassword) {
     const subject = "Welcome to DIEMEX Exhibitor Portal - Login Credentials";
     const html = `

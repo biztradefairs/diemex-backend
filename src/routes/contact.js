@@ -1,4 +1,3 @@
-// routes/contact.js
 const express = require("express");
 const router = express.Router();
 const emailService = require("../services/EmailService");
@@ -303,6 +302,114 @@ router.post("/", async (req, res) => {
         `;
         break;
 
+      case "delegate-registration":
+        subject = "Your Delegate Registration Confirmation - DIEMEX Exhibition";
+        html = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #004D9F 0%, #00A3E0 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+              .field { margin-bottom: 15px; }
+              .field-label { font-weight: bold; color: #004D9F; }
+              .field-value { margin-left: 10px; }
+              hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
+              .package-badge {
+                display: inline-block;
+                background: #28a745;
+                color: white;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: bold;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>Delegate Registration Confirmed! 🎉</h1>
+              </div>
+              <div class="content">
+                <h2>Welcome to DIEMEX Exhibition, ${data.firstName || ''}!</h2>
+                <p>Your delegate registration has been successfully completed. Here's a summary of your registration details:</p>
+                
+                <hr/>
+                
+                <div class="field">
+                  <span class="field-label">Name:</span>
+                  <span class="field-value">${data.firstName || ''} ${data.lastName || ''}</span>
+                </div>
+                
+                <div class="field">
+                  <span class="field-label">Company:</span>
+                  <span class="field-value">${data.company || 'Not provided'}</span>
+                </div>
+                
+                <div class="field">
+                  <span class="field-label">Job Title:</span>
+                  <span class="field-value">${data.jobTitle || 'Not provided'}</span>
+                </div>
+                
+                <div class="field">
+                  <span class="field-label">Email:</span>
+                  <span class="field-value">${data.email || 'Not provided'}</span>
+                </div>
+                
+                ${data.phone ? `
+                <div class="field">
+                  <span class="field-label">Phone:</span>
+                  <span class="field-value">${data.phone}</span>
+                </div>
+                ` : ''}
+                
+                <div class="field">
+                  <span class="field-label">Country:</span>
+                  <span class="field-value">${data.country || 'Not provided'}</span>
+                </div>
+                
+                <div class="field">
+                  <span class="field-label">Location:</span>
+                  <span class="field-value">${data.city || ''}${data.city && data.state ? ', ' : ''}${data.state || ''}</span>
+                </div>
+                
+                ${data.package ? `
+                <div class="field">
+                  <span class="field-label">Selected Package:</span>
+                  <span class="field-value">
+                    <span class="package-badge">${data.package.toUpperCase()}</span>
+                  </span>
+                </div>
+                ` : ''}
+                
+                <hr/>
+                
+                <p><strong>Event Details:</strong></p>
+                <p>📅 Date: [Insert Event Date]<br/>
+                📍 Location: [Insert Event Location]<br/>
+                🎫 Registration Type: Delegate</p>
+                
+                <p><strong>Next Steps:</strong></p>
+                <ul style="color: #666; margin-bottom: 20px;">
+                  <li>Your delegate badge will be available for pickup at the event registration desk</li>
+                  <li>You'll receive event updates and important information via email</li>
+                  <li>For any questions, please contact our delegate support team</li>
+                </ul>
+                
+                <p>We look forward to welcoming you to the exhibition!</p>
+                
+                <p>Best regards,<br/>
+                <strong>DIEMEX Exhibition Team</strong></p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+        break;
+
       default:
         subject = "Your Form Submission - DIEMEX Exhibition";
         html = `
@@ -365,7 +472,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Helper function for admin notification (keep this as is)
+// Helper function for admin notification
 function generateAdminNotification(formType, data) {
   const fields = Object.entries(data)
     .filter(([key]) => !['captchaToken', 'submittedAt'].includes(key))
