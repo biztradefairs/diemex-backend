@@ -24,284 +24,505 @@ router.post("/", async (req, res) => {
     // Safely access data with fallbacks to prevent undefined errors
     switch (formType) {
       case "event-brochure":
-        subject = "Your Event Brochure Request - DIEMEX Exhibition";
-        html = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #004D9F 0%, #00A3E0 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-              .field { margin-bottom: 15px; }
-              .field-label { font-weight: bold; color: #004D9F; }
-              .field-value { margin-left: 10px; }
-              hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>Event Brochure Request</h1>
-              </div>
-              <div class="content">
-                <h2>Thank you for your request, ${data.firstName || 'Valued Customer'}!</h2>
-                <p>We have received your request for the Event Brochure. Here's a summary of the information you submitted:</p>
-                
-                <hr/>
-                
-                <div class="field">
-                  <span class="field-label">Name:</span>
-                  <span class="field-value">${data.firstName || ''} ${data.lastName || ''}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Company:</span>
-                  <span class="field-value">${data.company || 'Not provided'}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Email:</span>
-                  <span class="field-value">${data.email || 'Not provided'}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Country:</span>
-                  <span class="field-value">${data.country || 'Not provided'}</span>
-                </div>
-                
-                <hr/>
-                
-                <p><strong>Next Steps:</strong></p>
-                <p>Our team will review your request and contact you shortly with the brochure. If you have any questions, please don't hesitate to reach out.</p>
-                
-                <p>Best regards,<br/>
-                <strong>DIEMEX Exhibition Team</strong></p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-        break;
+  subject = "Your Event Brochure - DIEMEX 2026";
 
-      case "post-show-report":
-        subject = "Your Post-Show Report Request - DIEMEX Exhibition";
-        html = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #004D9F 0%, #00A3E0 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-              .field { margin-bottom: 15px; }
-              .field-label { font-weight: bold; color: #004D9F; }
-              .field-value { margin-left: 10px; }
-              hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>Post-Show Report Request</h1>
-              </div>
-              <div class="content">
-                <h2>Thank you for your request, ${data.firstName || 'Valued Customer'}!</h2>
-                <p>We have received your request for the Post-Show Report. Here's a summary of the information you submitted:</p>
-                
-                <hr/>
-                
-                <div class="field">
-                  <span class="field-label">Name:</span>
-                  <span class="field-value">${data.firstName || ''} ${data.lastName || ''}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Company:</span>
-                  <span class="field-value">${data.company || 'Not provided'}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Email:</span>
-                  <span class="field-value">${data.email || 'Not provided'}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Sector:</span>
-                  <span class="field-value">${data.sector || 'Not provided'}</span>
-                </div>
-                
-                <hr/>
-                
-                <p><strong>Next Steps:</strong></p>
-                <p>Our team will prepare the Post-Show Report and send it to you shortly. If you have any questions, please don't hesitate to reach out.</p>
-                
-                <p>Best regards,<br/>
-                <strong>DIEMEX Exhibition Team</strong></p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-        break;
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>DIEMEX Brochure</title>
+  </head>
 
-      case "visitor-registration":
-        subject = "Your Visitor Registration Confirmation - DIEMEX Exhibition";
-        html = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-              .field { margin-bottom: 15px; }
-              .field-label { font-weight: bold; color: #28a745; }
-              .field-value { margin-left: 10px; }
-              hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>Registration Confirmed! 🎉</h1>
-              </div>
-              <div class="content">
-                <h2>Welcome to DIEMEX Exhibition, ${data.firstName || data.name || 'Valued Visitor'}!</h2>
-                <p>Your registration has been successfully completed. Here's a summary of your registration details:</p>
-                
-                <hr/>
-                
-                <div class="field">
-                  <span class="field-label">Name:</span>
-                  <span class="field-value">${data.firstName || data.name || ''} ${data.lastName || ''}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Company:</span>
-                  <span class="field-value">${data.company || 'Not provided'}</span>
-                </div>
-                
-                <div class="field">
-                  <span class="field-label">Email:</span>
-                  <span class="field-value">${data.email || 'Not provided'}</span>
-                </div>
-                
-                ${data.phone ? `
-                <div class="field">
-                  <span class="field-label">Phone:</span>
-                  <span class="field-value">${data.phone}</span>
-                </div>
-                ` : ''}
-                
-                ${data.jobTitle ? `
-                <div class="field">
-                  <span class="field-label">Job Title:</span>
-                  <span class="field-value">${data.jobTitle}</span>
-                </div>
-                ` : ''}
-                
-                <hr/>
-                
-                <p><strong>Event Details:</strong></p>
-                <p>📅 Date: [Insert Event Date]<br/>
-                📍 Location: [Insert Event Location]<br/>
-                🎫 Your registration type: Visitor</p>
-                
-                <p>We look forward to seeing you at the exhibition!</p>
-                
-                <p>Best regards,<br/>
-                <strong>DIEMEX Exhibition Team</strong></p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-        break;
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
 
-      case "exhibitor-enquiry":
-        subject = "Your Exhibitor Enquiry - DIEMEX Exhibition";
-        html = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #004D9F 0%, #00A3E0 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-              .field { margin-bottom: 15px; }
-              .field-label { font-weight: bold; color: #004D9F; }
-              .field-value { margin-left: 10px; }
-              hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>Exhibitor Enquiry Received</h1>
-              </div>
-              <div class="content">
-                <h2>Thank you for your enquiry, ${data.firstName || 'Valued Customer'}!</h2>
-                <p>We have received your enquiry about exhibiting at DIEMEX Exhibition. Here's a summary of the information you submitted:</p>
+          <!-- MAIN CONTAINER -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+            
+            <!-- TOP STRIP -->
+            <tr>
+              <td style="background:#FCD5A6; padding:40px 20px; text-align:center;">
                 
-                <hr/>
-                
-                <div class="field">
-                  <span class="field-label">Name:</span>
-                  <span class="field-value">${data.firstName || ''} ${data.lastName || ''}</span>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+                      <h2 style="margin:0; font-size:26px; letter-spacing:1px;">
+                        3rd Edition <strong>diemex</strong>
+                      </h2>
+                      <p style="margin:5px 0 0; font-size:14px;">
+                        International Die & Mould Exhibition
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333;">
+
+                <p style="font-size:16px;">Dear ${data.firstName || 'Valued Customer'},</p>
+
+                <p style="font-size:16px;">
+                  Thank you for requesting <strong>DIEMEX 2026</strong> Brochure.
+                </p>
+
+                <!-- IMAGE -->
+                <div style="text-align:center; margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/brochure.jpg" 
+                    alt="DIEMEX Brochure"
+                    style="width:100%; max-width:450px; border-radius:6px;"
+                  />
                 </div>
-                
-                <div class="field">
-                  <span class="field-label">Company:</span>
-                  <span class="field-value">${data.companyName || data.company || 'Not provided'}</span>
+
+                <!-- BUTTON -->
+                <div style="text-align:center; margin:30px 0;">
+                  <a href="https://your-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Brochure
+                  </a>
+                  <p style="font-size:12px; color:#666; margin-top:10px;">
+                    Click the button above to download your copy.
+                  </p>
                 </div>
+
+                <p style="font-size:15px;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
+   case "post-show-report":
+  subject = "Your Post Show Report - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>DIEMEX Post Show Report</title>
+  </head>
+
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
+
+          <!-- MAIN CONTAINER -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+            
+            <!-- TOP STRIP -->
+            <tr>
+              <td style="background:#ECF0C6; padding:40px 20px; text-align:center;">
                 
-                <div class="field">
-                  <span class="field-label">Email:</span>
-                  <span class="field-value">${data.email || 'Not provided'}</span>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+                      <h2 style="margin:0; font-size:26px;">
+                        3rd Edition <strong>diemex</strong>
+                      </h2>
+                      <p style="margin:5px 0 0; font-size:14px;">
+                        International Die & Mould Exhibition
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333;">
+
+                <p style="font-size:16px;">Dear ${data.firstName || 'Valued Customer'},</p>
+
+                <p style="font-size:16px;">
+                  Thank you for requesting <strong>DIEMEX 2026</strong> Post Show Report.
+                </p>
+
+                <!-- IMAGE -->
+                <div style="text-align:center; margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/post-show.jpg" 
+                    alt="Post Show Report"
+                    style="width:100%; max-width:450px; border-radius:6px;"
+                  />
                 </div>
-                
-                ${data.phone ? `
-                <div class="field">
-                  <span class="field-label">Phone:</span>
-                  <span class="field-value">${data.phone}</span>
+
+                <!-- BUTTON -->
+                <div style="text-align:center; margin:30px 0;">
+                  <a href="https://your-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Report
+                  </a>
+                  <p style="font-size:12px; color:#666; margin-top:10px;">
+                    Click the button above to download your copy.
+                  </p>
                 </div>
-                ` : ''}
+
+                <p style="font-size:15px;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
+case "visitor-registration":
+  subject = "Visitor Registration Confirmed - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Visitor Registration</title>
+  </head>
+
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
+
+          <!-- MAIN CONTAINER -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+            
+            <!-- TOP STRIP -->
+            <tr>
+              <td style="background:#D6E9D8; padding:40px 20px; text-align:center;">
                 
-                <div class="field">
-                  <span class="field-label">Interest Level:</span>
-                  <span class="field-value">${data.interestLevel || 'Not specified'}</span>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+                      <h2 style="margin:0; font-size:26px;">
+                        3rd Edition <strong>diemex</strong>
+                      </h2>
+                      <p style="margin:5px 0 0; font-size:14px;">
+                        International Die & Mould Exhibition
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333; text-align:center;">
+
+                <h2 style="margin-bottom:10px;">Visitor Registration Confirmed !</h2>
+                <hr style="border:none; border-top:1px solid #ddd; width:80%; margin:10px auto 20px;" />
+
+                <p style="text-align:left; font-size:16px;">
+                  Dear ${data.firstName || data.name || 'Valued Visitor'},
+                </p>
+
+                <p style="text-align:left; font-size:16px;">
+                  Thank you for registering to attend <strong>DIEMEX 2026</strong>.<br/>
+                  Below are your registration details and visitor badge.
+                </p>
+
+                <!-- BADGE IMAGE -->
+                <div style="margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/badge.png" 
+                    alt="Visitor Badge"
+                    style="width:220px; border-radius:8px;"
+                  />
                 </div>
-                
-                <div class="field">
-                  <span class="field-label">Stand Size:</span>
-                  <span class="field-value">${data.standSize || 'Not specified'}</span>
+
+                <!-- BUTTON -->
+                <div style="margin:30px 0;">
+                  <a href="https://your-badge-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Badge
+                  </a>
                 </div>
+
+                <p style="font-size:15px;">
+                  We look forward to seeing you at the event.
+                </p>
+
+                <p style="font-size:13px; color:#666;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="text-align:left; margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
+    case "exhibitor-enquiry":
+  subject = "Your Exhibitor Enquiry - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Exhibitor Enquiry</title>
+  </head>
+
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
+
+          <!-- MAIN CONTAINER -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+            
+            <!-- TOP STRIP -->
+            <tr>
+              <td style="background:#D7EEFB; padding:40px 20px; text-align:center;">
                 
-                ${data.message ? `
-                <div class="field">
-                  <span class="field-label">Message:</span>
-                  <span class="field-value">${data.message}</span>
-                </div>
-                ` : ''}
-                
-                <hr/>
-                
-                <p><strong>Next Steps:</strong></p>
-                <p>Our exhibitions team will review your enquiry and contact you within 24-48 hours with more information about exhibition opportunities, pricing, and available booth spaces.</p>
-                
-                <p>Best regards,<br/>
-                <strong>DIEMEX Exhibition Team</strong></p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-        break;
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+                      <h2 style="margin:0; font-size:26px;">
+                        3rd Edition <strong>diemex</strong>
+                      </h2>
+                      <p style="margin:5px 0 0; font-size:14px;">
+                        International Die & Mould Exhibition
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333;">
+
+                <p style="font-size:16px;">
+                  Dear ${data.firstName || 'Valued Customer'},
+                </p>
+
+                <p style="font-size:16px;">
+                  Thank you for your enquiry about exhibiting at 
+                  <strong>DIEMEX 2026 International Die, Mould & Precision Machinery Expo</strong>.
+                </p>
+
+                <p style="font-size:16px;">
+                  We have received your request as follows:
+                </p>
+
+                <!-- INFO BOX -->
+                <table width="100%" cellpadding="10" cellspacing="0" 
+                  style="background:#D7EEFB; margin:20px 0; border-collapse:collapse;">
+                  
+                  <tr>
+                    <td width="40%"><strong>Company Name</strong></td>
+                    <td>: ${data.companyName || data.company || 'Not provided'}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Contact Person</strong></td>
+                    <td>: ${data.firstName || ''} ${data.lastName || ''}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Job Title</strong></td>
+                    <td>: ${data.jobTitle || 'Not provided'}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Address</strong></td>
+                    <td>: ${data.address || 'Not provided'}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Phone Number</strong></td>
+                    <td>: ${data.phone || 'Not provided'}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Email</strong></td>
+                    <td>: ${data.email || 'Not provided'}</td>
+                  </tr>
+
+                  <tr>
+                    <td><strong>Space Requirement</strong></td>
+                    <td>: ${data.standSize || 'Not specified'}</td>
+                  </tr>
+
+                </table>
+
+                <p style="font-size:15px;">
+                  Our team will get in touch with you shortly to discuss your requirements 
+                  and provide more information.
+                </p>
+
+                <p style="font-size:15px;">
+                  We look forward to the opportunity to collaborate with you at 
+                  <strong>DIEMEX 2026!</strong>
+                </p>
+
+                <p style="margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
 
       default:
         subject = "Your Form Submission - DIEMEX Exhibition";
