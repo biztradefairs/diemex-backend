@@ -866,11 +866,75 @@ router.post("/", async (req, res) => {
     // Also send notification to admin (optional)
     try {
       const adminEmail = 'pad9742@gmail.com'; // Send all admin notifications to this email
-      await emailService.sendEmail(
-        adminEmail,
-        `New Form Submission: ${formType}`,
-        generateAdminNotification(formType, data)
-      );
+     let adminHtml = "";
+
+switch (formType) {
+  case "delegate-registration":
+    adminHtml = generateInwardTemplate({
+      heading: "Delegate Inward Email",
+      title: "New Delegate Registration !",
+      lightBg: "#E8D6DC",
+      stripColor: "#F2E3E7",
+      titleColor: "#A84C7D",
+      data
+    });
+    break;
+
+  case "exhibitor-enquiry":
+    adminHtml = generateInwardTemplate({
+      heading: "Exhibitor Inward Email",
+      title: "Exhibitor Enquiry !",
+      lightBg: "#D7EEFB",
+      stripColor: "#CFE3EE",
+      titleColor: "#1F3F4F",
+      data,
+      includeSpace: true
+    });
+    break;
+
+  case "event-brochure":
+    adminHtml = generateInwardTemplate({
+      heading: "Brochure Inward Email",
+      title: "Brochure Download !",
+      lightBg: "#F3E2C7",
+      stripColor: "#EAD6B8",
+      titleColor: "#F7941D",
+      data
+    });
+    break;
+
+  case "post-show-report":
+    adminHtml = generateInwardTemplate({
+      heading: "Post Show Report Inward Email",
+      title: "Post Show Report Download !",
+      lightBg: "#E7EDC9",
+      stripColor: "#DDE5B2",
+      titleColor: "#F4C400",
+      data
+    });
+    break;
+
+  case "visitor-registration":
+    adminHtml = generateInwardTemplate({
+      heading: "Visitor Inward Email",
+      title: "New Visitor Registration !",
+      lightBg: "#DDEFE2",
+      stripColor: "#CFE3D5",
+      titleColor: "#0F8F4F",
+      data
+    });
+    break;
+
+  default:
+    adminHtml = generateInwardTemplate({
+      heading: "General Inward Email",
+      title: "New Submission",
+      lightBg: "#f5f5f5",
+      stripColor: "#e0e0e0",
+      titleColor: "#333",
+      data
+    });
+}
       console.log(`📧 Admin notification sent to ${adminEmail}`);
     } catch (adminError) {
       console.error("Admin notification failed:", adminError);
