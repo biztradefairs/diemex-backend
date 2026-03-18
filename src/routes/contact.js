@@ -164,10 +164,10 @@ router.post("/", async (req, res) => {
 
     // Safely access data with fallbacks to prevent undefined errors
     switch (formType) {
-     case "event-brochure":
+      case "event-brochure":
   subject = "Your Event Brochure - DIEMEX 2026";
 
-  html = `
+ html = `
   <!DOCTYPE html>
   <html>
   <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
