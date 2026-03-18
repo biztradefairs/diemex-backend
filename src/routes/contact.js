@@ -531,25 +531,18 @@ case "delegate-registration":
   <html>
   <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
 
-    <!-- FULL WIDTH WRAPPER -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
-      <!-- PURPLE BAND -->
+      <!-- PURPLE BACKGROUND WITH HEADER INSIDE -->
       <tr>
-        <td style="background:#AE4A84; height:140px;"></td>
-      </tr>
+        <td align="center" style="background:#AE4A84; padding:40px 0 0;">
 
-      <!-- CARD WRAPPER -->
-      <tr>
-        <td align="center" style="padding:0 10px;">
-          
-          <!-- CARD -->
+          <!-- BLUE HEADER (INSIDE PURPLE) -->
           <table width="600" cellpadding="0" cellspacing="0" border="0"
-            style="background:#ffffff; margin-top:-90px; border-radius:6px; overflow:hidden;">
-
-            <!-- BLUE HEADER -->
+            style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
+            
             <tr>
-              <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+              <td align="center" style="padding:30px;">
                 <h2 style="margin:0; font-size:26px;">
                   3rd Edition <strong>diemex</strong>
                 </h2>
@@ -559,7 +552,18 @@ case "delegate-registration":
               </td>
             </tr>
 
-            <!-- CONTENT -->
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- WHITE CARD BODY -->
+      <tr>
+        <td align="center">
+
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; border-radius:0 0 6px 6px;">
+
             <tr>
               <td style="padding:40px 30px; text-align:center; color:#333;">
 
