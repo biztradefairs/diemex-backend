@@ -523,7 +523,130 @@ case "visitor-registration":
   `;
   break;
 
-      case "delegate-registration":
+case "delegate-registration":
+  subject = "Delegate Registration Confirmed - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Delegate Registration</title>
+  </head>
+
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      
+      <!-- TOP COLOR BAND -->
+      <tr>
+        <td style="background:#AE4A84; height:120px;"></td>
+      </tr>
+
+      <!-- CARD -->
+      <tr>
+        <td align="center" style="margin-top:-80px;">
+          
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; margin-top:-80px; border-radius:8px; overflow:hidden;">
+            
+            <!-- HEADER -->
+            <tr>
+              <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
+                <h2 style="margin:0; font-size:26px;">
+                  3rd Edition <strong>diemex</strong>
+                </h2>
+                <p style="margin:5px 0 0; font-size:14px;">
+                  International Die & Mould Exhibition
+                </p>
+              </td>
+            </tr>
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333; text-align:center;">
+
+                <h2 style="margin-bottom:10px;">Delegate Registration Confirmed !</h2>
+                <hr style="border:none; border-top:1px solid #ddd; width:80%; margin:10px auto 20px;" />
+
+                <p style="text-align:left; font-size:16px;">
+                  Dear ${data.firstName || data.name || 'Valued Delegate'},
+                </p>
+
+                <p style="text-align:left; font-size:16px;">
+                  Thank you for registering to attend <strong>DIEMEX 2026 Conference</strong>.<br/>
+                  Below are your registration details and delegate badge.
+                </p>
+
+                <!-- BADGE -->
+                <div style="margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/delegate-badge.png" 
+                    alt="Delegate Badge"
+                    style="width:220px; border-radius:8px;"
+                  />
+                </div>
+
+                <!-- BUTTON -->
+                <div style="margin:30px 0;">
+                  <a href="https://your-badge-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Badge
+                  </a>
+                </div>
+
+                <p style="font-size:15px;">
+                  We look forward to seeing you at the event.
+                </p>
+
+                <p style="font-size:13px; color:#666;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="text-align:left; margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
   subject = "Delegate Registration Confirmed - DIEMEX 2026";
 
   html = `
