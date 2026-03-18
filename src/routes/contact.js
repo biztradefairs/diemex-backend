@@ -10,6 +10,21 @@ function generateInwardTemplate({
   data,
   includeSpace = false
 }) {
+
+  // 🔥 Generate dynamic fields
+  const fields = Object.entries(data)
+    .filter(([key]) => !['captchaToken', 'submittedAt'].includes(key))
+    .map(([key, value]) => {
+      if (Array.isArray(value)) value = value.join(", ");
+      return `
+        <tr>
+          <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
+          <td style="padding:6px 0;">: ${value || "N/A"}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
   return `
   <!DOCTYPE html>
   <html>
@@ -20,21 +35,22 @@ function generateInwardTemplate({
         <td align="center" style="padding:40px 0;">
 
           <!-- CARD -->
-          <table width="600" cellpadding="0" cellspacing="0" style="background:${lightBg}; border-radius:6px; overflow:hidden;">
+          <table width="600" cellpadding="0" cellspacing="0"
+            style="background:${lightBg}; border-radius:6px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
 
             <!-- HEADER -->
             <tr>
-              <td style="background:#0F2F5C; padding:30px; text-align:center;">
+              <td style="background:#0F2F5C; padding:40px 30px; text-align:center;">
                 <img 
                   src="https://your-domain.com/diemex-logo.png"
-                  style="max-width:220px;"
+                  style="max-width:220px; display:block; margin:0 auto;"
                 />
               </td>
             </tr>
 
-            <!-- LIGHT STRIP -->
+            <!-- STRIP -->
             <tr>
-              <td style="background:${stripColor}; height:25px;"></td>
+              <td style="background:${stripColor}; height:30px;"></td>
             </tr>
 
             <!-- TITLE -->
@@ -47,33 +63,36 @@ function generateInwardTemplate({
             <!-- CONTENT -->
             <tr>
               <td style="padding:30px;">
-                <table width="100%" cellpadding="8" style="color:#333; font-size:14px;">
-                  <tr><td width="40%"><strong>Company Name</strong></td><td>: ${data.companyName || data.company || 'N/A'}</td></tr>
-                  <tr><td><strong>Contact Person</strong></td><td>: ${data.firstName || ''} ${data.lastName || ''}</td></tr>
-                  <tr><td><strong>Job Title</strong></td><td>: ${data.jobTitle || 'N/A'}</td></tr>
-                  <tr><td><strong>Address</strong></td><td>: ${data.address || 'N/A'}</td></tr>
-                  <tr><td><strong>Phone Number</strong></td><td>: ${data.phone || 'N/A'}</td></tr>
-                  <tr><td><strong>Email</strong></td><td>: ${data.email || 'N/A'}</td></tr>
-
-                  ${
-                    includeSpace
-                      ? `<tr><td><strong>Space Requirement</strong></td><td>: ${data.standSize || 'N/A'}</td></tr>`
-                      : ""
-                  }
+                <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px; color:#333;">
+                  ${fields}
                 </table>
               </td>
             </tr>
 
             <!-- FOOTER -->
             <tr>
-              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center;">
-                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune
-              </td>
-            </tr>
+              <td style="background:#1E5AA6; padding:15px;">
+                <table width="100%">
+                  <tr>
+                    
+                    <!-- LEFT LOGO -->
+                    <td align="left">
+                      <img 
+                        src="https://your-domain.com/diemex-logo.png"
+                        style="max-width:120px; display:block;"
+                      />
+                    </td>
 
-            <tr>
-              <td style="background:#E6EEF7; padding:15px; text-align:center; font-size:12px;">
-                Organizer: <strong>maX Business Media Pvt Ltd</strong>
+                    <!-- RIGHT TEXT -->
+                    <td align="right" style="color:#fff; font-size:12px; line-height:1.5;">
+                      <strong>8-10 Oct 2026</strong><br/>
+                      Auto Cluster Exhibition Centre, Pune<br/>
+                      maX Business Media Pvt Ltd<br/>
+                      Bengaluru, India
+                    </td>
+
+                  </tr>
+                </table>
               </td>
             </tr>
 
@@ -87,7 +106,6 @@ function generateInwardTemplate({
   </html>
   `;
 }
-
 router.post("/", async (req, res) => {
   try {
     const { formType, captchaToken, submittedAt, ...data } = req.body;
