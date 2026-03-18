@@ -934,6 +934,11 @@ switch (formType) {
       titleColor: "#333",
       data
     });
+    await emailService.sendEmail(
+  adminEmail,
+  `New ${formType} Submission`,
+  adminHtml
+);
 }
       console.log(`📧 Admin notification sent to ${adminEmail}`);
     } catch (adminError) {
