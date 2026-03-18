@@ -380,46 +380,46 @@ case "visitor-registration":
   </html>
   `;
   break;
-    case "exhibitor-enquiry":
+ case "exhibitor-enquiry":
   subject = "Your Exhibitor Enquiry - DIEMEX 2026";
 
   html = `
   <!DOCTYPE html>
   <html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Exhibitor Enquiry</title>
-  </head>
-
   <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
-    
+
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
+
+      <!-- TOP COLOR BACKGROUND -->
+      <tr>
+        <td align="center" style="background:#D7EEFB; padding:40px 0 0;">
+
+          <!-- BLUE HEADER (INSIDE COLOR AREA) -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
+            
+            <tr>
+              <td align="center" style="padding:30px;">
+                <h2 style="margin:0; font-size:26px;">
+                  3rd Edition <strong>diemex</strong>
+                </h2>
+                <p style="margin:5px 0 0; font-size:14px;">
+                  International Die & Mould Exhibition
+                </p>
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- WHITE CARD BODY -->
       <tr>
         <td align="center">
 
-          <!-- MAIN CONTAINER -->
-          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
-            
-            <!-- TOP STRIP -->
-            <tr>
-              <td style="background:#D7EEFB; padding:40px 20px; text-align:center;">
-                
-                <table width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
-                      <h2 style="margin:0; font-size:26px;">
-                        3rd Edition <strong>diemex</strong>
-                      </h2>
-                      <p style="margin:5px 0 0; font-size:14px;">
-                        International Die & Mould Exhibition
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-
-              </td>
-            </tr>
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; border-radius:0 0 6px 6px;">
 
             <!-- CONTENT -->
             <tr>
@@ -516,14 +516,13 @@ case "visitor-registration":
 
         </td>
       </tr>
+
     </table>
 
   </body>
   </html>
   `;
-  break;
-
-case "delegate-registration":
+  break;case "delegate-registration":
   subject = "Delegate Registration Confirmed - DIEMEX 2026";
 
   html = `
