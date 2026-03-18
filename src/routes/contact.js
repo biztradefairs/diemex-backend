@@ -164,59 +164,61 @@ router.post("/", async (req, res) => {
 
     // Safely access data with fallbacks to prevent undefined errors
     switch (formType) {
-      case "event-brochure":
+     case "event-brochure":
   subject = "Your Event Brochure - DIEMEX 2026";
 
   html = `
   <!DOCTYPE html>
   <html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>DIEMEX Brochure</title>
-  </head>
-
   <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
-    
+
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
+
+      <!-- TOP COLOR BACKGROUND -->
       <tr>
-        <td align="center">
+        <td align="center" style="background:#FCD5A6; padding:40px 0 0;">
 
-          <!-- MAIN CONTAINER -->
-          <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+          <!-- BLUE HEADER (INSIDE COLOR AREA) -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
             
-            <!-- TOP STRIP -->
             <tr>
-              <td style="background:#FCD5A6; padding:40px 20px; text-align:center;">
-                
-                <table width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td align="center" style="background:#0F2F5C; padding:30px; color:#fff;">
-                      <h2 style="margin:0; font-size:26px; letter-spacing:1px;">
-                        3rd Edition <strong>diemex</strong>
-                      </h2>
-                      <p style="margin:5px 0 0; font-size:14px;">
-                        International Die & Mould Exhibition
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-
+              <td align="center" style="padding:30px;">
+                <h2 style="margin:0; font-size:26px; letter-spacing:1px;">
+                  3rd Edition <strong>diemex</strong>
+                </h2>
+                <p style="margin:5px 0 0; font-size:14px;">
+                  International Die & Mould Exhibition
+                </p>
               </td>
             </tr>
 
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- WHITE CARD BODY -->
+      <tr>
+        <td align="center">
+
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; border-radius:0 0 6px 6px;">
+
             <!-- CONTENT -->
             <tr>
-              <td style="padding:40px 30px; color:#333;">
+              <td style="padding:40px 30px; color:#333; text-align:center;">
 
-                <p style="font-size:16px;">Dear ${data.firstName || 'Valued Customer'},</p>
+                <p style="text-align:left; font-size:16px;">
+                  Dear ${data.firstName || 'Valued Customer'},
+                </p>
 
-                <p style="font-size:16px;">
+                <p style="text-align:left; font-size:16px;">
                   Thank you for requesting <strong>DIEMEX 2026</strong> Brochure.
                 </p>
 
                 <!-- IMAGE -->
-                <div style="text-align:center; margin:30px 0;">
+                <div style="margin:30px 0;">
                   <img 
                     src="https://your-image-url.com/brochure.jpg" 
                     alt="DIEMEX Brochure"
@@ -225,7 +227,7 @@ router.post("/", async (req, res) => {
                 </div>
 
                 <!-- BUTTON -->
-                <div style="text-align:center; margin:30px 0;">
+                <div style="margin:30px 0;">
                   <a href="https://your-download-link.com"
                      style="
                        background:#0F2F5C;
@@ -248,7 +250,7 @@ router.post("/", async (req, res) => {
                   If you have any questions, feel free to contact us.
                 </p>
 
-                <p style="margin-top:20px;">
+                <p style="text-align:left; margin-top:20px;">
                   Best regards,<br/>
                   <strong>DIEMEX 2026 Team</strong>
                 </p>
@@ -275,6 +277,7 @@ router.post("/", async (req, res) => {
 
         </td>
       </tr>
+
     </table>
 
   </body>
