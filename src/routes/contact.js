@@ -139,7 +139,126 @@ router.post("/", async (req, res) => {
   </html>
   `;
   break;
-   case "post-show-report":
+case "post-show-report":
+  subject = "Your Post Show Report - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+
+      <!-- TOP COLOR BACKGROUND -->
+      <tr>
+        <td align="center" style="background:#ECF0C6; padding:40px 0 0;">
+
+          <!-- BLUE HEADER (INSIDE COLOR AREA) -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
+            
+            <tr>
+              <td align="center" style="padding:30px;">
+                <h2 style="margin:0; font-size:26px;">
+                  3rd Edition <strong>diemex</strong>
+                </h2>
+                <p style="margin:5px 0 0; font-size:14px;">
+                  International Die & Mould Exhibition
+                </p>
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- WHITE CARD BODY -->
+      <tr>
+        <td align="center">
+
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; border-radius:0 0 6px 6px;">
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333; text-align:center;">
+
+                <p style="text-align:left; font-size:16px;">
+                  Dear ${data.firstName || 'Valued Customer'},
+                </p>
+
+                <p style="text-align:left; font-size:16px;">
+                  Thank you for requesting <strong>DIEMEX 2026</strong> Post Show Report.
+                </p>
+
+                <!-- IMAGE -->
+                <div style="margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/post-show.jpg" 
+                    alt="Post Show Report"
+                    style="width:100%; max-width:450px; border-radius:6px;"
+                  />
+                </div>
+
+                <!-- BUTTON -->
+                <div style="margin:30px 0;">
+                  <a href="https://your-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Report
+                  </a>
+                  <p style="font-size:12px; color:#666; margin-top:10px;">
+                    Click the button above to download your copy.
+                  </p>
+                </div>
+
+                <p style="font-size:15px;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="text-align:left; margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
   subject = "Your Post Show Report - DIEMEX 2026";
 
   html = `
@@ -257,6 +376,130 @@ router.post("/", async (req, res) => {
   `;
   break;
 case "visitor-registration":
+  subject = "Visitor Registration Confirmed - DIEMEX 2026";
+
+  html = `
+  <!DOCTYPE html>
+  <html>
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+
+      <!-- TOP COLOR BACKGROUND -->
+      <tr>
+        <td align="center" style="background:#D6E9D8; padding:40px 0 0;">
+
+          <!-- BLUE HEADER (INSIDE COLOR AREA) -->
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
+            
+            <tr>
+              <td align="center" style="padding:30px;">
+                <h2 style="margin:0; font-size:26px;">
+                  3rd Edition <strong>diemex</strong>
+                </h2>
+                <p style="margin:5px 0 0; font-size:14px;">
+                  International Die & Mould Exhibition
+                </p>
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+      <!-- WHITE CARD BODY -->
+      <tr>
+        <td align="center">
+
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+            style="background:#ffffff; border-radius:0 0 6px 6px;">
+
+            <!-- CONTENT -->
+            <tr>
+              <td style="padding:40px 30px; color:#333; text-align:center;">
+
+                <h2 style="margin-bottom:10px;">Visitor Registration Confirmed !</h2>
+                <hr style="border:none; border-top:1px solid #ddd; width:80%; margin:10px auto 20px;" />
+
+                <p style="text-align:left; font-size:16px;">
+                  Dear ${data.firstName || data.name || 'Valued Visitor'},
+                </p>
+
+                <p style="text-align:left; font-size:16px;">
+                  Thank you for registering to attend <strong>DIEMEX 2026</strong>.<br/>
+                  Below are your registration details and visitor badge.
+                </p>
+
+                <!-- BADGE IMAGE -->
+                <div style="margin:30px 0;">
+                  <img 
+                    src="https://your-image-url.com/badge.png" 
+                    alt="Visitor Badge"
+                    style="width:220px; border-radius:8px;"
+                  />
+                </div>
+
+                <!-- BUTTON -->
+                <div style="margin:30px 0;">
+                  <a href="https://your-badge-download-link.com"
+                     style="
+                       background:#0F2F5C;
+                       color:#ffffff;
+                       padding:15px 35px;
+                       text-decoration:none;
+                       border-radius:30px;
+                       font-size:16px;
+                       display:inline-block;
+                       font-weight:bold;
+                     ">
+                    Download Badge
+                  </a>
+                </div>
+
+                <p style="font-size:15px;">
+                  We look forward to seeing you at the event.
+                </p>
+
+                <p style="font-size:13px; color:#666;">
+                  If you have any questions, feel free to contact us.
+                </p>
+
+                <p style="text-align:left; margin-top:20px;">
+                  Best regards,<br/>
+                  <strong>DIEMEX 2026 Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong><br/>
+                T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+
+    </table>
+
+  </body>
+  </html>
+  `;
+  break;
   subject = "Visitor Registration Confirmed - DIEMEX 2026";
 
   html = `
