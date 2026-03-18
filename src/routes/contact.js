@@ -13,38 +13,42 @@ function generateInwardTemplate({
   return `
   <!DOCTYPE html>
   <html>
-  <body style="margin:0; padding:0; background:${lightBg}; font-family:Arial, sans-serif;">
+  <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
     
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td align="center" style="padding:40px 0;">
 
-          <table width="600" cellpadding="0" cellspacing="0" style="background:${lightBg};">
+          <!-- CARD -->
+          <table width="600" cellpadding="0" cellspacing="0" style="background:${lightBg}; border-radius:6px; overflow:hidden;">
 
+            <!-- HEADER -->
             <tr>
-              <td style="background:#0F2F5C; padding:30px; text-align:center; color:#fff;">
+              <td style="background:#0F2F5C; padding:30px; text-align:center;">
                 <img 
-                  src="https://your-domain.com/diemex-logo.png" 
-                  alt="DIEMEX 3rd Edition"
-                  style="max-width:220px; height:auto; display:block; margin:0 auto;"
+                  src="https://your-domain.com/diemex-logo.png"
+                  style="max-width:220px;"
                 />
               </td>
             </tr>
 
+            <!-- LIGHT STRIP -->
             <tr>
               <td style="background:${stripColor}; height:25px;"></td>
             </tr>
 
+            <!-- TITLE -->
             <tr>
               <td style="background:${titleColor}; color:#fff; text-align:center; padding:15px; font-size:20px; font-weight:bold;">
                 ${title}
               </td>
             </tr>
 
+            <!-- CONTENT -->
             <tr>
-              <td style="padding:30px; color:#333;">
-                <table width="100%" cellpadding="8">
-                  <tr><td><strong>Company Name</strong></td><td>: ${data.companyName || data.company || 'N/A'}</td></tr>
+              <td style="padding:30px;">
+                <table width="100%" cellpadding="8" style="color:#333; font-size:14px;">
+                  <tr><td width="40%"><strong>Company Name</strong></td><td>: ${data.companyName || data.company || 'N/A'}</td></tr>
                   <tr><td><strong>Contact Person</strong></td><td>: ${data.firstName || ''} ${data.lastName || ''}</td></tr>
                   <tr><td><strong>Job Title</strong></td><td>: ${data.jobTitle || 'N/A'}</td></tr>
                   <tr><td><strong>Address</strong></td><td>: ${data.address || 'N/A'}</td></tr>
@@ -60,6 +64,7 @@ function generateInwardTemplate({
               </td>
             </tr>
 
+            <!-- FOOTER -->
             <tr>
               <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center;">
                 <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune
@@ -67,7 +72,7 @@ function generateInwardTemplate({
             </tr>
 
             <tr>
-              <td style="background:#DCEAF7; padding:15px; text-align:center; font-size:12px;">
+              <td style="background:#E6EEF7; padding:15px; text-align:center; font-size:12px;">
                 Organizer: <strong>maX Business Media Pvt Ltd</strong>
               </td>
             </tr>
