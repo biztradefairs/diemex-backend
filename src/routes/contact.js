@@ -2,6 +2,148 @@ const express = require("express");
 const router = express.Router();
 const emailService = require("../services/EmailService");
 
+
+function generateInwardTemplate({
+  title,
+  lightBg,
+  stripColor,
+  titleColor,
+  data,
+  includeSpace = false
+}) {
+  return `
+  <!DOCTYPE html>
+  <html>
+  <body style="margin:0; padding:0; background:${lightBg}; font-family:Arial, sans-serif;">
+    
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center" style="padding:40px 0;">
+
+          <table width="600" cellpadding="0" cellspacing="0" style="background:${lightBg};">
+
+            <tr>
+              <td style="background:#0F2F5C; padding:30px; text-align:center; color:#fff;">
+                <h2 style="margin:0;">3rd Edition <strong>diemex</strong></h2>
+                <p style="margin:5px 0 0;">International Die & Mould Exhibition</p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:${stripColor}; height:25px;"></td>
+            </tr>
+
+            <tr>
+              <td style="background:${titleColor}; color:#fff; text-align:center; padding:15px; font-size:20px; font-weight:bold;">
+                ${title}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:30px; color:#333;">
+                <table width="100%" cellpadding="8">
+                  <tr><td><strong>Company Name</strong></td><td>: ${data.companyName || data.company || 'N/A'}</td></tr>
+                  <tr><td><strong>Contact Person</strong></td><td>: ${data.firstName || ''} ${data.lastName || ''}</td></tr>
+                  <tr><td><strong>Job Title</strong></td><td>: ${data.jobTitle || 'N/A'}</td></tr>
+                  <tr><td><strong>Address</strong></td><td>: ${data.address || 'N/A'}</td></tr>
+                  <tr><td><strong>Phone Number</strong></td><td>: ${data.phone || 'N/A'}</td></tr>
+                  <tr><td><strong>Email</strong></td><td>: ${data.email || 'N/A'}</td></tr>
+
+                  ${
+                    includeSpace
+                      ? `<tr><td><strong>Space Requirement</strong></td><td>: ${data.standSize || 'N/A'}</td></tr>`
+                      : ""
+                  }
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center;">
+                <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune
+              </td>
+            </tr>
+
+            <tr>
+              <td style="background:#DCEAF7; padding:15px; text-align:center; font-size:12px;">
+                Organizer: <strong>maX Business Media Pvt Ltd</strong>
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+  </html>
+  `;
+}
+
+switch (formType) {
+
+  case "visitor-registration":
+    subject = "New Visitor Registration - DIEMEX 2026";
+    html = generateInwardTemplate({
+      title: "New Visitor Registration !",
+      lightBg: "#E6F0E8",
+      stripColor: "#CFE3D4",
+      titleColor: "#0F9D58",
+      data
+    });
+    break;
+
+  case "exhibitor-enquiry":
+    subject = "New Exhibitor Enquiry - DIEMEX 2026";
+    html = generateInwardTemplate({
+      title: "Exhibitor Enquiry !",
+      lightBg: "#DCEAF7",
+      stripColor: "#BFD6E5",
+      titleColor: "#264653",
+      data,
+      includeSpace: true
+    });
+    break;
+
+  case "event-brochure":
+    subject = "New Brochure Request - DIEMEX 2026";
+    html = generateInwardTemplate({
+      title: "Brochure Download !",
+      lightBg: "#F3E2C8",
+      stripColor: "#E5D3B3",
+      titleColor: "#F39C12",
+      data
+    });
+    break;
+
+  case "post-show-report":
+    subject = "New Post Show Report Request - DIEMEX 2026";
+    html = generateInwardTemplate({
+      title: "Post Show Report Download !",
+      lightBg: "#E9EDC9",
+      stripColor: "#DDE2B3",
+      titleColor: "#F1C40F",
+      data
+    });
+    break;
+
+  case "delegate-registration":
+    subject = "New Delegate Registration - DIEMEX 2026";
+    html = generateInwardTemplate({
+      title: "New Delegate Registration !",
+      lightBg: "#F2D6E5",
+      stripColor: "#E7B8CF",
+      titleColor: "#AE4A84",
+      data
+    });
+    break;
+
+  default:
+    subject = "New Form Submission";
+    html = `<p>New submission received</p>`;
+}
+
 router.post("/", async (req, res) => {
   try {
     const { formType, captchaToken, submittedAt, ...data } = req.body;
