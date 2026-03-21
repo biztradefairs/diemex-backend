@@ -9,6 +9,10 @@ const brandRoutes = require('./exhibitorBrands');
 const brochureRoutes = require('./exhibitorBrochures');
 const stallRoutes = require('./exhibitorStall');
 
+const multer = require('multer');
+const upload = multer();
+
+
 // All routes require exhibitor authentication
 router.use(authenticateExhibitor);
 
@@ -530,61 +534,66 @@ router.get('/requirements', async (req, res) => {
 });
 
 // Submit requirement
-router.post('/requirements', async (req, res) => {
+router.post('/requirements', upload.any(), async (req, res) => {
   try {
-    const { type, description, quantity } = req.body;
-    
-    // Validate input
+    console.log("BODY:", req.body);
+
+    const { type, description } = req.body;
+
     if (!type || !description) {
       return res.status(400).json({
         success: false,
         error: 'Type and description are required'
       });
     }
-    
-    // Save requirement to database if model exists
+
+    // ✅ Parse all incoming JSON safely
+    const parse = (data, fallback) => {
+      try {
+        return data ? JSON.parse(data) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+
+    const fullData = {
+      generalInfo: parse(req.body.generalInfo, {}),
+      boothDetails: parse(req.body.boothDetails, {}),
+      securityDeposit: parse(req.body.securityDeposit, {}),
+      machines: parse(req.body.machines, []),
+      personnel: parse(req.body.personnel, []),
+      companyDetails: parse(req.body.companyDetails, {}),
+      electricalLoad: parse(req.body.electricalLoad, {}),
+      furnitureItems: parse(req.body.furnitureItems, []),
+      hostessRequirements: parse(req.body.hostessRequirements, []),
+      compressedAir: parse(req.body.compressedAir, {}),
+      waterConnection: parse(req.body.waterConnection, {}),
+      securityGuard: parse(req.body.securityGuard, {}),
+      rentalItems: parse(req.body.rentalItems, []),
+      housekeepingStaff: parse(req.body.housekeepingStaff, {}),
+      paymentDetails: parse(req.body.paymentDetails, {})
+    };
+
     const modelFactory = require('../models');
-    const Requirement = modelFactory.getModel('Requirement') || null;
-    
-    let requirement;
-    if (Requirement) {
-      requirement = await Requirement.create({
-        type,
-        description,
-        quantity: quantity || 1,
-        exhibitorId: req.user.id,
-        status: 'pending'
-      });
-    } else {
-      // Create sample requirement if model doesn't exist
-      requirement = {
-        id: 'REQ' + Date.now().toString().slice(-6),
-        type,
-        description,
-        quantity: quantity || 1,
-        status: 'pending',
-        createdAt: new Date()
-      };
-    }
-    
-    // Send notification to admin
-    try {
-      const kafkaProducer = require('../kafka/producer');
-      await kafkaProducer.sendNotification('EXHIBITOR_REQUIREMENT_SUBMITTED', req.user.id, {
-        type,
-        description,
-        quantity: quantity || 1
-      });
-    } catch (kafkaError) {
-      console.warn('Kafka not available:', kafkaError.message);
-    }
-    
+    const Requirement = modelFactory.getModel('Requirement');
+
+    const requirement = await Requirement.create({
+      exhibitorId: req.user.id,
+      type,
+      description,
+      quantity: 1,
+      data: fullData, // ✅ STORE EVERYTHING
+      status: 'pending'
+    });
+
     res.json({
       success: true,
       message: 'Requirement submitted successfully',
       data: requirement
     });
+
   } catch (error) {
+    console.error("❌ REQUIREMENT ERROR:", error);
     res.status(500).json({
       success: false,
       error: error.message

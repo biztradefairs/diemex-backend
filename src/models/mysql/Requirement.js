@@ -9,11 +9,7 @@ module.exports = (sequelize) => {
     },
     exhibitorId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'exhibitors',
-        key: 'id'
-      }
+      allowNull: false
     },
     type: {
       type: DataTypes.STRING(100),
@@ -27,6 +23,13 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 1
     },
+
+    // ✅ NEW FIELD (CRITICAL)
+    data: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
+
     status: {
       type: DataTypes.ENUM('pending', 'approved', 'rejected', 'completed'),
       defaultValue: 'pending'
@@ -34,28 +37,11 @@ module.exports = (sequelize) => {
     cost: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true
-    },
-    createdAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
-    },
-    updatedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
     }
   }, {
     tableName: 'requirements',
     timestamps: true
   });
-
-  Requirement.associate = (models) => {
-    Requirement.belongsTo(models.Exhibitor, {
-      foreignKey: 'exhibitorId',
-      as: 'exhibitor'
-    });
-  };
 
   return Requirement;
 };
