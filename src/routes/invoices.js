@@ -3,43 +3,94 @@ const express = require('express');
 const router = express.Router();
 const invoiceController = require('../controllers/InvoiceController');
 const { authenticate, authorize } = require('../middleware/auth');
-const { body } = require('express-validator');
 
-// Validation middleware
-const validateInvoice = [
-  body('company').notEmpty().trim(),
-  body('amount').isFloat({ min: 0 }),
-  body('dueDate').isISO8601()
-];
-
-// All routes require authentication
+// Public routes (with authentication)
 router.use(authenticate);
 
-// Get all invoices (admin only)
-router.get('/', authorize(['admin']), invoiceController.getAllInvoices);
-
-// Get invoice stats
-router.get('/stats', authorize(['admin']), invoiceController.getInvoiceStats);
+// Get my invoices (exhibitor)
+router.get('/my-invoices', async (req, res) => {
+  try {
+    const invoices = await invoiceController.getInvoicesByExhibitor(req.user.id);
+    res.json({ success: true, data: invoices });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Get single invoice
-router.get('/:id', authorize(['admin']), invoiceController.getInvoice);
+router.get('/:id', async (req, res) => {
+  try {
+    const invoice = await invoiceController.getInvoiceById(req.params.id);
+    
+    // Check if user has access
+    if (req.user.role !== 'admin' && invoice.exhibitorId !== req.user.id) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    
+    res.json({ success: true, data: invoice });
+  } catch (error) {
+    res.status(404).json({ success: false, error: error.message });
+  }
+});
 
-// Create invoice (admin only)
-router.post('/', authorize(['admin']), validateInvoice, invoiceController.createInvoice);
+// Download invoice PDF
+router.get('/:id/download', async (req, res) => {
+  try {
+    const pdfBuffer = await invoiceController.generateInvoicePdf(req.params.id);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="invoice-${req.params.id}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-// Update invoice (admin only)
-router.put('/:id', authorize(['admin']), invoiceController.updateInvoice);
+// Admin routes
+router.get('/admin/all', authorize(['admin']), async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, status } = req.query;
+    const result = await invoiceController.getAllInvoices({ search, status }, page, limit);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-// Delete invoice (admin only)
-router.delete('/:id', authorize(['admin']), invoiceController.deleteInvoice);
+router.get('/admin/stats', authorize(['admin']), async (req, res) => {
+  try {
+    const stats = await invoiceController.getInvoiceStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
-// Generate PDF
-router.get('/:id/pdf', authorize(['admin']), invoiceController.generateInvoicePdf);
+router.post('/admin/create', authorize(['admin']), async (req, res) => {
+  try {
+    const invoice = await invoiceController.createInvoice(req.body);
+    res.status(201).json({ success: true, data: invoice });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
 
-// Send email
-router.post('/:id/send-email', authorize(['admin']), invoiceController.sendInvoiceEmail);
+router.put('/admin/:id', authorize(['admin']), async (req, res) => {
+  try {
+    const invoice = await invoiceController.updateInvoice(req.params.id, req.body);
+    res.json({ success: true, data: invoice });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
 
-// Bulk generate invoices
-router.post('/bulk/generate', authorize(['admin']), invoiceController.bulkGenerateInvoices);
+router.delete('/admin/:id', authorize(['admin']), async (req, res) => {
+  try {
+    await invoiceController.deleteInvoice(req.params.id);
+    res.json({ success: true, message: 'Invoice deleted successfully' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
 
 module.exports = router;
