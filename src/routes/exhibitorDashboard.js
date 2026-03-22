@@ -575,7 +575,7 @@ router.post('/requirements', upload.any(), async (req, res) => {
     };
 
     // ✅ COMPLETE DATA OBJECT
-    const fullData = {
+    const completeData = {
       generalInfo: parse(req.body.generalInfo, {}),
       boothDetails: parse(req.body.boothDetails, {}),
       securityDeposit: parse(req.body.securityDeposit, {}),
@@ -591,16 +591,14 @@ router.post('/requirements', upload.any(), async (req, res) => {
       rentalItems: parse(req.body.rentalItems, []),
       housekeepingStaff: parse(req.body.housekeepingStaff, {}),
       paymentDetails: parse(req.body.paymentDetails, {}),
-      totals: parse(req.body.totals, {})  // Add totals for invoice
+      totals: parse(req.body.totals, {}),
+      submittedAt: new Date().toISOString(),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
     };
 
-    // Log the data being saved
-    console.log('📦 Saving requirement data:', {
-      type,
-      description,
-      hasHousekeeping: fullData.housekeepingStaff?.quantity > 0,
-      housekeepingDetails: fullData.housekeepingStaff
-    });
+    console.log('📦 Saving requirement data with keys:', Object.keys(completeData));
+    console.log('🏠 Housekeeping data:', completeData.housekeepingStaff);
 
     const modelFactory = require('../models');
     const Requirement = modelFactory.getModel('Requirement');
@@ -609,18 +607,13 @@ router.post('/requirements', upload.any(), async (req, res) => {
       throw new Error('Requirement model not initialized');
     }
 
-    // ✅ STORE ALL DATA IN THE 'data' FIELD
+    // ✅ STORE ALL DATA IN THE 'data' FIELD ONLY
     const requirement = await Requirement.create({
       exhibitorId: req.user.id,
       type,
       description,
       quantity: 1,
-      data: fullData,  // Store everything here
-      metadata: {
-        submittedAt: new Date().toISOString(),
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      },
+      data: completeData,  // Only use 'data', no 'metadata'
       status: 'pending'
     });
 
@@ -645,6 +638,7 @@ router.post('/requirements', upload.any(), async (req, res) => {
     });
   }
 });
+
 
 // Get booth details
 router.get('/booth', async (req, res) => {

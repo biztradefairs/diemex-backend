@@ -10,7 +10,8 @@ module.exports = (sequelize) => {
     },
     exhibitorId: {
       type: DataTypes.UUID,
-      allowNull: false
+      allowNull: false,
+      field: 'exhibitor_id'
     },
     type: {
       type: DataTypes.STRING(100),
@@ -24,20 +25,11 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 1
     },
-    
-    // ✅ STORE COMPLETE FORM DATA
+    // ✅ Use only 'data' column - no 'metadata'
     data: {
-      type: DataTypes.JSON,
-      allowNull: true,
-      field: 'data'  // Store all form data here
-    },
-    
-    // Store metadata separately if needed
-    metadata: {
       type: DataTypes.JSON,
       allowNull: true
     },
-
     status: {
       type: DataTypes.ENUM('pending', 'approved', 'rejected', 'completed'),
       defaultValue: 'pending'
@@ -48,7 +40,8 @@ module.exports = (sequelize) => {
     }
   }, {
     tableName: 'requirements',
-    timestamps: true
+    timestamps: true,
+    underscored: true
   });
 
   return Requirement;
