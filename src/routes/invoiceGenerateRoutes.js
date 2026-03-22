@@ -97,7 +97,18 @@ router.post('/generate-from-requirements', authenticateAny, async (req, res) => 
     console.log('Available invoice columns:', columnNames);
     
     // Build insert query dynamically
-const insertFields = ['id', 'invoiceNumber', 'company', 'amount', 'status', 'dueDate', 'issueDate'];
+const insertFields = [
+  'id',
+  'invoiceNumber',
+  'company',
+  'amount',
+  'status',
+  'dueDate',
+  'issueDate',
+  'created_at',
+  'updated_at'
+];
+
 const insertValues = [
   invoiceId,
   finalInvoiceNumber,
@@ -105,7 +116,9 @@ const insertValues = [
   totals?.total || 0,
   'pending',
   finalDueDate,
-  finalIssueDate
+  finalIssueDate,
+  now,
+  now
 ];
     
     // Add exhibitorId if column exists
@@ -191,7 +204,7 @@ router.get('/by-requirements/:requirementsId', authenticateAny, async (req, res)
     const [invoices] = await sequelize.query(`
       SELECT * FROM invoices 
       WHERE JSON_EXTRACT(metadata, '$.requirementsId') = ?
-      ORDER BY createdAt DESC
+      ORDER BY created_at DESC
       LIMIT 1
     `, {
       replacements: [requirementsId]
@@ -654,7 +667,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     
     await sequelize.query(`
       UPDATE invoices 
-      SET status = ?, notes = ?, updatedAt = ?
+      SET status = ?, notes = ?, updated_at = ?
       WHERE id = ?
     `, {
       replacements: [status, notes, new Date(), id]
