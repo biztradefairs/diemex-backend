@@ -38,6 +38,54 @@ async createInvoice(data) {
   }
 }
 
+// Add to src/services/InvoiceService.js
+
+async getInvoiceByRequirementsId(requirementsId) {
+  try {
+    const invoice = await db.Invoice.findOne({
+      where: {
+        'metadata.requirementsId': requirementsId
+      }
+    });
+    return invoice;
+  } catch (error) {
+    console.error('Error finding invoice by requirements ID:', error);
+    return null;
+  }
+}
+
+async createInvoice(data) {
+  try {
+    const invoiceNumber = data.invoiceNumber || `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
+    
+    // Ensure all required fields are present
+    const invoiceData = {
+      id: uuidv4(),
+      invoiceNumber,
+      exhibitorId: data.exhibitorId,
+      company: data.exhibitorInfo?.companyName || 'N/A',
+      amount: data.totals?.total || 0,
+      status: 'pending',
+      dueDate: data.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      issueDate: data.issueDate || new Date(),
+      items: data.items || [],
+      notes: data.notes,
+      metadata: {
+        requirementsId: data.requirementsId,
+        exhibitorInfo: data.exhibitorInfo,
+        paymentInfo: data.paymentInfo,
+        totals: data.totals
+      }
+    };
+    
+    const invoice = await db.Invoice.create(invoiceData);
+    return invoice;
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    throw error;
+  }
+}
+
 async generateInvoicePdf(invoiceId) {
   const invoice = await this.getInvoiceById(invoiceId);
   const metadata = invoice.metadata || {};
