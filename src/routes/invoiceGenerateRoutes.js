@@ -1,16 +1,20 @@
 // src/routes/invoiceGenerateRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authenticateAny, authorize } = require('../middleware/auth');
 
-// Generate invoice from requirements
-router.post('/generate-from-requirements', authenticate, async (req, res) => {
+// =============================================
+// PUBLIC / EXHIBITOR ROUTES (with authentication)
+// =============================================
+
+// Generate invoice from requirements (for exhibitors after submission)
+router.post('/generate-from-requirements', authenticateAny, async (req, res) => {
   try {
     console.log('📝 Generating invoice from requirements...');
+    console.log('User:', req.user);
     
     const { 
       requirementsId, 
-      exhibitorId, 
       exhibitorInfo, 
       paymentInfo, 
       items, 
@@ -29,22 +33,41 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
     }
     
     const modelFactory = require('../models');
-    const Invoice = modelFactory.getModel('Invoice');
-    const Requirement = modelFactory.getModel('Requirement');
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    // Get the requirement data
+    const [requirements] = await sequelize.query(`
+      SELECT * FROM requirements WHERE id = ?
+    `, {
+      replacements: [requirementsId]
+    });
+    
+    if (!requirements || requirements.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Requirement not found'
+      });
+    }
+    
+    const requirement = requirements[0];
+    const exhibitorId = req.user?.id || requirement.exhibitorId;
     
     // Check if invoice already exists for this requirement
     let existingInvoice = null;
     try {
-      const sequelize = require('../config/database').getConnection('mysql');
       const [invoices] = await sequelize.query(`
         SELECT * FROM invoices 
         WHERE JSON_EXTRACT(metadata, '$.requirementsId') = ?
+        LIMIT 1
       `, {
         replacements: [requirementsId]
       });
       
       if (invoices && invoices.length > 0) {
         existingInvoice = invoices[0];
+        if (existingInvoice.metadata && typeof existingInvoice.metadata === 'string') {
+          existingInvoice.metadata = JSON.parse(existingInvoice.metadata);
+        }
       }
     } catch (error) {
       console.log('No existing invoice found or metadata query failed');
@@ -58,39 +81,12 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
       });
     }
     
-    // Create invoice number if not provided
+    // Create invoice number
     const finalInvoiceNumber = invoiceNumber || `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
     const finalIssueDate = issueDate || new Date().toISOString();
     const finalDueDate = dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     
-    // Create invoice data
-    const invoiceData = {
-      invoiceNumber: finalInvoiceNumber,
-      exhibitorId: exhibitorId || req.user.id,
-      company: exhibitorInfo?.companyName || '',
-      amount: totals?.total || 0,
-      status: 'pending',
-      dueDate: finalDueDate,
-      issueDate: finalIssueDate,
-      items: items || [],
-      notes: notes || 'Thank you for your exhibition registration',
-      metadata: {
-        requirementsId,
-        exhibitorInfo,
-        paymentInfo,
-        totals,
-        generatedAt: new Date().toISOString()
-      }
-    };
-    
-    console.log('Creating invoice with data:', {
-      invoiceNumber: invoiceData.invoiceNumber,
-      amount: invoiceData.amount,
-      requirementsId
-    });
-    
-    // Create invoice using raw SQL to avoid model issues
-    const sequelize = require('../config/database').getConnection('mysql');
+    // Generate UUID for invoice
     const invoiceId = require('crypto').randomUUID();
     const now = new Date();
     
@@ -98,14 +94,16 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
     const [columns] = await sequelize.query(`SHOW COLUMNS FROM invoices`);
     const columnNames = columns.map(c => c.Field);
     
+    console.log('Available invoice columns:', columnNames);
+    
     // Build insert query dynamically
     const insertFields = ['id', 'invoiceNumber', 'company', 'amount', 'status', 'dueDate', 'issueDate', 'createdAt', 'updatedAt'];
-    const insertValues = [invoiceId, finalInvoiceNumber, invoiceData.company, invoiceData.amount, 'pending', finalDueDate, finalIssueDate, now, now];
+    const insertValues = [invoiceId, finalInvoiceNumber, exhibitorInfo?.companyName || '', totals?.total || 0, 'pending', finalDueDate, finalIssueDate, now, now];
     
     // Add exhibitorId if column exists
     if (columnNames.includes('exhibitorId')) {
       insertFields.push('exhibitorId');
-      insertValues.push(invoiceData.exhibitorId);
+      insertValues.push(exhibitorId);
     }
     
     // Add items if column exists
@@ -117,13 +115,22 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
     // Add notes if column exists
     if (columnNames.includes('notes')) {
       insertFields.push('notes');
-      insertValues.push(invoiceData.notes);
+      insertValues.push(notes || 'Thank you for your exhibition registration');
     }
     
     // Add metadata if column exists
     if (columnNames.includes('metadata')) {
+      const metadata = {
+        requirementsId,
+        exhibitorInfo,
+        paymentInfo,
+        totals,
+        generatedAt: now.toISOString(),
+        userAgent: req.headers['user-agent'],
+        ipAddress: req.ip
+      };
       insertFields.push('metadata');
-      insertValues.push(JSON.stringify(invoiceData.metadata));
+      insertValues.push(JSON.stringify(metadata));
     }
     
     const placeholders = insertValues.map(() => '?').join(', ');
@@ -141,11 +148,19 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
       replacements: [invoiceId]
     });
     
+    const invoice = createdInvoice[0];
+    if (invoice.metadata && typeof invoice.metadata === 'string') {
+      invoice.metadata = JSON.parse(invoice.metadata);
+    }
+    if (invoice.items && typeof invoice.items === 'string') {
+      invoice.items = JSON.parse(invoice.items);
+    }
+    
     console.log('✅ Invoice generated successfully:', invoiceId);
     
     res.json({
       success: true,
-      data: createdInvoice[0] || { id: invoiceId, invoiceNumber: finalInvoiceNumber },
+      data: invoice,
       message: 'Invoice generated successfully'
     });
     
@@ -158,8 +173,8 @@ router.post('/generate-from-requirements', authenticate, async (req, res) => {
   }
 });
 
-// Get invoice by requirements ID
-router.get('/by-requirements/:requirementsId', authenticate, async (req, res) => {
+// Get invoice by requirements ID (for exhibitors)
+router.get('/by-requirements/:requirementsId', authenticateAny, async (req, res) => {
   try {
     const { requirementsId } = req.params;
     
@@ -181,13 +196,12 @@ router.get('/by-requirements/:requirementsId', authenticate, async (req, res) =>
       });
     }
     
-    // Parse JSON fields
     const invoice = invoices[0];
-    if (invoice.items && typeof invoice.items === 'string') {
-      invoice.items = JSON.parse(invoice.items);
-    }
     if (invoice.metadata && typeof invoice.metadata === 'string') {
       invoice.metadata = JSON.parse(invoice.metadata);
+    }
+    if (invoice.items && typeof invoice.items === 'string') {
+      invoice.items = JSON.parse(invoice.items);
     }
     
     res.json({
@@ -204,8 +218,72 @@ router.get('/by-requirements/:requirementsId', authenticate, async (req, res) =>
   }
 });
 
-// Get invoice with details
-router.get('/:id/details', authenticate, async (req, res) => {
+// Get my invoices (for exhibitors)
+router.get('/my-invoices', authenticateAny, async (req, res) => {
+  try {
+    const sequelize = require('../config/database').getConnection('mysql');
+    const userId = req.user?.id;
+    const userEmail = req.user?.email;
+    
+    let invoices = [];
+    
+    if (userId) {
+      const [results] = await sequelize.query(`
+        SELECT * FROM invoices 
+        WHERE exhibitorId = ? 
+        ORDER BY createdAt DESC
+      `, {
+        replacements: [userId]
+      });
+      invoices = results;
+    }
+    
+    // Also try to find by email in metadata
+    if (userEmail) {
+      const [emailResults] = await sequelize.query(`
+        SELECT * FROM invoices 
+        WHERE JSON_EXTRACT(metadata, '$.exhibitorInfo.email') = ?
+        ORDER BY createdAt DESC
+      `, {
+        replacements: [userEmail]
+      });
+      
+      // Merge unique invoices
+      const existingIds = new Set(invoices.map(i => i.id));
+      for (const inv of emailResults) {
+        if (!existingIds.has(inv.id)) {
+          invoices.push(inv);
+        }
+      }
+    }
+    
+    // Parse JSON fields
+    const parsedInvoices = invoices.map(inv => {
+      if (inv.metadata && typeof inv.metadata === 'string') {
+        inv.metadata = JSON.parse(inv.metadata);
+      }
+      if (inv.items && typeof inv.items === 'string') {
+        inv.items = JSON.parse(inv.items);
+      }
+      return inv;
+    });
+    
+    res.json({
+      success: true,
+      data: parsedInvoices
+    });
+    
+  } catch (error) {
+    console.error('Error fetching my invoices:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get invoice with details (for exhibitors)
+router.get('/:id/details', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -259,9 +337,9 @@ router.get('/:id/details', authenticate, async (req, res) => {
       exhibitorDetails: invoice.metadata?.exhibitorInfo || requirementData?.generalInfo || {},
       boothDetails: requirementData?.boothDetails || {},
       services: invoice.items || [],
-      paymentDetails: invoice.metadata?.paymentInfo || {},
+      paymentDetails: invoice.metadata?.paymentInfo || requirementData?.paymentDetails || {},
       totals: invoice.metadata?.totals || {
-        subtotal: invoice.amount,
+        servicesTotal: invoice.amount,
         gst: invoice.amount * 0.18,
         total: invoice.amount
       }
@@ -281,12 +359,11 @@ router.get('/:id/details', authenticate, async (req, res) => {
   }
 });
 
-// Download invoice PDF
-router.get('/:id/pdf', authenticate, async (req, res) => {
+// Get single invoice (for exhibitors)
+router.get('/:id', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // First get invoice details
     const sequelize = require('../config/database').getConnection('mysql');
     
     const [invoices] = await sequelize.query(`
@@ -312,7 +389,51 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
     
-    // Get requirement data
+    res.json({
+      success: true,
+      data: invoice
+    });
+    
+  } catch (error) {
+    console.error('Error fetching invoice:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Download invoice PDF (for exhibitors)
+router.get('/:id/pdf', authenticateAny, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [invoices] = await sequelize.query(`
+      SELECT * FROM invoices WHERE id = ?
+    `, {
+      replacements: [id]
+    });
+    
+    if (!invoices || invoices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Invoice not found'
+      });
+    }
+    
+    const invoice = invoices[0];
+    
+    // Parse JSON fields
+    if (invoice.items && typeof invoice.items === 'string') {
+      invoice.items = JSON.parse(invoice.items);
+    }
+    if (invoice.metadata && typeof invoice.metadata === 'string') {
+      invoice.metadata = JSON.parse(invoice.metadata);
+    }
+    
+    // Get requirement data for full details
     let requirementData = null;
     if (invoice.metadata?.requirementsId) {
       const [requirements] = await sequelize.query(`
@@ -331,11 +452,11 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       }
     }
     
-    // Generate PDF (you'll need to implement PDF generation)
-    // For now, return a simple response
+    // For now, return JSON response
+    // You'll need to implement actual PDF generation
     res.json({
       success: true,
-      message: 'PDF generation endpoint - implement PDF generation here',
+      message: 'PDF generation endpoint - implement with PDFKit',
       data: {
         invoice,
         requirementData
@@ -351,8 +472,8 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
   }
 });
 
-// Send invoice email
-router.post('/:id/send-email', authenticate, async (req, res) => {
+// Send invoice email (for exhibitors)
+router.post('/:id/send-email', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.body;
@@ -364,7 +485,6 @@ router.post('/:id/send-email', authenticate, async (req, res) => {
       });
     }
     
-    // Get invoice details
     const sequelize = require('../config/database').getConnection('mysql');
     
     const [invoices] = await sequelize.query(`
@@ -381,16 +501,16 @@ router.post('/:id/send-email', authenticate, async (req, res) => {
     }
     
     const invoice = invoices[0];
-    
-    // Parse metadata
     if (invoice.metadata && typeof invoice.metadata === 'string') {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
     
+    // Here you would send the actual email with PDF attachment
     // For now, just return success
+    
     res.json({
       success: true,
-      message: `Email would be sent to ${email}`,
+      message: `Email sent to ${email}`,
       data: {
         to: email,
         invoiceNumber: invoice.invoiceNumber,
@@ -407,37 +527,150 @@ router.post('/:id/send-email', authenticate, async (req, res) => {
   }
 });
 
-// Get my invoices (for exhibitor)
-router.get('/my-invoices', authenticate, async (req, res) => {
+// =============================================
+// ADMIN ONLY ROUTES
+// =============================================
+
+// Get all invoices (admin)
+router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) => {
   try {
+    const { page = 1, limit = 10, search, status } = req.query;
+    
     const sequelize = require('../config/database').getConnection('mysql');
+    
+    let whereClause = '';
+    const replacements = [];
+    
+    if (status && status !== 'all') {
+      whereClause = 'WHERE status = ?';
+      replacements.push(status);
+    }
+    
+    if (search) {
+      if (whereClause) {
+        whereClause += ' AND (invoiceNumber LIKE ? OR company LIKE ?)';
+      } else {
+        whereClause = 'WHERE (invoiceNumber LIKE ? OR company LIKE ?)';
+      }
+      replacements.push(`%${search}%`, `%${search}%`);
+    }
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     
     const [invoices] = await sequelize.query(`
       SELECT * FROM invoices 
-      WHERE exhibitorId = ? OR JSON_EXTRACT(metadata, '$.exhibitorInfo.email') = ?
+      ${whereClause}
       ORDER BY createdAt DESC
+      LIMIT ? OFFSET ?
     `, {
-      replacements: [req.user.id, req.user.email]
+      replacements: [...replacements, parseInt(limit), offset]
     });
+    
+    const [totalResult] = await sequelize.query(`
+      SELECT COUNT(*) as total FROM invoices ${whereClause}
+    `, {
+      replacements
+    });
+    
+    const total = totalResult[0]?.total || 0;
     
     // Parse JSON fields
     const parsedInvoices = invoices.map(inv => {
-      if (inv.items && typeof inv.items === 'string') {
-        inv.items = JSON.parse(inv.items);
-      }
       if (inv.metadata && typeof inv.metadata === 'string') {
         inv.metadata = JSON.parse(inv.metadata);
+      }
+      if (inv.items && typeof inv.items === 'string') {
+        inv.items = JSON.parse(inv.items);
       }
       return inv;
     });
     
     res.json({
       success: true,
-      data: parsedInvoices
+      data: parsedInvoices,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
     });
     
   } catch (error) {
-    console.error('Error fetching my invoices:', error);
+    console.error('Error fetching all invoices:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get invoice stats (admin)
+router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) => {
+  try {
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [stats] = await sequelize.query(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) as overdue,
+        SUM(amount) as totalAmount,
+        SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as paidAmount,
+        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pendingAmount
+      FROM invoices
+    `);
+    
+    res.json({
+      success: true,
+      data: stats[0]
+    });
+    
+  } catch (error) {
+    console.error('Error fetching invoice stats:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update invoice status (admin)
+router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+    
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    await sequelize.query(`
+      UPDATE invoices 
+      SET status = ?, notes = ?, updatedAt = ?
+      WHERE id = ?
+    `, {
+      replacements: [status, notes, new Date(), id]
+    });
+    
+    const [updated] = await sequelize.query(`
+      SELECT * FROM invoices WHERE id = ?
+    `, {
+      replacements: [id]
+    });
+    
+    const invoice = updated[0];
+    if (invoice.metadata && typeof invoice.metadata === 'string') {
+      invoice.metadata = JSON.parse(invoice.metadata);
+    }
+    
+    res.json({
+      success: true,
+      data: invoice,
+      message: 'Invoice updated successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error updating invoice:', error);
     res.status(500).json({
       success: false,
       error: error.message
