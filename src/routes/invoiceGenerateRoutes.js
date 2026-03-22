@@ -252,7 +252,7 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
       const [results] = await sequelize.query(`
         SELECT * FROM invoices 
         WHERE exhibitorId = ? 
-        ORDER BY createdAt DESC
+        ORDER BY created_at DESC
       `, {
         replacements: [userId]
       });
@@ -264,7 +264,7 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
       const [emailResults] = await sequelize.query(`
         SELECT * FROM invoices 
         WHERE JSON_EXTRACT(metadata, '$.exhibitorInfo.email') = ?
-        ORDER BY createdAt DESC
+        ORDER BY created_at DESC
       `, {
         replacements: [userEmail]
       });
@@ -581,7 +581,7 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
     const [invoices] = await sequelize.query(`
       SELECT * FROM invoices 
       ${whereClause}
-      ORDER BY createdAt DESC
+      ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `, {
       replacements: [...replacements, parseInt(limit), offset]
