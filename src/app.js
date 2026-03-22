@@ -36,6 +36,7 @@ const visitorRoutes = require('./routes/visitorRoutes');
 const contactRoutes = require("./routes/contact");
 const floorPlanRoutes = require('./routes/floorPlanRoutes');
 const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
+const invoiceGenerateRoutes = require('./routes/invoiceGenerateRoutes');
 class AppServer {
   constructor() {
     this.app = express();
@@ -654,6 +655,8 @@ setupRoutes() {
   this.app.use("/api/contact", contactRoutes);
   this.app.use('/api/floor-plan', floorPlanRoutes);
   this.app.use('/api/exhibitor-credentials', exhibitorCredentialsRoutes);
+  this.app.use('/api/invoices', invoiceGenerateRoutes);
+  
 
   // ======================
   // Documentation & Info
