@@ -553,12 +553,39 @@ router.get('/requirements', async (req, res) => {
 
 // Submit requirement
 
-
-router.post('/requirements', upload.any(), async (req, res) => {
+router.get('/debug/requirements-table', async (req, res) => {
   try {
-    console.log("📝 Submitting requirement for exhibitor:", req.user.id);
+    const sequelize = require('../config/database').getConnection('mysql');
     
-    const { type, description } = req.body;
+    // Get table structure
+    const [columns] = await sequelize.query(`
+      SHOW COLUMNS FROM requirements
+    `);
+    
+    // Get sample data (if any)
+    const [sample] = await sequelize.query(`
+      SELECT * FROM requirements LIMIT 1
+    `);
+    
+    res.json({
+      success: true,
+      tableStructure: columns,
+      sampleData: sample,
+      columnNames: columns.map(c => c.Field)
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+router.post('/requirements', async (req, res) => {
+  try {
+    console.log("📝 Submitting requirement for exhibitor:", req.user?.id);
+    
+    const { type, description, ...restData } = req.body;
 
     if (!type || !description) {
       return res.status(400).json({
@@ -567,58 +594,19 @@ router.post('/requirements', upload.any(), async (req, res) => {
       });
     }
 
-    // Parse the data from formData
-    let completeData = {};
-    
-    try {
-      if (req.body.data) {
-        completeData = typeof req.body.data === 'string' 
-          ? JSON.parse(req.body.data) 
-          : req.body.data;
-      } else {
-        const parse = (data, fallback) => {
-          try {
-            return data ? JSON.parse(data) : fallback;
-          } catch {
-            return fallback;
-          }
-        };
-        
-        completeData = {
-          generalInfo: parse(req.body.generalInfo, {}),
-          boothDetails: parse(req.body.boothDetails, {}),
-          securityDeposit: parse(req.body.securityDeposit, {}),
-          machines: parse(req.body.machines, []),
-          personnel: parse(req.body.personnel, []),
-          companyDetails: parse(req.body.companyDetails, {}),
-          electricalLoad: parse(req.body.electricalLoad, {}),
-          furnitureItems: parse(req.body.furnitureItems, []),
-          hostessRequirements: parse(req.body.hostessRequirements, []),
-          compressedAir: parse(req.body.compressedAir, {}),
-          waterConnection: parse(req.body.waterConnection, {}),
-          securityGuard: parse(req.body.securityGuard, {}),
-          rentalItems: parse(req.body.rentalItems, []),
-          housekeepingStaff: parse(req.body.housekeepingStaff, {}),
-          paymentDetails: parse(req.body.paymentDetails, {}),
-          totals: parse(req.body.totals, {})
-        };
-      }
-    } catch (error) {
-      console.error('Error parsing data:', error);
-      completeData = { raw: req.body };
-    }
-
-    completeData.submittedAt = new Date().toISOString();
-    completeData.ipAddress = req.ip;
-    completeData.userAgent = req.headers['user-agent'];
+    // Collect all data
+    const completeData = {
+      ...restData,
+      submittedAt: new Date().toISOString(),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    };
 
     console.log('📦 Saving requirement data...');
+    console.log('Keys:', Object.keys(completeData));
+    console.log('Housekeeping:', completeData.housekeepingStaff);
 
     const sequelize = require('../config/database').getConnection('mysql');
-    
-    // Generate UUID for new requirement
-    const requirementId = require('crypto').randomUUID();
-    const now = new Date();
     
     // First, check what columns exist
     const [columns] = await sequelize.query(`
@@ -628,26 +616,33 @@ router.post('/requirements', upload.any(), async (req, res) => {
     const columnNames = columns.map(c => c.Field);
     console.log('Available columns:', columnNames);
     
-    // Build dynamic insert query based on available columns
+    // Generate UUID
+    const requirementId = require('crypto').randomUUID();
+    const now = new Date();
+    
+    // Build insert query based on actual columns
     const insertFields = ['id', 'type', 'description', 'quantity', 'status', 'createdAt', 'updatedAt'];
     const insertValues = [requirementId, type, description, 1, 'pending', now, now];
     
-    // Check for exhibitorId column (try different variations)
-    let exhibitorIdColumn = null;
+    // Check for exhibitorId column (try common variations)
+    let exhibitorColumn = null;
     if (columnNames.includes('exhibitorId')) {
-      exhibitorIdColumn = 'exhibitorId';
+      exhibitorColumn = 'exhibitorId';
     } else if (columnNames.includes('exhibitor_id')) {
-      exhibitorIdColumn = 'exhibitor_id';
+      exhibitorColumn = 'exhibitor_id';
     } else if (columnNames.includes('exhibitorId')) {
-      exhibitorIdColumn = 'exhibitorId';
+      exhibitorColumn = 'exhibitorId';
     }
     
-    if (exhibitorIdColumn) {
-      insertFields.push(exhibitorIdColumn);
+    if (exhibitorColumn && req.user?.id) {
+      insertFields.push(exhibitorColumn);
       insertValues.push(req.user.id);
+      console.log(`✅ Adding ${exhibitorColumn} column with value:`, req.user.id);
+    } else {
+      console.log('⚠️ No exhibitor column found or no user ID');
     }
     
-    // Check for data column
+    // Check for data column (or metadata)
     let dataColumn = null;
     if (columnNames.includes('data')) {
       dataColumn = 'data';
@@ -658,6 +653,9 @@ router.post('/requirements', upload.any(), async (req, res) => {
     if (dataColumn) {
       insertFields.push(dataColumn);
       insertValues.push(JSON.stringify(completeData));
+      console.log(`✅ Adding ${dataColumn} column with data`);
+    } else {
+      console.log('⚠️ No data/metadata column found');
     }
     
     // Build and execute query
@@ -665,10 +663,15 @@ router.post('/requirements', upload.any(), async (req, res) => {
     const query = `INSERT INTO requirements (${insertFields.join(', ')}) VALUES (${placeholders})`;
     
     console.log('Executing query:', query);
-    console.log('With values:', insertValues.map(v => typeof v === 'object' ? 'JSON' : v));
+    console.log('Values:', insertValues.map(v => {
+      if (typeof v === 'object') return 'JSON_OBJECT';
+      if (typeof v === 'string' && v.length > 100) return v.substring(0, 100) + '...';
+      return v;
+    }));
     
     await sequelize.query(query, {
-      replacements: insertValues
+      replacements: insertValues,
+      type: sequelize.QueryTypes.INSERT
     });
     
     console.log('✅ Requirement saved with ID:', requirementId);
@@ -686,9 +689,13 @@ router.post('/requirements', upload.any(), async (req, res) => {
 
   } catch (error) {
     console.error("❌ REQUIREMENT ERROR:", error);
+    console.error("Stack:", error.stack);
+    
+    // Send detailed error in development, generic in production
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   }
 });
