@@ -11,7 +11,7 @@ module.exports = (sequelize) => {
     exhibitorId: {
       type: DataTypes.UUID,
       allowNull: false,
-      field: 'exhibitor_id'
+      field: 'exhibitorId'  // Change from 'exhibitor_id' to 'exhibitorId'
     },
     type: {
       type: DataTypes.STRING(100),
@@ -25,7 +25,6 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 1
     },
-    // ✅ Use only 'data' column - no 'metadata'
     data: {
       type: DataTypes.JSON,
       allowNull: true
@@ -41,7 +40,7 @@ module.exports = (sequelize) => {
   }, {
     tableName: 'requirements',
     timestamps: true,
-    underscored: true
+    // Don't use underscored - let Sequelize handle column naming
   });
 
   return Requirement;
