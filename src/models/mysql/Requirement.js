@@ -1,3 +1,4 @@
+// src/models/mysql/Requirement.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -23,9 +24,16 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 1
     },
-
-    // ✅ NEW FIELD (CRITICAL)
+    
+    // ✅ STORE COMPLETE FORM DATA
     data: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      field: 'data'  // Store all form data here
+    },
+    
+    // Store metadata separately if needed
+    metadata: {
       type: DataTypes.JSON,
       allowNull: true
     },

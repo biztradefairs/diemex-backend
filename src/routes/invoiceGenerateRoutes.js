@@ -1,94 +1,25 @@
 // src/routes/invoiceGenerateRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
-const invoiceService = require('../services/InvoiceService');
+const invoiceController = require('../controllers/InvoiceController');
+const { authenticate, authorize } = require('../middleware/auth');
 
-// Generate invoice from requirements
-router.post('/generate-from-requirements', authenticate, async (req, res) => {
-  try {
-    const {
-      requirementsId,
-      exhibitorId,
-      exhibitorInfo,
-      paymentInfo,
-      items,
-      totals,
-      invoiceNumber,
-      issueDate,
-      dueDate,
-      notes
-    } = req.body;
+// Public routes (with authentication)
+router.get('/my-invoices', authenticate, invoiceController.getAllInvoices);
+router.get('/my-invoices/:id', authenticate, invoiceController.getInvoice);
+router.get('/my-invoices/:id/pdf', authenticate, invoiceController.generateInvoicePdf);
+router.get('/my-invoices/:id/details', authenticate, invoiceController.getInvoiceWithDetails);
 
-    // Validate required fields
-    if (!requirementsId || !exhibitorInfo || !items || !totals) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: requirementsId, exhibitorInfo, items, totals'
-      });
-    }
-
-    // Ensure items have proper structure
-    const formattedItems = items.map(item => ({
-      description: item.description,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      total: item.total
-    }));
-
-    // Add GST as a separate line item if not already included
-    if (totals.gst > 0 && !formattedItems.some(item => item.description.includes('GST'))) {
-      formattedItems.push({
-        description: 'GST (18%) on Services',
-        quantity: 1,
-        unitPrice: totals.gst,
-        total: totals.gst
-      });
-    }
-
-    // Create invoice data
-    const invoiceData = {
-      requirementsId,
-      exhibitorId: exhibitorId || req.user.id,
-      exhibitorInfo: {
-        name: exhibitorInfo.name,
-        companyName: exhibitorInfo.companyName,
-        email: exhibitorInfo.email,
-        phone: exhibitorInfo.phone,
-        address: exhibitorInfo.address,
-        gstNumber: exhibitorInfo.gstNumber,
-        boothNumber: exhibitorInfo.boothNumber
-      },
-      paymentInfo: paymentInfo || {},
-      items: formattedItems,
-      totals: {
-        subtotal: totals.servicesTotal,
-        gst: totals.gst,
-        total: totals.total,
-        deposit: totals.deposit
-      },
-      invoiceNumber: invoiceNumber || `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`,
-      issueDate: issueDate || new Date().toISOString(),
-      dueDate: dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: notes || `Thank you for your exhibition registration. This invoice includes all services requested.\n\nBooth Number: ${exhibitorInfo.boothNumber || 'To be assigned'}`
-    };
-
-    // Create invoice
-    const invoice = await invoiceService.createInvoice(invoiceData);
-
-    res.json({
-      success: true,
-      message: 'Invoice generated successfully',
-      data: invoice
-    });
-
-  } catch (error) {
-    console.error('Error generating invoice:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
+// Admin routes
+router.get('/', authenticate, authorize(['admin']), invoiceController.getAllInvoices);
+router.get('/stats', authenticate, authorize(['admin']), invoiceController.getInvoiceStats);
+router.get('/:id', authenticate, authorize(['admin']), invoiceController.getInvoice);
+router.get('/:id/pdf', authenticate, authorize(['admin']), invoiceController.generateInvoicePdf);
+router.get('/:id/details', authenticate, authorize(['admin']), invoiceController.getInvoiceWithDetails);
+router.post('/', authenticate, authorize(['admin']), invoiceController.createInvoice);
+router.put('/:id', authenticate, authorize(['admin']), invoiceController.updateInvoice);
+router.delete('/:id', authenticate, authorize(['admin']), invoiceController.deleteInvoice);
+router.post('/bulk', authenticate, authorize(['admin']), invoiceController.bulkGenerateInvoices);
+router.post('/:id/send-email', authenticate, authorize(['admin']), invoiceController.sendInvoiceEmail);
 
 module.exports = router;

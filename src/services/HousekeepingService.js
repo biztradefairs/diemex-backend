@@ -1,3 +1,4 @@
+// src/services/HousekeepingService.js
 class HousekeepingService {
   constructor() {
     this.HousekeepingConfig = null;
@@ -14,13 +15,9 @@ class HousekeepingService {
     return this.HousekeepingConfig;
   }
 
-  // ===============================
-  // GET CONFIG
-  // ===============================
   async getConfig() {
     try {
       const HousekeepingConfig = await this.getHousekeepingModel();
-
       let config = await HousekeepingConfig.findOne();
 
       if (!config) {
@@ -30,12 +27,11 @@ class HousekeepingService {
         });
       }
 
-      // 🔥 Return frontend-compatible structure
       return {
         success: true,
         data: {
           id: config.id,
-          chargesPerShift: config.ratePerStaffPerDay,
+          ratePerShift: config.ratePerStaffPerDay,  // Changed from chargesPerShift
           shiftHours: config.shiftHours,
           createdAt: config.createdAt,
           updatedAt: config.updatedAt
@@ -46,46 +42,41 @@ class HousekeepingService {
     }
   }
 
-  // ===============================
-  // UPDATE CONFIG
-  // ===============================
-  async updateConfig(chargesPerShift, shiftHours) {
-    try {
-      const HousekeepingConfig = await this.getHousekeepingModel();
-
-      let config = await HousekeepingConfig.findOne();
-
-      if (!config) {
-        config = await HousekeepingConfig.create({
-          ratePerStaffPerDay: parseInt(chargesPerShift) || 0,
-          shiftHours: parseInt(shiftHours) || 10
-        });
-      } else {
-        await config.update({
-          ratePerStaffPerDay: parseInt(chargesPerShift) || config.ratePerStaffPerDay,
-          shiftHours: shiftHours ? parseInt(shiftHours) : config.shiftHours
-        });
-      }
-
-      return this.getConfig();
-    } catch (error) {
-      throw new Error(`Error updating housekeeping config: ${error.message}`);
-    }
-  }
-
-  // ===============================
-  // CALCULATE SHIFTS
-  // ===============================
-  async calculateCost(numberOfShifts) {
+  // FIXED: Calculate cost with quantity and days
+  async calculateCost(quantity, days) {
     try {
       const { data: config } = await this.getConfig();
-
-      const totalCost = config.chargesPerShift * numberOfShifts;
+      
+      // quantity = number of staff
+      // days = number of days
+      // total cost = quantity * days * ratePerShift
+      const totalCost = quantity * days * config.ratePerShift;
 
       return {
         success: true,
         data: {
-          chargesPerShift: config.chargesPerShift,
+          ratePerShift: config.ratePerShift,
+          shiftHours: config.shiftHours,
+          quantity: quantity,
+          days: days,
+          totalCost: totalCost
+        }
+      };
+    } catch (error) {
+      throw new Error(`Error calculating cost: ${error.message}`);
+    }
+  }
+
+  // Calculate with shifts (backward compatibility)
+  async calculateWithShifts(numberOfShifts) {
+    try {
+      const { data: config } = await this.getConfig();
+      const totalCost = config.ratePerShift * numberOfShifts;
+
+      return {
+        success: true,
+        data: {
+          ratePerShift: config.ratePerShift,
           shiftHours: config.shiftHours,
           numberOfShifts,
           totalCost
@@ -96,20 +87,16 @@ class HousekeepingService {
     }
   }
 
-  // ===============================
-  // CUSTOM HOURS
-  // ===============================
   async calculateCustomHours(hours, numberOfStaff = 1) {
     try {
       const { data: config } = await this.getConfig();
-
-      const hourlyRate = config.chargesPerShift / config.shiftHours;
+      const hourlyRate = config.ratePerShift / config.shiftHours;
       const totalCost = hourlyRate * hours * numberOfStaff;
 
       return {
         success: true,
         data: {
-          chargesPerShift: config.chargesPerShift,
+          ratePerShift: config.ratePerShift,
           shiftHours: config.shiftHours,
           hourlyRate: Math.round(hourlyRate),
           hours,
@@ -122,13 +109,32 @@ class HousekeepingService {
     }
   }
 
-  // ===============================
-  // RESET DEFAULT
-  // ===============================
+  async updateConfig(ratePerShift, shiftHours) {
+    try {
+      const HousekeepingConfig = await this.getHousekeepingModel();
+      let config = await HousekeepingConfig.findOne();
+
+      if (!config) {
+        config = await HousekeepingConfig.create({
+          ratePerStaffPerDay: parseInt(ratePerShift) || 2000,
+          shiftHours: parseInt(shiftHours) || 10
+        });
+      } else {
+        await config.update({
+          ratePerStaffPerDay: parseInt(ratePerShift) || config.ratePerStaffPerDay,
+          shiftHours: shiftHours ? parseInt(shiftHours) : config.shiftHours
+        });
+      }
+
+      return this.getConfig();
+    } catch (error) {
+      throw new Error(`Error updating housekeeping config: ${error.message}`);
+    }
+  }
+
   async resetToDefault() {
     try {
       const HousekeepingConfig = await this.getHousekeepingModel();
-
       let config = await HousekeepingConfig.findOne();
 
       if (config) {
@@ -149,17 +155,13 @@ class HousekeepingService {
     }
   }
 
-  // ===============================
-  // HISTORY
-  // ===============================
   async getRateHistory() {
     try {
       const { data: config } = await this.getConfig();
-
       return {
         success: true,
         data: [{
-          chargesPerShift: config.chargesPerShift,
+          ratePerShift: config.ratePerShift,
           shiftHours: config.shiftHours,
           updatedAt: config.updatedAt,
           createdAt: config.createdAt
@@ -170,19 +172,15 @@ class HousekeepingService {
     }
   }
 
-  // ===============================
-  // STATISTICS
-  // ===============================
   async getStatistics() {
     try {
       const { data: config } = await this.getConfig();
-
       return {
         success: true,
         data: {
-          currentRate: config.chargesPerShift,
+          currentRate: config.ratePerShift,
           shiftHours: config.shiftHours,
-          hourlyRate: Math.round(config.chargesPerShift / config.shiftHours),
+          hourlyRate: Math.round(config.ratePerShift / config.shiftHours),
           createdAt: config.createdAt,
           lastUpdated: config.updatedAt
         }

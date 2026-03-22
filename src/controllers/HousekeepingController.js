@@ -1,3 +1,4 @@
+// src/controllers/HousekeepingController.js
 const housekeepingService = require('../services/HousekeepingService');
 
 class HousekeepingController {
@@ -13,16 +14,16 @@ class HousekeepingController {
 
   async updateConfig(req, res) {
     try {
-      const { chargesPerShift, shiftHours } = req.body;
+      const { ratePerShift, shiftHours } = req.body;
 
-      if (chargesPerShift === undefined) {
+      if (ratePerShift === undefined) {
         return res.status(400).json({
           success: false,
-          message: 'chargesPerShift is required'
+          message: 'ratePerShift is required'
         });
       }
 
-      const result = await housekeepingService.updateConfig(chargesPerShift, shiftHours);
+      const result = await housekeepingService.updateConfig(ratePerShift, shiftHours);
       res.json(result);
 
     } catch (error) {
@@ -30,10 +31,37 @@ class HousekeepingController {
     }
   }
 
+  // FIXED: Calculate cost with quantity and days
   async calculateCost(req, res) {
     try {
+      const { quantity, days } = req.body;
+      
+      if (!quantity || quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Quantity (number of staff) is required and must be at least 1'
+        });
+      }
+
+      if (!days || days < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Number of days is required and must be at least 1'
+        });
+      }
+
+      const result = await housekeepingService.calculateCost(parseInt(quantity), parseInt(days));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // For backward compatibility - calculate with shifts
+  async calculateWithShifts(req, res) {
+    try {
       const { shifts } = req.body;
-      const result = await housekeepingService.calculateCost(shifts);
+      const result = await housekeepingService.calculateWithShifts(shifts);
       res.json(result);
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });

@@ -1,3 +1,4 @@
+// src/routes/housekeepingRoutes.js
 const express = require('express');
 const router = express.Router();
 const housekeepingController = require('../controllers/HousekeepingController');
@@ -7,9 +8,7 @@ const {
   authorize
 } = require('../middleware/auth');
 
-/* ==================================================
-   SHARED ROUTES (Admin + Exhibitor)
-================================================== */
+// ==================== PUBLIC / EXHIBITOR ROUTES ====================
 
 // Get config (Admin + Exhibitor)
 router.get(
@@ -19,14 +18,33 @@ router.get(
   housekeepingController.getConfig
 );
 
-// Calculate cost (Public or authenticated)
-router.post('/calculate', housekeepingController.calculateCost);
-router.post('/calculate/custom', housekeepingController.calculateCustomHours);
+// Calculate cost - For exhibitor form
+router.post(
+  '/calculate',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  housekeepingController.calculateCost
+);
 
-/* ==================================================
-   ADMIN ONLY ROUTES
-================================================== */
+// Calculate with shifts (for admin)
+router.post(
+  '/calculate/shifts',
+  authenticate,
+  authorize(['admin']),
+  housekeepingController.calculateWithShifts
+);
 
+// Calculate custom hours
+router.post(
+  '/calculate/custom',
+  authenticateAny,
+  authorize(['admin', 'exhibitor']),
+  housekeepingController.calculateCustomHours
+);
+
+// ==================== ADMIN ONLY ROUTES ====================
+
+// Update config
 router.put(
   '/config',
   authenticate,
@@ -34,6 +52,7 @@ router.put(
   housekeepingController.updateConfig
 );
 
+// Get rate history
 router.get(
   '/history',
   authenticate,
@@ -41,6 +60,7 @@ router.get(
   housekeepingController.getRateHistory
 );
 
+// Reset to default
 router.post(
   '/reset',
   authenticate,
@@ -48,6 +68,7 @@ router.post(
   housekeepingController.resetToDefault
 );
 
+// Get statistics
 router.get(
   '/stats',
   authenticate,

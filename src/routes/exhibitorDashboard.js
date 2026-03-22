@@ -574,6 +574,7 @@ router.post('/requirements', upload.any(), async (req, res) => {
       }
     };
 
+    // ✅ COMPLETE DATA OBJECT
     const fullData = {
       generalInfo: parse(req.body.generalInfo, {}),
       boothDetails: parse(req.body.boothDetails, {}),
@@ -589,8 +590,17 @@ router.post('/requirements', upload.any(), async (req, res) => {
       securityGuard: parse(req.body.securityGuard, {}),
       rentalItems: parse(req.body.rentalItems, []),
       housekeepingStaff: parse(req.body.housekeepingStaff, {}),
-      paymentDetails: parse(req.body.paymentDetails, {})
+      paymentDetails: parse(req.body.paymentDetails, {}),
+      totals: parse(req.body.totals, {})  // Add totals for invoice
     };
+
+    // Log the data being saved
+    console.log('📦 Saving requirement data:', {
+      type,
+      description,
+      hasHousekeeping: fullData.housekeepingStaff?.quantity > 0,
+      housekeepingDetails: fullData.housekeepingStaff
+    });
 
     const modelFactory = require('../models');
     const Requirement = modelFactory.getModel('Requirement');
@@ -599,19 +609,32 @@ router.post('/requirements', upload.any(), async (req, res) => {
       throw new Error('Requirement model not initialized');
     }
 
+    // ✅ STORE ALL DATA IN THE 'data' FIELD
     const requirement = await Requirement.create({
       exhibitorId: req.user.id,
       type,
       description,
       quantity: 1,
-      metadata: fullData,
+      data: fullData,  // Store everything here
+      metadata: {
+        submittedAt: new Date().toISOString(),
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      },
       status: 'pending'
     });
+
+    console.log('✅ Requirement saved with ID:', requirement.id);
 
     res.json({
       success: true,
       message: 'Requirement submitted successfully',
-      data: requirement
+      data: {
+        id: requirement.id,
+        type: requirement.type,
+        status: requirement.status,
+        createdAt: requirement.createdAt
+      }
     });
 
   } catch (error) {

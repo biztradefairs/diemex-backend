@@ -338,7 +338,91 @@ class EmailService {
     `;
     return this.sendEmail(visitorData.email, subject, html);
   }
+  // src/services/EmailService.js - Add this method
 
+async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
+  try {
+    const transporter = this.getTransporter();
+    
+    const mailOptions = {
+      from: `"DIEMEX Exhibition" <${process.env.EMAIL_FROM || 'noreply@diemex.com'}>`,
+      to: to,
+      subject: `Invoice ${invoiceNumber} from DIEMEX Exhibition`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Invoice ${invoiceNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #1e3a8a; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .invoice-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .amount { font-size: 24px; color: #10b981; font-weight: bold; }
+            .button { display: inline-block; background: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 20px; }
+            .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>DIEMEX Exhibition</h1>
+              <p>Invoice ${invoiceNumber}</p>
+            </div>
+            <div class="content">
+              <h2>Dear Exhibitor,</h2>
+              <p>Thank you for registering for DIEMEX Exhibition. Please find your invoice attached to this email.</p>
+              
+              <div class="invoice-details">
+                <h3>Invoice Summary</h3>
+                <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
+                <p><strong>Amount:</strong> <span class="amount">₹${amount.toLocaleString()}</span></p>
+                <p><strong>Due Date:</strong> ${new Date(dueDate).toLocaleDateString('en-IN')}</p>
+              </div>
+              
+              <p><strong>Payment Instructions:</strong></p>
+              <p>Please make the payment via bank transfer to the following account:</p>
+              <ul>
+                <li><strong>Account Name:</strong> Maxx Business Media Pvt. Ltd.</li>
+                <li><strong>Account Number:</strong> 272605000632</li>
+                <li><strong>IFSC Code:</strong> ICIC0002726</li>
+                <li><strong>Bank:</strong> ICICI Bank, New Delhi</li>
+              </ul>
+              
+              <p>Please use your Invoice Number as reference when making the payment.</p>
+              
+              <p>If you have any questions, please don't hesitate to contact us.</p>
+              
+              <p>Best regards,<br>DIEMEX Exhibition Team</p>
+            </div>
+            <div class="footer">
+              <p>DIEMEX Exhibition | www.diemex.com | support@diemex.com</p>
+              <p>This is an automated email. Please do not reply.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      attachments: [
+        {
+          filename: `invoice-${invoiceNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Invoice email sent to ${to}: ${info.messageId}`);
+    return info;
+    
+  } catch (error) {
+    console.error('❌ Failed to send invoice email:', error);
+    throw error;
+  }
+}
   // Test method to verify configuration
   async testConnection() {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
