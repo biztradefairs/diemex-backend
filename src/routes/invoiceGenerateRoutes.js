@@ -97,8 +97,16 @@ router.post('/generate-from-requirements', authenticateAny, async (req, res) => 
     console.log('Available invoice columns:', columnNames);
     
     // Build insert query dynamically
-    const insertFields = ['id', 'invoiceNumber', 'company', 'amount', 'status', 'dueDate', 'issueDate', 'createdAt', 'updatedAt'];
-    const insertValues = [invoiceId, finalInvoiceNumber, exhibitorInfo?.companyName || '', totals?.total || 0, 'pending', finalDueDate, finalIssueDate, now, now];
+const insertFields = ['id', 'invoiceNumber', 'company', 'amount', 'status', 'dueDate', 'issueDate'];
+const insertValues = [
+  invoiceId,
+  finalInvoiceNumber,
+  exhibitorInfo?.companyName || '',
+  totals?.total || 0,
+  'pending',
+  finalDueDate,
+  finalIssueDate
+];
     
     // Add exhibitorId if column exists
     if (columnNames.includes('exhibitorId')) {
