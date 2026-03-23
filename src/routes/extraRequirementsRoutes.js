@@ -3,10 +3,6 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
 
-// =============================================
-// ADMIN ROUTES
-// =============================================
-
 // Helper function to extract items from requirement data
 const extractRequirementItems = (data) => {
   const items = [];
@@ -15,10 +11,13 @@ const extractRequirementItems = (data) => {
   if (data.furnitureItems && Array.isArray(data.furnitureItems)) {
     data.furnitureItems.forEach(item => {
       items.push({
+        id: item.id || `furniture_${Date.now()}_${Math.random()}`,
         type: 'Furniture',
         quantity: item.quantity || 1,
         description: item.description || `Furniture: ${item.code}`,
-        details: item
+        specifications: `Code: ${item.code}, Cost: ₹${item.cost}`,
+        unitPrice: item.cost,
+        totalPrice: item.cost * (item.quantity || 1)
       });
     });
   }
@@ -27,42 +26,54 @@ const extractRequirementItems = (data) => {
   if (data.rentalItems && Array.isArray(data.rentalItems)) {
     data.rentalItems.forEach(item => {
       items.push({
+        id: item.id || `rental_${Date.now()}_${Math.random()}`,
         type: 'AV & IT Rentals',
         quantity: item.quantity || 1,
         description: item.description || `Rental: ${item.type}`,
-        details: item
+        specifications: `Type: ${item.type}, Cost: ₹${item.costFor3Days}`,
+        unitPrice: item.costFor3Days,
+        totalPrice: item.totalCost
       });
     });
   }
   
   // Extract Electrical Load
   if (data.electricalLoad) {
-    if (data.electricalLoad.exhibitionLoad) {
+    if (data.electricalLoad.exhibitionLoad && data.electricalLoad.exhibitionLoad !== '') {
       items.push({
+        id: `electrical_exhibition_${Date.now()}_${Math.random()}`,
         type: 'Electrical Load',
         quantity: parseInt(data.electricalLoad.exhibitionLoad) || 0,
         description: 'Exhibition Electrical Load',
-        details: { load: data.electricalLoad.exhibitionLoad, total: data.electricalLoad.exhibitionTotal }
+        specifications: `Load: ${data.electricalLoad.exhibitionLoad} kW, Total: ₹${data.electricalLoad.exhibitionTotal}`,
+        unitPrice: data.electricalLoad.exhibitionTotal,
+        totalPrice: data.electricalLoad.exhibitionTotal
       });
     }
-    if (data.electricalLoad.temporaryLoad) {
+    if (data.electricalLoad.temporaryLoad && data.electricalLoad.temporaryLoad !== '') {
       items.push({
+        id: `electrical_temporary_${Date.now()}_${Math.random()}`,
         type: 'Electrical Load',
         quantity: parseInt(data.electricalLoad.temporaryLoad) || 0,
         description: 'Temporary Electrical Load',
-        details: { load: data.electricalLoad.temporaryLoad, total: data.electricalLoad.temporaryTotal }
+        specifications: `Load: ${data.electricalLoad.temporaryLoad} kW, Total: ₹${data.electricalLoad.temporaryTotal}`,
+        unitPrice: data.electricalLoad.temporaryTotal,
+        totalPrice: data.electricalLoad.temporaryTotal
       });
     }
   }
   
   // Extract Hostess Requirements
   if (data.hostessRequirements && Array.isArray(data.hostessRequirements)) {
-    data.hostessRequirements.forEach(item => {
+    data.hostessRequirements.forEach((item, index) => {
       items.push({
+        id: `hostess_${index}_${Date.now()}_${Math.random()}`,
         type: 'Hostess Services',
         quantity: item.quantity || 1,
-        description: `Hostess Category ${item.category} for ${item.noOfDays} days`,
-        details: item
+        description: `Hostess Category ${item.category}`,
+        specifications: `${item.noOfDays} days at ₹${item.ratePerDay}/day`,
+        unitPrice: item.ratePerDay,
+        totalPrice: item.amount
       });
     });
   }
@@ -70,55 +81,74 @@ const extractRequirementItems = (data) => {
   // Extract Compressed Air
   if (data.compressedAir && data.compressedAir.qty) {
     items.push({
+      id: `compressed_air_${Date.now()}_${Math.random()}`,
       type: 'Compressed Air',
       quantity: data.compressedAir.qty || 1,
-      description: `Compressed Air Connection - ${data.compressedAir.cfmRange || 'Standard'}`,
-      details: data.compressedAir
+      description: 'Compressed Air Connection',
+      specifications: `CFM: ${data.compressedAir.cfmRange || 'Standard'}, Power: ${data.compressedAir.powerKW} kW`,
+      unitPrice: data.compressedAir.costPerConnection,
+      totalPrice: data.compressedAir.totalCost
     });
   }
   
   // Extract Water Connection
   if (data.waterConnection && data.waterConnection.connections) {
     items.push({
+      id: `water_${Date.now()}_${Math.random()}`,
       type: 'Water Connection',
       quantity: data.waterConnection.connections || 1,
       description: 'Water Connection',
-      details: data.waterConnection
+      specifications: `${data.waterConnection.connections} connections at ₹${data.waterConnection.costPerConnection}/each`,
+      unitPrice: data.waterConnection.costPerConnection,
+      totalPrice: data.waterConnection.totalCost
     });
   }
   
   // Extract Security Guard
   if (data.securityGuard && data.securityGuard.quantity) {
     items.push({
+      id: `security_${Date.now()}_${Math.random()}`,
       type: 'Security Guard',
       quantity: data.securityGuard.quantity || 1,
-      description: `Security Guard for ${data.securityGuard.noOfDays} days`,
-      details: data.securityGuard
+      description: 'Security Guard Service',
+      specifications: `${data.securityGuard.noOfDays} days`,
+      unitPrice: data.securityGuard.totalCost / data.securityGuard.quantity,
+      totalPrice: data.securityGuard.totalCost
     });
   }
   
   // Extract Housekeeping
   if (data.housekeepingStaff && data.housekeepingStaff.quantity) {
     items.push({
+      id: `housekeeping_${Date.now()}_${Math.random()}`,
       type: 'Housekeeping',
       quantity: data.housekeepingStaff.quantity || 1,
-      description: `Housekeeping Staff for ${data.housekeepingStaff.noOfDays} days`,
-      details: data.housekeepingStaff
+      description: 'Housekeeping Staff',
+      specifications: `${data.housekeepingStaff.noOfDays} days at ₹${data.housekeepingStaff.chargesPerShift}/shift`,
+      unitPrice: data.housekeepingStaff.chargesPerShift,
+      totalPrice: data.housekeepingStaff.totalCost
     });
   }
   
   // Extract Security Deposit
   if (data.securityDeposit && data.securityDeposit.amountINR > 0) {
     items.push({
+      id: `deposit_${Date.now()}_${Math.random()}`,
       type: 'Security Deposit',
       quantity: 1,
-      description: `Security Deposit Amount: ₹${data.securityDeposit.amountINR}`,
-      details: data.securityDeposit
+      description: 'Security Deposit',
+      specifications: `Booth Size: ${data.securityDeposit.boothSq || 'Standard'}`,
+      unitPrice: data.securityDeposit.amountINR,
+      totalPrice: data.securityDeposit.amountINR
     });
   }
   
   return items;
 };
+
+// =============================================
+// ADMIN ROUTES
+// =============================================
 
 // Get all extra requirements (admin)
 router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) => {
@@ -131,7 +161,7 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
       throw new Error('Database connection not available');
     }
     
-    // Build WHERE clause for requirements with data
+    // Build WHERE clause for requirements
     let whereClause = "WHERE type = 'exhibitor'";
     const replacements = [];
     
@@ -141,7 +171,7 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
       replacements.push(status);
     }
     
-    // Add search filter - search in data JSON
+    // Add search filter
     if (search) {
       whereClause += ' AND (data LIKE ? OR id LIKE ?)';
       replacements.push(`%${search}%`, `%${search}%`);
@@ -266,7 +296,7 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       throw new Error('Database connection not available');
     }
     
-    // Get requirement by ID directly - simpler query
+    // Get requirement by ID
     const [requirements] = await sequelize.query(`
       SELECT * FROM requirements 
       WHERE id = ?
@@ -311,145 +341,7 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     
     const generalInfo = parsedData.generalInfo || {};
     const boothDetails = parsedData.boothDetails || {};
-    
-    // Extract items from the parsed data
-    const items = [];
-    
-    // Extract furniture items
-    if (parsedData.furnitureItems && Array.isArray(parsedData.furnitureItems)) {
-      parsedData.furnitureItems.forEach(item => {
-        items.push({
-          id: item.id || `furniture_${Date.now()}`,
-          type: 'Furniture',
-          quantity: item.quantity || 1,
-          description: item.description || `Furniture: ${item.code}`,
-          specifications: `Code: ${item.code}, Cost: ₹${item.cost}`,
-          unitPrice: item.cost,
-          totalPrice: item.cost * (item.quantity || 1)
-        });
-      });
-    }
-    
-    // Extract AV & IT Rentals
-    if (parsedData.rentalItems && Array.isArray(parsedData.rentalItems)) {
-      parsedData.rentalItems.forEach(item => {
-        items.push({
-          id: item.id || `rental_${Date.now()}`,
-          type: 'AV & IT Rentals',
-          quantity: item.quantity || 1,
-          description: item.description || `Rental: ${item.type}`,
-          specifications: `Type: ${item.type}, Cost: ₹${item.costFor3Days}`,
-          unitPrice: item.costFor3Days,
-          totalPrice: item.totalCost
-        });
-      });
-    }
-    
-    // Extract Electrical Load
-    if (parsedData.electricalLoad) {
-      if (parsedData.electricalLoad.exhibitionLoad && parsedData.electricalLoad.exhibitionLoad !== '') {
-        items.push({
-          id: `electrical_exhibition_${Date.now()}`,
-          type: 'Electrical Load',
-          quantity: parseInt(parsedData.electricalLoad.exhibitionLoad) || 0,
-          description: 'Exhibition Electrical Load',
-          specifications: `Load: ${parsedData.electricalLoad.exhibitionLoad} kW, Total: ₹${parsedData.electricalLoad.exhibitionTotal}`,
-          unitPrice: parsedData.electricalLoad.exhibitionTotal,
-          totalPrice: parsedData.electricalLoad.exhibitionTotal
-        });
-      }
-      if (parsedData.electricalLoad.temporaryLoad && parsedData.electricalLoad.temporaryLoad !== '') {
-        items.push({
-          id: `electrical_temporary_${Date.now()}`,
-          type: 'Electrical Load',
-          quantity: parseInt(parsedData.electricalLoad.temporaryLoad) || 0,
-          description: 'Temporary Electrical Load',
-          specifications: `Load: ${parsedData.electricalLoad.temporaryLoad} kW, Total: ₹${parsedData.electricalLoad.temporaryTotal}`,
-          unitPrice: parsedData.electricalLoad.temporaryTotal,
-          totalPrice: parsedData.electricalLoad.temporaryTotal
-        });
-      }
-    }
-    
-    // Extract Hostess Requirements
-    if (parsedData.hostessRequirements && Array.isArray(parsedData.hostessRequirements)) {
-      parsedData.hostessRequirements.forEach((item, index) => {
-        items.push({
-          id: `hostess_${index}_${Date.now()}`,
-          type: 'Hostess Services',
-          quantity: item.quantity || 1,
-          description: `Hostess Category ${item.category}`,
-          specifications: `${item.noOfDays} days at ₹${item.ratePerDay}/day`,
-          unitPrice: item.ratePerDay,
-          totalPrice: item.amount
-        });
-      });
-    }
-    
-    // Extract Compressed Air
-    if (parsedData.compressedAir && parsedData.compressedAir.qty) {
-      items.push({
-        id: `compressed_air_${Date.now()}`,
-        type: 'Compressed Air',
-        quantity: parsedData.compressedAir.qty || 1,
-        description: 'Compressed Air Connection',
-        specifications: `CFM: ${parsedData.compressedAir.cfmRange || 'Standard'}, Power: ${parsedData.compressedAir.powerKW} kW`,
-        unitPrice: parsedData.compressedAir.costPerConnection,
-        totalPrice: parsedData.compressedAir.totalCost
-      });
-    }
-    
-    // Extract Water Connection
-    if (parsedData.waterConnection && parsedData.waterConnection.connections) {
-      items.push({
-        id: `water_${Date.now()}`,
-        type: 'Water Connection',
-        quantity: parsedData.waterConnection.connections || 1,
-        description: 'Water Connection',
-        specifications: `${parsedData.waterConnection.connections} connections at ₹${parsedData.waterConnection.costPerConnection}/each`,
-        unitPrice: parsedData.waterConnection.costPerConnection,
-        totalPrice: parsedData.waterConnection.totalCost
-      });
-    }
-    
-    // Extract Security Guard
-    if (parsedData.securityGuard && parsedData.securityGuard.quantity) {
-      items.push({
-        id: `security_${Date.now()}`,
-        type: 'Security Guard',
-        quantity: parsedData.securityGuard.quantity || 1,
-        description: 'Security Guard Service',
-        specifications: `${parsedData.securityGuard.noOfDays} days`,
-        unitPrice: parsedData.securityGuard.totalCost / parsedData.securityGuard.quantity,
-        totalPrice: parsedData.securityGuard.totalCost
-      });
-    }
-    
-    // Extract Housekeeping
-    if (parsedData.housekeepingStaff && parsedData.housekeepingStaff.quantity) {
-      items.push({
-        id: `housekeeping_${Date.now()}`,
-        type: 'Housekeeping',
-        quantity: parsedData.housekeepingStaff.quantity || 1,
-        description: 'Housekeeping Staff',
-        specifications: `${parsedData.housekeepingStaff.noOfDays} days at ₹${parsedData.housekeepingStaff.chargesPerShift}/shift`,
-        unitPrice: parsedData.housekeepingStaff.chargesPerShift,
-        totalPrice: parsedData.housekeepingStaff.totalCost
-      });
-    }
-    
-    // Extract Security Deposit
-    if (parsedData.securityDeposit && parsedData.securityDeposit.amountINR > 0) {
-      items.push({
-        id: `deposit_${Date.now()}`,
-        type: 'Security Deposit',
-        quantity: 1,
-        description: 'Security Deposit',
-        specifications: `Booth Size: ${parsedData.securityDeposit.boothSq || 'Standard'}`,
-        unitPrice: parsedData.securityDeposit.amountINR,
-        totalPrice: parsedData.securityDeposit.amountINR
-      });
-    }
+    const items = extractRequirementItems(parsedData);
     
     const requirement = {
       id: reqRecord.id,
@@ -520,11 +412,11 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       });
     }
     
-    const req = existing[0];
+    const reqRecord = existing[0];
     let parsedData = {};
-    if (req.data) {
+    if (reqRecord.data) {
       try {
-        parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
+        parsedData = typeof reqRecord.data === 'string' ? JSON.parse(reqRecord.data) : reqRecord.data;
       } catch (e) {
         parsedData = {};
       }
@@ -656,53 +548,6 @@ router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) 
     
   } catch (error) {
     console.error('Error fetching requirement stats:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Get requirements by exhibitor (admin)
-router.get('/admin/exhibitor/:exhibitorId', authenticate, authorize(['admin']), async (req, res) => {
-  try {
-    const { exhibitorId } = req.params;
-    
-    const sequelize = require('../config/database').getConnection('mysql');
-    
-    const [requirements] = await sequelize.query(`
-      SELECT * FROM requirements 
-      WHERE exhibitorId = ?
-      ORDER BY createdAt DESC
-    `, {
-      replacements: [exhibitorId]
-    });
-    
-    // Parse JSON fields
-    const parsedRequirements = requirements.map(req => {
-      let parsedData = {};
-      if (req.data) {
-        try {
-          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
-        } catch (e) {
-          parsedData = {};
-        }
-      }
-      
-      return {
-        ...req,
-        data: parsedData,
-        items: extractRequirementItems(parsedData)
-      };
-    });
-    
-    res.json({
-      success: true,
-      data: parsedRequirements
-    });
-    
-  } catch (error) {
-    console.error('Error fetching exhibitor requirements:', error);
     res.status(500).json({
       success: false,
       error: error.message
