@@ -110,14 +110,16 @@ class ManualService {
 async getManualById(id) {
   try {
     console.log('Getting manual by ID:', id);
-    
-    // Try to find in database
+
+    // ✅ FIX: Load model properly
+    const Manual = await this.getManualModel();
+
     const manual = await Manual.findByPk(id);
-    
+
     if (!manual) {
       throw new Error('Manual not found');
     }
-    
+
     return {
       success: true,
       data: manual
