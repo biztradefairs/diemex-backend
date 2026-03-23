@@ -14,14 +14,35 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
     
     const sequelize = require('../config/database').getConnection('mysql');
     
-    let whereClause = "WHERE type IN ('furniture', 'av & it rentals', 'electrical load', 'hostess rates', 'compressed air', 'water connection', 'security guard', 'housekeeping', 'security deposit')";
-    const replacements = [];
+    if (!sequelize) {
+      throw new Error('Database connection not available');
+    }
     
+    // Define the extra requirement types
+    const extraTypes = [
+      'furniture', 
+      'av & it rentals', 
+      'electrical load', 
+      'hostess rates', 
+      'compressed air', 
+      'water connection', 
+      'security guard', 
+      'housekeeping', 
+      'security deposit'
+    ];
+    
+    // Build the WHERE clause for types
+    const typePlaceholders = extraTypes.map(() => '?').join(',');
+    let whereClause = `WHERE type IN (${typePlaceholders})`;
+    const replacements = [...extraTypes];
+    
+    // Add status filter
     if (status && status !== 'all') {
       whereClause += ' AND status = ?';
       replacements.push(status);
     }
     
+    // Add search filter
     if (search) {
       whereClause += ' AND (description LIKE ? OR data LIKE ?)';
       replacements.push(`%${search}%`, `%${search}%`);
@@ -52,11 +73,12 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
     const groupedRequirements = {};
     
     for (const req of requirements) {
-      let parsedData = req.data;
-      if (req.data && typeof req.data === 'string') {
+      let parsedData = {};
+      if (req.data) {
         try {
-          parsedData = JSON.parse(req.data);
+          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
         } catch (e) {
+          console.error('Error parsing requirement data:', e);
           parsedData = {};
         }
       }
@@ -65,20 +87,26 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
       
       if (!groupedRequirements[exhibitorId]) {
         // Get exhibitor details
-        const [exhibitors] = await sequelize.query(`
-          SELECT * FROM exhibitors WHERE id = ?
-        `, {
-          replacements: [exhibitorId]
-        });
-        
-        const exhibitor = exhibitors[0] || {};
+        let exhibitor = {};
+        try {
+          const [exhibitors] = await sequelize.query(`
+            SELECT id, name, companyName, email, phone, stallNumber, contactPerson 
+            FROM exhibitors 
+            WHERE id = ?
+          `, {
+            replacements: [exhibitorId]
+          });
+          exhibitor = exhibitors[0] || {};
+        } catch (err) {
+          console.error('Error fetching exhibitor:', err);
+        }
         
         groupedRequirements[exhibitorId] = {
           id: req.id,
           requirementId: req.id,
           exhibitorId: exhibitorId,
           stallNumber: exhibitor.stallNumber || parsedData?.stallNumber,
-          companyName: exhibitor.companyName || parsedData?.companyName || 'Unknown',
+          companyName: exhibitor.companyName || exhibitor.name || parsedData?.companyName || 'Unknown Company',
           contactPerson: exhibitor.contactPerson || exhibitor.name || parsedData?.contactPerson || 'Unknown',
           email: exhibitor.email || parsedData?.email || 'unknown@email.com',
           phone: exhibitor.phone || parsedData?.phone || 'N/A',
@@ -101,11 +129,11 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
       groupedRequirements[exhibitorId].items.push({
         id: req.id,
         type: req.type,
-        quantity: req.quantity,
+        quantity: req.quantity || 1,
         description: req.description,
         specifications: parsedData?.specifications,
         unitPrice: req.cost,
-        totalPrice: req.cost ? req.cost * req.quantity : undefined,
+        totalPrice: req.cost ? req.cost * (req.quantity || 1) : undefined,
         status: req.status
       });
     }
@@ -125,9 +153,11 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
     
   } catch (error) {
     console.error('Error fetching extra requirements:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -138,6 +168,10 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     const { id } = req.params;
     
     const sequelize = require('../config/database').getConnection('mysql');
+    
+    if (!sequelize) {
+      throw new Error('Database connection not available');
+    }
     
     // Get all requirements with this exhibitor ID or requirement ID
     let [requirements] = await sequelize.query(`
@@ -157,24 +191,31 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     
     // Get exhibitor details
     const exhibitorId = requirements[0].exhibitorId;
-    const [exhibitors] = await sequelize.query(`
-      SELECT * FROM exhibitors WHERE id = ?
-    `, {
-      replacements: [exhibitorId]
-    });
-    
-    const exhibitor = exhibitors[0] || {};
+    let exhibitor = {};
+    try {
+      const [exhibitors] = await sequelize.query(`
+        SELECT id, name, companyName, email, phone, stallNumber, contactPerson 
+        FROM exhibitors 
+        WHERE id = ?
+      `, {
+        replacements: [exhibitorId]
+      });
+      exhibitor = exhibitors[0] || {};
+    } catch (err) {
+      console.error('Error fetching exhibitor:', err);
+    }
     
     // Parse all requirement data
     const items = [];
     let combinedData = {};
     
     for (const req of requirements) {
-      let parsedData = req.data;
-      if (req.data && typeof req.data === 'string') {
+      let parsedData = {};
+      if (req.data) {
         try {
-          parsedData = JSON.parse(req.data);
+          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
         } catch (e) {
+          console.error('Error parsing requirement data:', e);
           parsedData = {};
         }
       }
@@ -184,11 +225,11 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       items.push({
         id: req.id,
         type: req.type,
-        quantity: req.quantity,
+        quantity: req.quantity || 1,
         description: req.description,
         specifications: parsedData?.specifications,
         unitPrice: req.cost,
-        totalPrice: req.cost ? req.cost * req.quantity : undefined,
+        totalPrice: req.cost ? req.cost * (req.quantity || 1) : undefined,
         status: req.status
       });
     }
@@ -198,7 +239,7 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       requirementId: requirements[0].id,
       exhibitorId: exhibitorId,
       stallNumber: exhibitor.stallNumber || combinedData?.stallNumber,
-      companyName: exhibitor.companyName || combinedData?.companyName || 'Unknown',
+      companyName: exhibitor.companyName || exhibitor.name || combinedData?.companyName || 'Unknown Company',
       contactPerson: exhibitor.contactPerson || exhibitor.name || combinedData?.contactPerson || 'Unknown',
       email: exhibitor.email || combinedData?.email || 'unknown@email.com',
       phone: exhibitor.phone || combinedData?.phone || 'N/A',
@@ -227,9 +268,11 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching requirement details:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -241,6 +284,10 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     const { status, adminNotes } = req.body;
     
     const sequelize = require('../config/database').getConnection('mysql');
+    
+    if (!sequelize) {
+      throw new Error('Database connection not available');
+    }
     
     // Get existing requirement to preserve data
     const [existing] = await sequelize.query(`
@@ -261,18 +308,18 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     
     await sequelize.query(`
       UPDATE requirements 
-      SET status = ?, updated_at = ?
+      SET status = ?, updated_at = NOW()
       WHERE exhibitorId = ?
     `, {
-      replacements: [status, new Date(), exhibitorId]
+      replacements: [status, exhibitorId]
     });
     
     // Update admin notes in the data field
     for (const req of existing) {
-      let parsedData = req.data;
-      if (req.data && typeof req.data === 'string') {
+      let parsedData = {};
+      if (req.data) {
         try {
-          parsedData = JSON.parse(req.data);
+          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
         } catch (e) {
           parsedData = {};
         }
@@ -284,10 +331,10 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       
       await sequelize.query(`
         UPDATE requirements 
-        SET data = ?, updated_at = ?
+        SET data = ?, updated_at = NOW()
         WHERE id = ?
       `, {
-        replacements: [JSON.stringify(parsedData), new Date(), req.id]
+        replacements: [JSON.stringify(parsedData), req.id]
       });
     }
     
@@ -299,21 +346,28 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     });
     
     // Format response
-    const [exhibitors] = await sequelize.query(`
-      SELECT * FROM exhibitors WHERE id = ?
-    `, {
-      replacements: [exhibitorId]
-    });
+    let exhibitor = {};
+    try {
+      const [exhibitors] = await sequelize.query(`
+        SELECT id, name, companyName, email, phone, stallNumber, contactPerson 
+        FROM exhibitors 
+        WHERE id = ?
+      `, {
+        replacements: [exhibitorId]
+      });
+      exhibitor = exhibitors[0] || {};
+    } catch (err) {
+      console.error('Error fetching exhibitor:', err);
+    }
     
-    const exhibitor = exhibitors[0] || {};
     const items = [];
     let combinedData = {};
     
     for (const req of updated) {
-      let parsedData = req.data;
-      if (req.data && typeof req.data === 'string') {
+      let parsedData = {};
+      if (req.data) {
         try {
-          parsedData = JSON.parse(req.data);
+          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
         } catch (e) {
           parsedData = {};
         }
@@ -324,7 +378,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       items.push({
         id: req.id,
         type: req.type,
-        quantity: req.quantity,
+        quantity: req.quantity || 1,
         description: req.description,
         status: req.status
       });
@@ -335,10 +389,10 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       requirementId: updated[0].id,
       exhibitorId: exhibitorId,
       stallNumber: exhibitor.stallNumber,
-      companyName: exhibitor.companyName,
-      contactPerson: exhibitor.contactPerson || exhibitor.name,
-      email: exhibitor.email,
-      phone: exhibitor.phone,
+      companyName: exhibitor.companyName || exhibitor.name || 'Unknown',
+      contactPerson: exhibitor.contactPerson || exhibitor.name || 'Unknown',
+      email: exhibitor.email || 'unknown@email.com',
+      phone: exhibitor.phone || 'N/A',
       status: status,
       submittedAt: updated[0].createdAt,
       updatedAt: new Date().toISOString(),
@@ -361,9 +415,11 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     
   } catch (error) {
     console.error('Error updating requirement:', error);
+    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -372,6 +428,24 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
 router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) => {
   try {
     const sequelize = require('../config/database').getConnection('mysql');
+    
+    if (!sequelize) {
+      throw new Error('Database connection not available');
+    }
+    
+    const extraTypes = [
+      'furniture', 
+      'av & it rentals', 
+      'electrical load', 
+      'hostess rates', 
+      'compressed air', 
+      'water connection', 
+      'security guard', 
+      'housekeeping', 
+      'security deposit'
+    ];
+    
+    const typePlaceholders = extraTypes.map(() => '?').join(',');
     
     const [stats] = await sequelize.query(`
       SELECT 
@@ -382,12 +456,21 @@ router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) 
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
         COUNT(DISTINCT exhibitorId) as uniqueExhibitors
       FROM requirements
-      WHERE type IN ('furniture', 'av & it rentals', 'electrical load', 'hostess rates', 'compressed air', 'water connection', 'security guard', 'housekeeping', 'security deposit')
-    `);
+      WHERE type IN (${typePlaceholders})
+    `, {
+      replacements: extraTypes
+    });
     
     res.json({
       success: true,
-      data: stats[0]
+      data: stats[0] || {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        completed: 0,
+        uniqueExhibitors: 0
+      }
     });
     
   } catch (error) {
@@ -416,10 +499,10 @@ router.get('/admin/exhibitor/:exhibitorId', authenticate, authorize(['admin']), 
     
     // Parse JSON fields
     const parsedRequirements = requirements.map(req => {
-      let parsedData = req.data;
-      if (req.data && typeof req.data === 'string') {
+      let parsedData = {};
+      if (req.data) {
         try {
-          parsedData = JSON.parse(req.data);
+          parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
         } catch (e) {
           parsedData = {};
         }
