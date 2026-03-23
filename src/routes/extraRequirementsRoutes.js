@@ -1,4 +1,4 @@
-// src/routes/extraRequirementsRoutes.js
+// src/routes/extraRequirementsRoutes.js - Updated with correct column names
 const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
@@ -50,11 +50,11 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
     
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Get all extra requirements
+    // Get all extra requirements - FIX: Use `createdAt` instead of `created_at`
     const [requirements] = await sequelize.query(`
       SELECT * FROM requirements 
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY createdAt DESC
       LIMIT ? OFFSET ?
     `, {
       replacements: [...replacements, parseInt(limit), offset]
@@ -173,11 +173,11 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       throw new Error('Database connection not available');
     }
     
-    // Get all requirements with this exhibitor ID or requirement ID
+    // Get all requirements with this exhibitor ID or requirement ID - FIX: Use `createdAt`
     let [requirements] = await sequelize.query(`
       SELECT * FROM requirements 
       WHERE id = ? OR exhibitorId = ?
-      ORDER BY created_at DESC
+      ORDER BY createdAt DESC
     `, {
       replacements: [id, id]
     });
@@ -303,12 +303,12 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       });
     }
     
-    // Update all requirements for this exhibitor
+    // Update all requirements for this exhibitor - FIX: Use `updatedAt`
     const exhibitorId = existing[0].exhibitorId;
     
     await sequelize.query(`
       UPDATE requirements 
-      SET status = ?, updated_at = NOW()
+      SET status = ?, updatedAt = NOW()
       WHERE exhibitorId = ?
     `, {
       replacements: [status, exhibitorId]
@@ -331,7 +331,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       
       await sequelize.query(`
         UPDATE requirements 
-        SET data = ?, updated_at = NOW()
+        SET data = ?, updatedAt = NOW()
         WHERE id = ?
       `, {
         replacements: [JSON.stringify(parsedData), req.id]
@@ -489,10 +489,11 @@ router.get('/admin/exhibitor/:exhibitorId', authenticate, authorize(['admin']), 
     
     const sequelize = require('../config/database').getConnection('mysql');
     
+    // FIX: Use `createdAt` instead of `created_at`
     const [requirements] = await sequelize.query(`
       SELECT * FROM requirements 
       WHERE exhibitorId = ?
-      ORDER BY created_at DESC
+      ORDER BY createdAt DESC
     `, {
       replacements: [exhibitorId]
     });
