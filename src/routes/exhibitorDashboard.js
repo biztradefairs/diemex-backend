@@ -38,6 +38,21 @@ router.get('/profile', async (req, res) => {
 
     const exhibitorData = exhibitor.toJSON();
 
+    // Safely parse metadata
+    let metadata = {};
+    if (exhibitorData.metadata) {
+      if (typeof exhibitorData.metadata === 'string') {
+        try {
+          metadata = JSON.parse(exhibitorData.metadata);
+        } catch (err) {
+          console.error('❌ JSON parse error for metadata:', err.message);
+          metadata = {};
+        }
+      } else {
+        metadata = exhibitorData.metadata;
+      }
+    }
+
     // Safely parse stallDetails
     let stallDetails = {};
     if (exhibitorData.stallDetails) {
@@ -53,20 +68,8 @@ router.get('/profile', async (req, res) => {
       }
     }
 
-    // Safely parse metadata
-    let metadata = {};
-    if (exhibitorData.metadata) {
-      if (typeof exhibitorData.metadata === 'string') {
-        try {
-          metadata = JSON.parse(exhibitorData.metadata);
-        } catch (err) {
-          console.error('❌ JSON parse error for metadata:', err.message);
-          metadata = {};
-        }
-      } else {
-        metadata = exhibitorData.metadata;
-      }
-    }
+    console.log('✅ Retrieved metadata from DB:', metadata);
+    console.log('✅ Logo URL from metadata:', metadata.logoUrl);
 
     // Build contact person
     const contactPerson = {
@@ -137,6 +140,13 @@ router.get('/profile', async (req, res) => {
         createdAt: exhibitorData.createdAt,
         updatedAt: exhibitorData.updatedAt,
 
+        // Include metadata and stallDetails in response
+        metadata: metadata,
+        stallDetails: stallDetails,
+        
+        // Logo URL from metadata
+        logoUrl: metadata.logoUrl || '',
+        
         // Company info
         shortName: metadata.shortName || metadata.short_name || '',
         registrationNumber: metadata.registrationNumber || metadata.registration_number || '',
@@ -162,7 +172,6 @@ router.get('/profile', async (req, res) => {
         socialMedia: socialMedia,
 
         // Booth fields
-        stallDetails: stallDetails,
         boothSize: stallDetails.size || metadata.boothSize || metadata.booth_size || '',
         boothType: stallDetails.type || metadata.boothType || metadata.booth_type || 'standard',
         boothDimensions: stallDetails.dimensions || metadata.boothDimensions || metadata.booth_dimensions || '',
@@ -180,6 +189,8 @@ router.get('/profile', async (req, res) => {
     });
   }
 });
+
+// src/routes/exhibitorDashboard.js - Update the PUT /profile route
 
 // Update exhibitor profile
 router.put('/profile', async (req, res) => {
@@ -210,27 +221,145 @@ router.put('/profile', async (req, res) => {
     delete updateData.createdAt;
     delete updateData.updatedAt;
     
+    // CRITICAL: Handle metadata properly - preserve existing metadata and merge
+    let existingMetadata = {};
+    if (exhibitor.metadata) {
+      try {
+        existingMetadata = typeof exhibitor.metadata === 'string' 
+          ? JSON.parse(exhibitor.metadata) 
+          : exhibitor.metadata;
+      } catch (e) {
+        console.error('Error parsing existing metadata:', e);
+        existingMetadata = {};
+      }
+    }
+    
+    // Merge new metadata with existing metadata
+    if (updateData.metadata) {
+      // If metadata is a string, parse it
+      let newMetadata = updateData.metadata;
+      if (typeof newMetadata === 'string') {
+        try {
+          newMetadata = JSON.parse(newMetadata);
+        } catch (e) {
+          console.error('Error parsing new metadata:', e);
+          newMetadata = {};
+        }
+      }
+      
+      // Merge (existing takes precedence for fields not in new, but new overwrites existing)
+      const mergedMetadata = {
+        ...existingMetadata,
+        ...newMetadata
+      };
+      
+      updateData.metadata = JSON.stringify(mergedMetadata);
+      console.log('✅ Merged metadata:', mergedMetadata);
+    } else if (existingMetadata && Object.keys(existingMetadata).length > 0) {
+      // Keep existing metadata if not provided in update
+      updateData.metadata = JSON.stringify(existingMetadata);
+    }
+    
+    // Handle stallDetails properly - preserve existing and merge
+    let existingStallDetails = {};
+    if (exhibitor.stallDetails) {
+      try {
+        existingStallDetails = typeof exhibitor.stallDetails === 'string' 
+          ? JSON.parse(exhibitor.stallDetails) 
+          : exhibitor.stallDetails;
+      } catch (e) {
+        console.error('Error parsing existing stallDetails:', e);
+        existingStallDetails = {};
+      }
+    }
+    
+    if (updateData.stallDetails) {
+      let newStallDetails = updateData.stallDetails;
+      if (typeof newStallDetails === 'string') {
+        try {
+          newStallDetails = JSON.parse(newStallDetails);
+        } catch (e) {
+          console.error('Error parsing new stallDetails:', e);
+          newStallDetails = {};
+        }
+      }
+      
+      const mergedStallDetails = {
+        ...existingStallDetails,
+        ...newStallDetails
+      };
+      
+      updateData.stallDetails = JSON.stringify(mergedStallDetails);
+      console.log('✅ Merged stallDetails:', mergedStallDetails);
+    } else if (existingStallDetails && Object.keys(existingStallDetails).length > 0) {
+      updateData.stallDetails = JSON.stringify(existingStallDetails);
+    }
+    
+    // Handle password update if needed
+    if (updateData.password) {
+      const bcrypt = require('bcryptjs');
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+    
     // Update exhibitor
     await exhibitor.update(updateData);
     
+    // Fetch the updated exhibitor to return
+    const updatedExhibitor = await Exhibitor.findByPk(req.user.id);
+    const responseData = updatedExhibitor.toJSON();
+    
+    // Parse metadata for response
+    let responseMetadata = {};
+    if (responseData.metadata) {
+      try {
+        responseMetadata = typeof responseData.metadata === 'string' 
+          ? JSON.parse(responseData.metadata) 
+          : responseData.metadata;
+      } catch (e) {
+        console.error('Error parsing response metadata:', e);
+      }
+    }
+    
+    // Parse stallDetails for response
+    let responseStallDetails = {};
+    if (responseData.stallDetails) {
+      try {
+        responseStallDetails = typeof responseData.stallDetails === 'string' 
+          ? JSON.parse(responseData.stallDetails) 
+          : responseData.stallDetails;
+      } catch (e) {
+        console.error('Error parsing response stallDetails:', e);
+      }
+    }
+    
+    // Build response with parsed data
+    const formattedResponse = {
+      id: responseData.id,
+      name: responseData.name,
+      email: responseData.email,
+      company: responseData.company,
+      phone: responseData.phone,
+      boothNumber: responseData.boothNumber,
+      sector: responseData.sector,
+      website: responseData.website,
+      address: responseData.address,
+      status: responseData.status,
+      createdAt: responseData.createdAt,
+      updatedAt: responseData.updatedAt,
+      metadata: responseMetadata,
+      stallDetails: responseStallDetails,
+      // Also include logoUrl at top level for easier access
+      logoUrl: responseMetadata.logoUrl || responseData.logoUrl || ''
+    };
+    
     res.json({
       success: true,
-      data: {
-        id: exhibitor.id,
-        name: exhibitor.name,
-        email: exhibitor.email,
-        phone: exhibitor.phone,
-        company: exhibitor.company,
-        sector: exhibitor.sector,
-        boothNumber: exhibitor.boothNumber,
-        website: exhibitor.website,
-        address: exhibitor.address,
-        description: exhibitor.description,
-        status: exhibitor.status
-      },
+      data: formattedResponse,
       message: 'Profile updated successfully'
     });
+    
   } catch (error) {
+    console.error('❌ Profile update error:', error);
     res.status(500).json({
       success: false,
       error: error.message
