@@ -104,21 +104,29 @@ class ManualService {
     }
   }
 
-  // Get manual by ID
-  async getManualById(id) {
-    try {
-      const Manual = await this.getManualModel();
+// src/services/manualService.js
+// Make sure this method exists
 
-      const manual = await Manual.findByPk(id);
-      if (!manual) {
-        throw new Error('Manual not found');
-      }
-      return { success: true, data: manual };
-    } catch (error) {
-      console.error('Error in getManualById:', error);
-      throw new Error(`Error fetching manual: ${error.message}`);
+async getManualById(id) {
+  try {
+    console.log('Getting manual by ID:', id);
+    
+    // Try to find in database
+    const manual = await Manual.findByPk(id);
+    
+    if (!manual) {
+      throw new Error('Manual not found');
     }
+    
+    return {
+      success: true,
+      data: manual
+    };
+  } catch (error) {
+    console.error('Error in getManualById:', error);
+    throw error;
   }
+}
 
   // Update manual
   async updateManual(id, updateData, file = null) {

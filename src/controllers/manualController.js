@@ -1,9 +1,10 @@
 // src/controllers/manualController.js
 const manualService = require('../services/manualService');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 
-// In-memory storage for text sections (replace with database later)
-
+// In-memory storage for text sections
 let textSections = [
   {
     id: '1',
@@ -54,7 +55,6 @@ let textSections = [
     updatedAt: new Date().toISOString()
   }
 ];
-global.textSections = textSections;
 
 class ManualController {
   // ==================== TEXT SECTIONS METHODS ====================
@@ -62,14 +62,12 @@ class ManualController {
   // Get all text sections
   async getAllSections(req, res) {
     try {
-      // Filter by category if provided
       let sections = textSections;
       
       if (req.query.category && req.query.category !== 'all') {
         sections = textSections.filter(s => s.category === req.query.category);
       }
 
-      // Search if provided
       if (req.query.search) {
         const searchTerm = req.query.search.toLowerCase();
         sections = sections.filter(s => 
@@ -125,7 +123,6 @@ class ManualController {
     try {
       const { title, content, category } = req.body;
       
-      // Validation
       if (!title || !title.trim()) {
         return res.status(400).json({ 
           success: false, 
@@ -140,7 +137,6 @@ class ManualController {
         });
       }
 
-      // Create new section
       const newSection = {
         id: uuidv4(),
         title: title.trim(),
@@ -150,7 +146,6 @@ class ManualController {
         updatedAt: new Date().toISOString()
       };
 
-      // Add to array (replace with database insert)
       textSections.push(newSection);
       
       console.log('✅ Created new section:', newSection);
@@ -175,7 +170,6 @@ class ManualController {
       const { id } = req.params;
       const { title, content, category } = req.body;
 
-      // Find section
       const sectionIndex = textSections.findIndex(s => s.id === id);
       
       if (sectionIndex === -1) {
@@ -185,7 +179,6 @@ class ManualController {
         });
       }
 
-      // Update section
       textSections[sectionIndex] = {
         ...textSections[sectionIndex],
         title: title || textSections[sectionIndex].title,
@@ -222,7 +215,6 @@ class ManualController {
         });
       }
 
-      // Remove section
       textSections.splice(sectionIndex, 1);
 
       res.json({
@@ -280,9 +272,256 @@ class ManualController {
     }
   }
 
-  // ==================== PDF METHODS ====================
+  // ==================== FIXED METHODS ====================
 
-  // Upload PDF (using existing manualService)
+  // Get single manual by ID (combines both text sections and PDFs)
+  async getManual(req, res) {
+    try {
+      const { id } = req.params;
+      
+      console.log('📡 Fetching manual with ID:', id);
+      
+      if (!id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Manual ID is required'
+        });
+      }
+
+      // First, try to find in text sections
+      const section = textSections.find(s => s.id === id);
+      
+      if (section) {
+        console.log('✅ Found in text sections:', section.title);
+        
+        // Format section to match the frontend Manual interface
+        const formattedSection = {
+          id: section.id,
+          title: section.title,
+          description: section.content,
+          category: section.category.charAt(0).toUpperCase() + section.category.slice(1),
+          version: '1.0',
+          file_name: null,
+          file_size: null,
+          file_path: null,
+          mime_type: 'text/plain',
+          last_updated: section.updatedAt || section.createdAt,
+          updated_by: 'Admin',
+          downloads: 0,
+          status: 'published',
+          type: 'section'
+        };
+        
+        return res.json({
+          success: true,
+          data: formattedSection
+        });
+      }
+
+      // If not found in sections, try PDFs via manualService
+      try {
+        const result = await manualService.getManualById(id);
+        
+        if (result && result.data) {
+          console.log('✅ Found in PDFs:', result.data.title);
+          
+          // Format PDF to match the frontend Manual interface
+          const formattedPDF = {
+            ...result.data,
+            type: 'pdf'
+          };
+          
+          return res.json({
+            success: true,
+            data: formattedPDF
+          });
+        }
+      } catch (pdfError) {
+        // PDF not found, continue to 404
+        console.log('Not found in PDFs');
+      }
+      
+      console.log('❌ Manual not found with ID:', id);
+      return res.status(404).json({
+        success: false,
+        error: 'Manual not found'
+      });
+      
+    } catch (error) {
+      console.error('❌ Error fetching manual:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to fetch manual'
+      });
+    }
+  }
+
+  // Update manual (handles both text sections and PDFs)
+  async updateManual(req, res) {
+    try {
+      const { id } = req.params;
+      const { title, description, category, version, status, updated_by } = req.body;
+      const file = req.file;
+      
+      console.log('📤 Updating manual with ID:', id);
+      console.log('Update data:', { title, description, category, version, status, hasFile: !!file });
+      
+      if (!id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Manual ID is required'
+        });
+      }
+
+      // First, check if it's a text section
+      const sectionIndex = textSections.findIndex(s => s.id === id);
+      
+      if (sectionIndex !== -1) {
+        // Update text section
+        console.log('Updating text section');
+        
+        textSections[sectionIndex] = {
+          ...textSections[sectionIndex],
+          title: title || textSections[sectionIndex].title,
+          content: description || textSections[sectionIndex].content,
+          category: category ? category.toLowerCase() : textSections[sectionIndex].category,
+          updatedAt: new Date().toISOString()
+        };
+        
+        const updatedSection = textSections[sectionIndex];
+        
+        // Format response
+        const formattedSection = {
+          id: updatedSection.id,
+          title: updatedSection.title,
+          description: updatedSection.content,
+          category: updatedSection.category.charAt(0).toUpperCase() + updatedSection.category.slice(1),
+          version: '1.0',
+          file_name: null,
+          file_size: null,
+          file_path: null,
+          mime_type: 'text/plain',
+          last_updated: updatedSection.updatedAt,
+          updated_by: updated_by || 'Admin',
+          downloads: 0,
+          status: 'published',
+          type: 'section'
+        };
+        
+        return res.json({
+          success: true,
+          data: formattedSection,
+          message: 'Section updated successfully'
+        });
+      }
+      
+      // If not a section, try to update as PDF via manualService
+      try {
+        const updateData = {
+          title,
+          description,
+          category,
+          version,
+          status,
+          updated_by
+        };
+        
+        const result = await manualService.updateManual(id, updateData, file);
+        
+        if (result && result.data) {
+          console.log('✅ PDF updated successfully');
+          
+          return res.json({
+            success: true,
+            data: { ...result.data, type: 'pdf' },
+            message: 'Manual updated successfully'
+          });
+        }
+      } catch (pdfError) {
+        console.error('Error updating PDF:', pdfError);
+        
+        if (pdfError.message === 'Manual not found') {
+          return res.status(404).json({
+            success: false,
+            error: 'Manual not found'
+          });
+        }
+        
+        throw pdfError;
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Manual not found'
+      });
+      
+    } catch (error) {
+      console.error('❌ Error updating manual:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update manual'
+      });
+    }
+  }
+
+  // Delete manual (handles both text sections and PDFs)
+  async deleteManual(req, res) {
+    try {
+      const { id } = req.params;
+      
+      console.log('🗑️ Deleting manual with ID:', id);
+      
+      if (!id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Manual ID is required'
+        });
+      }
+
+      // Check if it's a text section
+      const sectionIndex = textSections.findIndex(s => s.id === id);
+      
+      if (sectionIndex !== -1) {
+        // Delete text section
+        textSections.splice(sectionIndex, 1);
+        console.log('✅ Text section deleted');
+        
+        return res.json({
+          success: true,
+          message: 'Section deleted successfully'
+        });
+      }
+      
+      // If not a section, try to delete as PDF
+      try {
+        await manualService.deleteManual(id);
+        console.log('✅ PDF deleted successfully');
+        
+        return res.json({
+          success: true,
+          message: 'Manual deleted successfully'
+        });
+      } catch (pdfError) {
+        if (pdfError.message === 'Manual not found') {
+          return res.status(404).json({
+            success: false,
+            error: 'Manual not found'
+          });
+        }
+        throw pdfError;
+      }
+      
+    } catch (error) {
+      console.error('❌ Error deleting manual:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to delete manual'
+      });
+    }
+  }
+
+  // ==================== EXISTING PDF METHODS ====================
+
   async uploadPDF(req, res) {
     try {
       if (!req.file) {
@@ -301,13 +540,6 @@ class ManualController {
         });
       }
 
-      console.log('Uploading PDF:', {
-        title,
-        category,
-        file: req.file.originalname
-      });
-
-      // Use existing manualService to handle upload
       const result = await manualService.createManual(
         { 
           title: title.trim(),
@@ -321,7 +553,7 @@ class ManualController {
 
       res.status(201).json({
         success: true,
-        data: result.data,
+        data: { ...result.data, type: 'pdf' },
         message: 'PDF uploaded successfully'
       });
     } catch (error) {
@@ -333,21 +565,14 @@ class ManualController {
     }
   }
 
-  // Get all PDFs
   async getAllPDFs(req, res) {
     try {
-      // Get all manuals and filter for PDFs
       const result = await manualService.getAllManuals({});
+      const pdfs = result.data || [];
       
-      // You might want to add a type field to distinguish PDFs
-      const pdfs = result.data.filter(manual => 
-        manual.mime_type === 'application/pdf' || 
-        manual.category?.toLowerCase().includes('pdf')
-      );
-
       res.json({
         success: true,
-        data: pdfs,
+        data: pdfs.map(pdf => ({ ...pdf, type: 'pdf' })),
         count: pdfs.length
       });
     } catch (error) {
@@ -360,14 +585,12 @@ class ManualController {
     }
   }
 
-  // Get PDF by ID
   async getPDFById(req, res) {
     try {
       const { id } = req.params;
-      
       const result = await manualService.getManualById(id);
       
-      if (!result.data || result.data.mime_type !== 'application/pdf') {
+      if (!result.data) {
         return res.status(404).json({
           success: false,
           message: 'PDF not found'
@@ -376,18 +599,10 @@ class ManualController {
 
       res.json({
         success: true,
-        data: result.data
+        data: { ...result.data, type: 'pdf' }
       });
     } catch (error) {
       console.error('Error in getPDFById:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'PDF not found' 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch PDF'
@@ -395,21 +610,9 @@ class ManualController {
     }
   }
 
-  // Delete PDF
   async deletePDF(req, res) {
     try {
       const { id } = req.params;
-      
-      // First check if it's a PDF
-      const manual = await manualService.getManualById(id);
-      
-      if (!manual.data || manual.data.mime_type !== 'application/pdf') {
-        return res.status(404).json({
-          success: false,
-          message: 'PDF not found'
-        });
-      }
-
       const result = await manualService.deleteManual(id);
       
       res.json({
@@ -418,14 +621,6 @@ class ManualController {
       });
     } catch (error) {
       console.error('Error in deletePDF:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'PDF not found' 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to delete PDF'
@@ -433,14 +628,11 @@ class ManualController {
     }
   }
 
-  // Download PDF
   async downloadPDF(req, res) {
     try {
       const { id } = req.params;
-      
       const result = await manualService.downloadManual(id);
       
-      // Redirect to the file URL or send file
       if (result.fileUrl) {
         return res.redirect(result.fileUrl);
       }
@@ -454,14 +646,6 @@ class ManualController {
       });
     } catch (error) {
       console.error('Error in downloadPDF:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'PDF not found' 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to download PDF'
@@ -470,8 +654,7 @@ class ManualController {
   }
 
   // ==================== EXISTING METHODS ====================
-  // (Keep all your existing methods here - createManual, getAllManuals, etc.)
-  
+
   async createManual(req, res) {
     try {
       if (!req.file) {
@@ -481,20 +664,11 @@ class ManualController {
         });
       }
 
-      console.log('Creating manual with data:', {
-        body: req.body,
-        file: {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size
-        }
-      });
-
       const result = await manualService.createManual(req.body, req.file);
       
       res.status(201).json({
         success: true,
-        data: result.data,
+        data: { ...result.data, type: 'pdf' },
         message: 'Manual created successfully'
       });
     } catch (error) {
@@ -518,13 +692,11 @@ class ManualController {
         filters[key] === undefined && delete filters[key]
       );
 
-      console.log('Fetching manuals with filters:', filters);
-      
       const result = await manualService.getAllManuals(filters);
       
       res.json({
         success: true,
-        data: result.data,
+        data: result.data.map(manual => ({ ...manual, type: 'pdf' })),
         count: result.data.length,
         filters: filters
       });
@@ -538,109 +710,126 @@ class ManualController {
     }
   }
 
-  async getManual(req, res) {
+  async getAllManualsForAdmin(req, res) {
     try {
-      const { id } = req.params;
+      // Get PDFs from manualService
+      const pdfsResult = await manualService.getAllManuals({});
+      const pdfs = pdfsResult.data || [];
       
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
+      // Get text sections
+      const sections = textSections || [];
+      
+      // Format text sections
+      const formattedSections = sections.map(section => ({
+        id: section.id,
+        title: section.title,
+        description: section.content.substring(0, 100) + (section.content.length > 100 ? '...' : ''),
+        category: section.category.charAt(0).toUpperCase() + section.category.slice(1),
+        version: '1.0',
+        file_name: null,
+        file_size: '0 KB',
+        mime_type: 'text/plain',
+        last_updated: section.updatedAt || section.createdAt || new Date().toISOString(),
+        updated_by: 'Admin',
+        downloads: 0,
+        status: 'published',
+        type: 'section'
+      }));
+
+      // Format PDFs
+      const formattedPDFs = pdfs.map(pdf => ({
+        ...pdf,
+        type: 'pdf'
+      }));
+
+      // Combine both
+      let allManuals = [...formattedSections, ...formattedPDFs];
+
+      // Apply filters
+      if (req.query.category && req.query.category !== 'all') {
+        const categoryLower = req.query.category.toLowerCase();
+        allManuals = allManuals.filter(m => 
+          m.category.toLowerCase() === categoryLower
+        );
       }
 
-      const result = await manualService.getManualById(id);
-      
-      res.json({
-        success: true,
-        data: result.data
-      });
-    } catch (error) {
-      console.error('Error in getManual:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
-      res.status(500).json({ 
-        success: false, 
-        message: error.message || 'Failed to fetch manual'
-      });
-    }
-  }
-
-  async updateManual(req, res) {
-    try {
-      const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
+      if (req.query.search) {
+        const searchTerm = req.query.search.toLowerCase();
+        allManuals = allManuals.filter(m => 
+          m.title.toLowerCase().includes(searchTerm) || 
+          (m.description && m.description.toLowerCase().includes(searchTerm))
+        );
       }
 
-      const result = await manualService.updateManual(
-        id, 
-        req.body, 
-        req.file
+      // Sort by last_updated
+      allManuals.sort((a, b) => 
+        new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
       );
-      
+
       res.json({
         success: true,
-        data: result.data,
-        message: 'Manual updated successfully'
+        data: allManuals,
+        count: allManuals.length
       });
     } catch (error) {
-      console.error('Error in updateManual:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
+      console.error('Error in getAllManualsForAdmin:', error);
       res.status(500).json({ 
         success: false, 
-        message: error.message || 'Failed to update manual'
+        data: [],
+        message: error.message || 'Failed to fetch manuals'
       });
     }
   }
 
-  async deleteManual(req, res) {
+  async getAdminStatistics(req, res) {
     try {
-      const { id } = req.params;
+      const pdfsResult = await manualService.getAllManuals({});
+      const pdfs = pdfsResult.data || [];
+      const sections = textSections || [];
       
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
-      }
+      const totalManuals = pdfs.length + sections.length;
+      const publishedManuals = pdfs.filter(p => p.status === 'published').length + sections.length;
+      const draftManuals = pdfs.filter(p => p.status === 'draft').length;
+      const totalDownloads = pdfs.reduce((sum, p) => sum + (p.downloads || 0), 0);
+      
+      const categoryMap = new Map();
+      
+      pdfs.forEach(pdf => {
+        const cat = pdf.category || 'General';
+        categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+      });
+      
+      sections.forEach(section => {
+        const cat = section.category.charAt(0).toUpperCase() + section.category.slice(1);
+        categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+      });
+      
+      const categoryStats = Array.from(categoryMap.entries()).map(([category, count]) => ({
+        category,
+        count
+      }));
 
-      const result = await manualService.deleteManual(id);
-      
       res.json({
         success: true,
-        message: result.message || 'Manual deleted successfully'
+        data: {
+          totalManuals,
+          publishedManuals,
+          draftManuals,
+          totalDownloads,
+          categoryStats
+        }
       });
     } catch (error) {
-      console.error('Error in deleteManual:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
-      res.status(500).json({ 
-        success: false, 
-        message: error.message || 'Failed to delete manual'
+      console.error('Error in getAdminStatistics:', error);
+      res.status(200).json({ 
+        success: true,
+        data: {
+          totalManuals: 0,
+          publishedManuals: 0,
+          draftManuals: 0,
+          totalDownloads: 0,
+          categoryStats: []
+        }
       });
     }
   }
@@ -648,14 +837,6 @@ class ManualController {
   async downloadManual(req, res) {
     try {
       const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
-      }
-
       const result = await manualService.downloadManual(id);
       
       return res.json({
@@ -665,20 +846,10 @@ class ManualController {
           fileName: result.fileName,
           fileUrl: result.fileUrl,
           mimeType: result.mimeType
-        },
-        message: 'Download ready'
+        }
       });
-      
     } catch (error) {
       console.error('Error in downloadManual:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to download manual'
@@ -689,14 +860,6 @@ class ManualController {
   async getPreview(req, res) {
     try {
       const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
-      }
-
       const manual = await manualService.getManualById(id);
       const previewUrl = manualService.getPreviewUrl(manual.data);
       
@@ -712,14 +875,6 @@ class ManualController {
       });
     } catch (error) {
       console.error('Error in getPreview:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to get preview'
@@ -730,7 +885,6 @@ class ManualController {
   async getStatistics(req, res) {
     try {
       const result = await manualService.getStatistics();
-      
       res.json({
         success: true,
         data: result.data
@@ -795,13 +949,6 @@ class ManualController {
       const { id } = req.params;
       const { status } = req.body;
       
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
-      }
-      
       if (!status || !['published', 'draft'].includes(status)) {
         return res.status(400).json({
           success: false,
@@ -813,19 +960,11 @@ class ManualController {
       
       res.json({
         success: true,
-        data: result.data,
+        data: { ...result.data, type: 'pdf' },
         message: `Manual status updated to ${status}`
       });
     } catch (error) {
       console.error('Error in updateManualStatus:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to update manual status'
@@ -836,19 +975,11 @@ class ManualController {
   async getManualsByCategory(req, res) {
     try {
       const { category } = req.params;
-      
-      if (!category) {
-        return res.status(400).json({
-          success: false,
-          message: 'Category is required'
-        });
-      }
-
       const result = await manualService.getAllManuals({ category });
       
       res.json({
         success: true,
-        data: result.data,
+        data: result.data.map(manual => ({ ...manual, type: 'pdf' })),
         count: result.data.length,
         category: category
       });
@@ -864,7 +995,6 @@ class ManualController {
   async getRecentManuals(req, res) {
     try {
       const limit = parseInt(req.query.limit) || 5;
-      
       const result = await manualService.getAllManuals({});
       
       const recentManuals = result.data
@@ -873,7 +1003,7 @@ class ManualController {
       
       res.json({
         success: true,
-        data: recentManuals,
+        data: recentManuals.map(manual => ({ ...manual, type: 'pdf' })),
         count: recentManuals.length
       });
     } catch (error) {
@@ -900,7 +1030,7 @@ class ManualController {
       
       res.json({
         success: true,
-        data: result.data,
+        data: result.data.map(manual => ({ ...manual, type: 'pdf' })),
         count: result.data.length,
         query: q
       });
@@ -912,164 +1042,10 @@ class ManualController {
       });
     }
   }
-  // Add this method to your manualController.js - this will return ALL manuals in the format your frontend expects
 
-// Get all manuals for admin exhibition page (combines text sections and PDFs)
-async getAllManualsForAdmin(req, res) {
-  try {
-    // 1. Get PDFs from manualService
-    const pdfsResult = await manualService.getAllManuals({});
-    const pdfs = pdfsResult.data || [];
-    
-    // 2. Get text sections from your in-memory array or database
-    // Using the textSections array from your controller
-    const textSections = global.textSections || []; // Make sure this is accessible
-    
-    // 3. Transform text sections to match the Manual interface expected by frontend
-    const formattedSections = textSections.map(section => ({
-      id: section.id,
-      title: section.title,
-      description: section.content.substring(0, 100) + (section.content.length > 100 ? '...' : ''),
-      category: section.category.charAt(0).toUpperCase() + section.category.slice(1), // Capitalize first letter
-      version: '1.0',
-      file_path: '',
-      file_name: '',
-      file_size: '0 KB',
-      mime_type: 'text/plain',
-      last_updated: section.updatedAt || section.createdAt || new Date().toISOString().split('T')[0],
-      updated_by: 'Admin',
-      downloads: 0,
-      status: 'published',
-      metadata: {},
-      type: 'section' // Add type to distinguish
-    }));
-
-    // 4. Transform PDFs to match the Manual interface
-    const formattedPDFs = pdfs.map(pdf => ({
-      id: pdf.id,
-      title: pdf.title,
-      description: pdf.description || pdf.title,
-      category: pdf.category || 'General',
-      version: pdf.version || '1.0',
-      file_path: pdf.file_path || '',
-      file_name: pdf.file_name || '',
-      file_size: pdf.file_size || '0 KB',
-      mime_type: pdf.mime_type || 'application/pdf',
-      last_updated: pdf.last_updated || new Date().toISOString().split('T')[0],
-      updated_by: pdf.updated_by || 'Admin',
-      downloads: pdf.downloads || 0,
-      status: pdf.status || 'published',
-      metadata: pdf.metadata || {},
-      type: 'pdf'
-    }));
-
-    // 5. Combine both
-    const allManuals = [...formattedSections, ...formattedPDFs];
-
-    // 6. Apply filters if any
-    let filteredManuals = allManuals;
-    
-    if (req.query.category && req.query.category !== 'all') {
-      filteredManuals = filteredManuals.filter(m => 
-        m.category.toLowerCase() === req.query.category.toLowerCase()
-      );
-    }
-
-    if (req.query.search) {
-      const searchTerm = req.query.search.toLowerCase();
-      filteredManuals = filteredManuals.filter(m => 
-        m.title.toLowerCase().includes(searchTerm) || 
-        m.description.toLowerCase().includes(searchTerm)
-      );
-    }
-
-    // 7. Sort by last_updated (newest first)
-    filteredManuals.sort((a, b) => 
-      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
-    );
-
-    res.json({
-      success: true,
-      data: filteredManuals,
-      count: filteredManuals.length
-    });
-
-  } catch (error) {
-    console.error('Error in getAllManualsForAdmin:', error);
-    res.status(500).json({ 
-      success: false, 
-      data: [],
-      message: error.message || 'Failed to fetch manuals'
-    });
-  }
-}
-
-// Also add this method to get statistics for admin
-async getAdminStatistics(req, res) {
-  try {
-    // Get PDFs
-    const pdfsResult = await manualService.getAllManuals({});
-    const pdfs = pdfsResult.data || [];
-    
-    // Get text sections
-    const textSections = global.textSections || [];
-    
-    const totalManuals = pdfs.length + textSections.length;
-    const publishedManuals = pdfs.filter(p => p.status === 'published').length + 
-                            textSections.filter(s => s.status !== 'draft').length;
-    const draftManuals = pdfs.filter(p => p.status === 'draft').length;
-    
-    const totalDownloads = pdfs.reduce((sum, p) => sum + (p.downloads || 0), 0);
-    
-    // Category stats
-    const categoryMap = new Map();
-    
-    [...pdfs, ...textSections].forEach(item => {
-      const cat = item.category || 'General';
-      categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
-    });
-    
-    const categoryStats = Array.from(categoryMap.entries()).map(([category, count]) => ({
-      category,
-      count
-    }));
-
-    res.json({
-      success: true,
-      data: {
-        totalManuals,
-        publishedManuals,
-        draftManuals,
-        totalDownloads,
-        categoryStats
-      }
-    });
-
-  } catch (error) {
-    console.error('Error in getAdminStatistics:', error);
-    res.status(200).json({ 
-      success: true,
-      data: {
-        totalManuals: 0,
-        publishedManuals: 0,
-        draftManuals: 0,
-        totalDownloads: 0,
-        categoryStats: []
-      }
-    });
-  }
-}
   async getDownloadCount(req, res) {
     try {
       const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Manual ID is required'
-        });
-      }
-
       const manual = await manualService.getManualById(id);
       
       res.json({
@@ -1082,14 +1058,6 @@ async getAdminStatistics(req, res) {
       });
     } catch (error) {
       console.error('Error in getDownloadCount:', error);
-      
-      if (error.message === 'Manual not found') {
-        return res.status(404).json({ 
-          success: false, 
-          message: error.message 
-        });
-      }
-      
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch download count'

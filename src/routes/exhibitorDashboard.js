@@ -190,8 +190,6 @@ router.get('/profile', async (req, res) => {
   }
 });
 
-// src/routes/exhibitorDashboard.js - Update the PUT /profile route
-
 // Update exhibitor profile
 router.put('/profile', async (req, res) => {
   try {

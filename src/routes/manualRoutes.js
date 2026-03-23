@@ -34,6 +34,16 @@ const upload = multer({
 });
 
 // ======================================================
+// ADMIN ROUTES - MUST COME BEFORE WILDCARD ROUTES
+// ======================================================
+
+// Get all manuals for admin (combines PDFs and text sections)
+router.get('/admin/all', manualController.getAllManualsForAdmin);
+
+// Get statistics for admin exhibition page
+router.get('/admin/statistics', manualController.getAdminStatistics);
+
+// ======================================================
 // TEXT SECTIONS ROUTES (for exhibitor manual content)
 // ======================================================
 
@@ -133,13 +143,12 @@ router.get('/:id/preview', manualController.getPreview);
 // Get download count
 router.get('/:id/download-count', manualController.getDownloadCount);
 
+// ======================================================
+// WILDCARD ROUTES - MUST BE LAST
+// ======================================================
+
 // Get single manual by ID - MUST be last
 router.get('/:id', manualController.getManual);
-
-router.get('/admin/all', manualController.getAllManualsForAdmin);
-
-// Get statistics for admin exhibition page
-router.get('/admin/statistics', manualController.getAdminStatistics);
 
 // ======================================================
 // EXISTING ADMIN ROUTES (Protected)
