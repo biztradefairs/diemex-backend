@@ -266,13 +266,12 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       throw new Error('Database connection not available');
     }
     
-    // Get requirement by ID
+    // Get requirement by ID directly - simpler query
     const [requirements] = await sequelize.query(`
       SELECT * FROM requirements 
-      WHERE id = ? OR exhibitorId = ?
-      ORDER BY createdAt DESC
+      WHERE id = ?
     `, {
-      replacements: [id, id]
+      replacements: [id]
     });
     
     if (!requirements || requirements.length === 0) {
@@ -282,11 +281,12 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
       });
     }
     
-    const req = requirements[0];
+    const reqRecord = requirements[0];
     let parsedData = {};
-    if (req.data) {
+    
+    if (reqRecord.data) {
       try {
-        parsedData = typeof req.data === 'string' ? JSON.parse(req.data) : req.data;
+        parsedData = typeof reqRecord.data === 'string' ? JSON.parse(reqRecord.data) : reqRecord.data;
       } catch (e) {
         console.error('Error parsing requirement data:', e);
         parsedData = {};
@@ -294,7 +294,7 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     }
     
     // Get exhibitor details
-    const exhibitorId = req.exhibitorId;
+    const exhibitorId = reqRecord.exhibitorId;
     let exhibitor = {};
     try {
       const [exhibitors] = await sequelize.query(`
@@ -311,20 +311,158 @@ router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     
     const generalInfo = parsedData.generalInfo || {};
     const boothDetails = parsedData.boothDetails || {};
-    const items = extractRequirementItems(parsedData);
+    
+    // Extract items from the parsed data
+    const items = [];
+    
+    // Extract furniture items
+    if (parsedData.furnitureItems && Array.isArray(parsedData.furnitureItems)) {
+      parsedData.furnitureItems.forEach(item => {
+        items.push({
+          id: item.id || `furniture_${Date.now()}`,
+          type: 'Furniture',
+          quantity: item.quantity || 1,
+          description: item.description || `Furniture: ${item.code}`,
+          specifications: `Code: ${item.code}, Cost: ₹${item.cost}`,
+          unitPrice: item.cost,
+          totalPrice: item.cost * (item.quantity || 1)
+        });
+      });
+    }
+    
+    // Extract AV & IT Rentals
+    if (parsedData.rentalItems && Array.isArray(parsedData.rentalItems)) {
+      parsedData.rentalItems.forEach(item => {
+        items.push({
+          id: item.id || `rental_${Date.now()}`,
+          type: 'AV & IT Rentals',
+          quantity: item.quantity || 1,
+          description: item.description || `Rental: ${item.type}`,
+          specifications: `Type: ${item.type}, Cost: ₹${item.costFor3Days}`,
+          unitPrice: item.costFor3Days,
+          totalPrice: item.totalCost
+        });
+      });
+    }
+    
+    // Extract Electrical Load
+    if (parsedData.electricalLoad) {
+      if (parsedData.electricalLoad.exhibitionLoad && parsedData.electricalLoad.exhibitionLoad !== '') {
+        items.push({
+          id: `electrical_exhibition_${Date.now()}`,
+          type: 'Electrical Load',
+          quantity: parseInt(parsedData.electricalLoad.exhibitionLoad) || 0,
+          description: 'Exhibition Electrical Load',
+          specifications: `Load: ${parsedData.electricalLoad.exhibitionLoad} kW, Total: ₹${parsedData.electricalLoad.exhibitionTotal}`,
+          unitPrice: parsedData.electricalLoad.exhibitionTotal,
+          totalPrice: parsedData.electricalLoad.exhibitionTotal
+        });
+      }
+      if (parsedData.electricalLoad.temporaryLoad && parsedData.electricalLoad.temporaryLoad !== '') {
+        items.push({
+          id: `electrical_temporary_${Date.now()}`,
+          type: 'Electrical Load',
+          quantity: parseInt(parsedData.electricalLoad.temporaryLoad) || 0,
+          description: 'Temporary Electrical Load',
+          specifications: `Load: ${parsedData.electricalLoad.temporaryLoad} kW, Total: ₹${parsedData.electricalLoad.temporaryTotal}`,
+          unitPrice: parsedData.electricalLoad.temporaryTotal,
+          totalPrice: parsedData.electricalLoad.temporaryTotal
+        });
+      }
+    }
+    
+    // Extract Hostess Requirements
+    if (parsedData.hostessRequirements && Array.isArray(parsedData.hostessRequirements)) {
+      parsedData.hostessRequirements.forEach((item, index) => {
+        items.push({
+          id: `hostess_${index}_${Date.now()}`,
+          type: 'Hostess Services',
+          quantity: item.quantity || 1,
+          description: `Hostess Category ${item.category}`,
+          specifications: `${item.noOfDays} days at ₹${item.ratePerDay}/day`,
+          unitPrice: item.ratePerDay,
+          totalPrice: item.amount
+        });
+      });
+    }
+    
+    // Extract Compressed Air
+    if (parsedData.compressedAir && parsedData.compressedAir.qty) {
+      items.push({
+        id: `compressed_air_${Date.now()}`,
+        type: 'Compressed Air',
+        quantity: parsedData.compressedAir.qty || 1,
+        description: 'Compressed Air Connection',
+        specifications: `CFM: ${parsedData.compressedAir.cfmRange || 'Standard'}, Power: ${parsedData.compressedAir.powerKW} kW`,
+        unitPrice: parsedData.compressedAir.costPerConnection,
+        totalPrice: parsedData.compressedAir.totalCost
+      });
+    }
+    
+    // Extract Water Connection
+    if (parsedData.waterConnection && parsedData.waterConnection.connections) {
+      items.push({
+        id: `water_${Date.now()}`,
+        type: 'Water Connection',
+        quantity: parsedData.waterConnection.connections || 1,
+        description: 'Water Connection',
+        specifications: `${parsedData.waterConnection.connections} connections at ₹${parsedData.waterConnection.costPerConnection}/each`,
+        unitPrice: parsedData.waterConnection.costPerConnection,
+        totalPrice: parsedData.waterConnection.totalCost
+      });
+    }
+    
+    // Extract Security Guard
+    if (parsedData.securityGuard && parsedData.securityGuard.quantity) {
+      items.push({
+        id: `security_${Date.now()}`,
+        type: 'Security Guard',
+        quantity: parsedData.securityGuard.quantity || 1,
+        description: 'Security Guard Service',
+        specifications: `${parsedData.securityGuard.noOfDays} days`,
+        unitPrice: parsedData.securityGuard.totalCost / parsedData.securityGuard.quantity,
+        totalPrice: parsedData.securityGuard.totalCost
+      });
+    }
+    
+    // Extract Housekeeping
+    if (parsedData.housekeepingStaff && parsedData.housekeepingStaff.quantity) {
+      items.push({
+        id: `housekeeping_${Date.now()}`,
+        type: 'Housekeeping',
+        quantity: parsedData.housekeepingStaff.quantity || 1,
+        description: 'Housekeeping Staff',
+        specifications: `${parsedData.housekeepingStaff.noOfDays} days at ₹${parsedData.housekeepingStaff.chargesPerShift}/shift`,
+        unitPrice: parsedData.housekeepingStaff.chargesPerShift,
+        totalPrice: parsedData.housekeepingStaff.totalCost
+      });
+    }
+    
+    // Extract Security Deposit
+    if (parsedData.securityDeposit && parsedData.securityDeposit.amountINR > 0) {
+      items.push({
+        id: `deposit_${Date.now()}`,
+        type: 'Security Deposit',
+        quantity: 1,
+        description: 'Security Deposit',
+        specifications: `Booth Size: ${parsedData.securityDeposit.boothSq || 'Standard'}`,
+        unitPrice: parsedData.securityDeposit.amountINR,
+        totalPrice: parsedData.securityDeposit.amountINR
+      });
+    }
     
     const requirement = {
-      id: req.id,
-      requirementId: req.id,
+      id: reqRecord.id,
+      requirementId: reqRecord.id,
       exhibitorId: exhibitorId,
       stallNumber: boothDetails.boothNo || exhibitor.stallNumber,
       companyName: generalInfo.companyName || exhibitor.companyName || exhibitor.name || 'Unknown',
       contactPerson: boothDetails.contactPerson || generalInfo.firstName || exhibitor.contactPerson || 'Unknown',
       email: generalInfo.email || exhibitor.email || 'unknown@email.com',
       phone: generalInfo.mobile || exhibitor.phone || 'N/A',
-      status: req.status,
-      submittedAt: req.createdAt,
-      updatedAt: req.updatedAt,
+      status: reqRecord.status,
+      submittedAt: reqRecord.createdAt,
+      updatedAt: reqRecord.updatedAt,
       notes: parsedData.notes || '',
       adminNotes: parsedData.adminNotes || '',
       items: items,
