@@ -88,7 +88,7 @@ function generateInwardTemplate({
                   <tr>
                     <td align="left">
                       <img 
-                        src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                        src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                         style="max-width:120px; display:block;"
                       />
                     </td>
@@ -372,7 +372,7 @@ router.post("/", async (req, res) => {
                             Thank you for requesting <strong>DIEMEX 2026</strong> Brochure.
                           </p>
                           <div style="margin:30px 0;">
-                            <a href="https://your-download-link.com/brochure.pdf"
+                            <a href="https://collection.cloudinary.com/deo4vpw8f/67a18bfbba40b2b4d29f577dd33e80b1"
                                style="background:#0F2F5C; color:#ffffff; padding:15px 35px; text-decoration:none; border-radius:30px; display:inline-block; font-weight:bold;">
                               Download Brochure
                             </a>
