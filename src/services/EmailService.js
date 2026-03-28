@@ -439,6 +439,68 @@ async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
 
     return true;
   }
+  async sendEmailWithAttachment({ to, subject, html, attachment }) {
+  // Check if initialized
+  if (!this.initialized) {
+    console.error("❌ Email service not initialized. Check your SendGrid configuration.");
+    // For development, log instead of sending
+    console.log("📧 WOULD SEND EMAIL WITH ATTACHMENT:", { 
+      to, 
+      subject, 
+      htmlLength: html.length,
+      attachmentFilename: attachment.filename,
+      from: process.env.SENDGRID_FROM 
+    });
+    return { success: true, mock: true };
+  }
+
+  try {
+    const msg = {
+      to,
+      from: process.env.SENDGRID_FROM,
+      subject,
+      html,
+      attachments: [{
+        content: attachment.content.toString('base64'),
+        filename: attachment.filename,
+        type: attachment.contentType || 'image/png',
+        disposition: 'inline',
+        content_id: attachment.cid
+      }]
+    };
+
+    console.log(`📧 Attempting to send email with QR code:`);
+    console.log(`   To: ${to}`);
+    console.log(`   From: ${process.env.SENDGRID_FROM}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   Attachment: ${attachment.filename}`);
+    console.log(`   CID: ${attachment.cid}`);
+
+    const response = await sgMail.send(msg);
+
+    console.log(`✅ Email with QR code sent successfully to ${to}`);
+    console.log(`📧 Message ID: ${response[0]?.headers?.['x-message-id'] || 'Unknown'}`);
+
+    return {
+      success: true,
+      messageId: response[0]?.headers?.['x-message-id'],
+    };
+  } catch (error) {
+    console.error("❌ SendGrid Error Details:");
+    console.error("- Message:", error.message);
+    
+    if (error.response) {
+      console.error("- Status Code:", error.response.statusCode);
+      console.error("- Response Body:", JSON.stringify(error.response.body, null, 2));
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      details: error.response?.body || 'Unknown error'
+    };
+  }
+}
 }
 
 module.exports = new EmailService();

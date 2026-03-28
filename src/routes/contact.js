@@ -40,9 +40,9 @@ function generateInwardTemplate({
       if (Array.isArray(value)) value = value.join(", ");
       return `
           <tr>
-            <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
-            <td style="padding:6px 0;">: ${value || "N/A"}</td>
-          </tr>
+            <td width="40%" style="padding:6px 0;"><strong>${key}</strong>None
+            <td style="padding:6px 0;">: ${value || "N/A"}None
+          <tr>
       `;
     })
     .join("");
@@ -67,35 +67,35 @@ function generateInwardTemplate({
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
-              </td>
-            </tr>
+                None
+              </tr>
 
             <!-- STRIP -->
-            <tr>
-              <td style="background:${stripColor}; height:30px;"></td>
-            </tr>
+              <tr>
+              <td style="background:${stripColor}; height:30px;">None
+              </tr>
 
             <!-- TITLE -->
-            <tr>
+              <tr>
               <td style="background:${titleColor}; color:#fff; text-align:center; padding:15px; font-size:20px; font-weight:bold;">
                 ${title}
-              </td>
-            </tr>
+                None
+              </tr>
 
             <!-- CONTENT -->
-            <tr>
+              <tr>
               <td style="padding:30px;">
                 <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px; color:#333;">
                   ${fields}
                 </table>
-              </td>
-            </tr>
+                None
+              </tr>
 
             <!-- FOOTER -->
-            <tr>
+              <tr>
               <td style="background:#1E5AA6; padding:15px;">
                 <table width="100%">
-                  <tr>
+                    <tr>
                     
                     <!-- LEFT LOGO -->
                     <td align="left">
@@ -103,7 +103,7 @@ function generateInwardTemplate({
                         src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
                         style="max-width:120px; display:block;"
                       />
-                    </td>
+                      None
 
                     <!-- RIGHT TEXT -->
                     <td align="right" style="color:#fff; font-size:12px; line-height:1.5;">
@@ -111,18 +111,18 @@ function generateInwardTemplate({
                       Auto Cluster Exhibition Centre, Pune<br/>
                       maX Business Media Pvt Ltd<br/>
                       Bengaluru, India
-                    </td>
+                      None
 
-                  </tr>
-                </table>
-              </td>
-            </tr>
+                    </tr>
+                  </table>
+                None
+              \)
 
-          </table>
+            </table>
 
-        </td>
-      </tr>
-    </table>
+          </td>
+        </tr>
+      </table>
 
   </body>
   </html>
@@ -210,14 +210,14 @@ router.post("/", async (req, res) => {
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
               <!-- TOP COLOR BACKGROUND -->
-              <tr>
+               <tr>
                 <td align="center" style="background:#FCD5A6; padding:40px 0 0;">
 
                   <!-- BLUE HEADER (INSIDE COLOR AREA) -->
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
                     
-                    <tr>
+                     <tr>
                       <td align="center" style="padding:30px;">
                         <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -226,23 +226,23 @@ router.post("/", async (req, res) => {
                         <p style="margin:5px 0 0; font-size:14px;">
                           International Die & Mould Exhibition
                         </p>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
               <!-- WHITE CARD BODY -->
-              <tr>
+               <tr>
                 <td align="center">
 
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#ffffff; border-radius:0 0 6px 6px;">
 
                     <!-- CONTENT -->
-                    <tr>
+                     <tr>
                       <td style="padding:40px 30px; color:#333; text-align:center;">
 
                         <p style="text-align:left; font-size:16px;">
@@ -291,17 +291,17 @@ router.post("/", async (req, res) => {
                           <strong>DIEMEX 2026 Team</strong>
                         </p>
 
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
                     <!-- FOOTER -->
-                    <tr>
+                     <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
                         <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                    <tr>
+                     <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -309,15 +309,15 @@ router.post("/", async (req, res) => {
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
                         Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
-            </table>
+              </table>
 
           </body>
           </html>
@@ -334,14 +334,14 @@ router.post("/", async (req, res) => {
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
               <!-- TOP COLOR BACKGROUND -->
-              <tr>
+               <tr>
                 <td align="center" style="background:#ECF0C6; padding:40px 0 0;">
 
                   <!-- BLUE HEADER (INSIDE COLOR AREA) -->
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
                     
-                    <tr>
+                     <tr>
                       <td align="center" style="padding:30px;">
                         <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -350,23 +350,23 @@ router.post("/", async (req, res) => {
                         <p style="margin:5px 0 0; font-size:14px;">
                           International Die & Mould Exhibition
                         </p>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
               <!-- WHITE CARD BODY -->
-              <tr>
+               <tr>
                 <td align="center">
 
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#ffffff; border-radius:0 0 6px 6px;">
 
                     <!-- CONTENT -->
-                    <tr>
+                     <tr>
                       <td style="padding:40px 30px; color:#333; text-align:center;">
 
                         <p style="text-align:left; font-size:16px;">
@@ -415,17 +415,17 @@ router.post("/", async (req, res) => {
                           <strong>DIEMEX 2026 Team</strong>
                         </p>
 
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
                     <!-- FOOTER -->
-                    <tr>
+                     <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
                         <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                    <tr>
+                     <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -433,15 +433,15 @@ router.post("/", async (req, res) => {
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
                         Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
-            </table>
+              </table>
 
           </body>
           </html>
@@ -458,14 +458,14 @@ router.post("/", async (req, res) => {
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
               <!-- TOP COLOR BACKGROUND -->
-              <tr>
+               <tr>
                 <td align="center" style="background:#D6E9D8; padding:40px 0 0;">
 
                   <!-- BLUE HEADER (INSIDE COLOR AREA) -->
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
                     
-                    <tr>
+                     <tr>
                       <td align="center" style="padding:30px;">
                         <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -474,23 +474,23 @@ router.post("/", async (req, res) => {
                         <p style="margin:5px 0 0; font-size:14px;">
                           International Die & Mould Exhibition
                         </p>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
               <!-- WHITE CARD BODY -->
-              <tr>
+               <tr>
                 <td align="center">
 
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#ffffff; border-radius:0 0 6px 6px;">
 
                     <!-- CONTENT -->
-                    <tr>
+                     <tr>
                       <td style="padding:40px 30px; color:#333; text-align:center;">
 
                         <h2 style="margin-bottom:10px;">Visitor Registration Confirmed !</h2>
@@ -554,17 +554,17 @@ router.post("/", async (req, res) => {
                           <strong>DIEMEX 2026 Team</strong>
                         </p>
 
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
                     <!-- FOOTER -->
-                    <tr>
+                     <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
                         <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                    <tr>
+                     <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -572,15 +572,15 @@ router.post("/", async (req, res) => {
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
                         Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
-            </table>
+              </table>
 
           </body>
           </html>
@@ -597,14 +597,14 @@ router.post("/", async (req, res) => {
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
               <!-- TOP COLOR BACKGROUND -->
-              <tr>
+               <tr>
                 <td align="center" style="background:#D7EEFB; padding:40px 0 0;">
 
                   <!-- BLUE HEADER (INSIDE COLOR AREA) -->
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
                     
-                    <tr>
+                     <tr>
                       <td align="center" style="padding:30px;">
                         <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -613,23 +613,23 @@ router.post("/", async (req, res) => {
                         <p style="margin:5px 0 0; font-size:14px;">
                           International Die & Mould Exhibition
                         </p>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
               <!-- WHITE CARD BODY -->
-              <tr>
+               <tr>
                 <td align="center">
 
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#ffffff; border-radius:0 0 6px 6px;">
 
                     <!-- CONTENT -->
-                    <tr>
+                     <tr>
                       <td style="padding:40px 30px; color:#333;">
 
                         <p style="font-size:16px;">
@@ -649,42 +649,42 @@ router.post("/", async (req, res) => {
                         <table width="100%" cellpadding="10" cellspacing="0" 
                           style="background:#D7EEFB; margin:20px 0; border-collapse:collapse;">
                           
-                          <tr>
+                           <tr>
                             <td width="40%"><strong>Company Name</strong></td>
                             <td>: ${data.companyName || data.company || 'Not provided'}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Contact Person</strong></td>
                             <td>: ${data.firstName || ''} ${data.lastName || ''}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Job Title</strong></td>
                             <td>: ${data.jobTitle || 'Not provided'}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Address</strong></td>
                             <td>: ${data.address || 'Not provided'}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Phone Number</strong></td>
                             <td>: ${data.phone || 'Not provided'}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Email</strong></td>
                             <td>: ${data.email || 'Not provided'}</td>
-                          </tr>
+                           </tr>
 
-                          <tr>
+                           <tr>
                             <td><strong>Space Requirement</strong></td>
                             <td>: ${data.standSize || 'Not specified'}</td>
-                          </tr>
+                           </tr>
 
-                        </table>
+                         </table>
 
                         <p style="font-size:15px;">
                           Our team will get in touch with you shortly to discuss your requirements 
@@ -701,17 +701,17 @@ router.post("/", async (req, res) => {
                           <strong>DIEMEX 2026 Team</strong>
                         </p>
 
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
                     <!-- FOOTER -->
-                    <tr>
+                     <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
                         <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                    <tr>
+                     <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -719,15 +719,15 @@ router.post("/", async (req, res) => {
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
                         Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
-            </table>
+              </table>
 
           </body>
           </html>
@@ -744,14 +744,14 @@ router.post("/", async (req, res) => {
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
 
               <!-- PURPLE BACKGROUND WITH HEADER INSIDE -->
-              <tr>
+               <tr>
                 <td align="center" style="background:#AE4A84; padding:40px 0 0;">
 
                   <!-- BLUE HEADER (INSIDE PURPLE) -->
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
                     
-                    <tr>
+                     <tr>
                       <td align="center" style="padding:30px;">
                        <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
@@ -760,22 +760,22 @@ router.post("/", async (req, res) => {
                         <p style="margin:5px 0 0; font-size:14px;">
                           International Die & Mould Exhibition
                         </p>
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
               <!-- WHITE CARD BODY -->
-              <tr>
+               <tr>
                 <td align="center">
 
                   <table width="600" cellpadding="0" cellspacing="0" border="0"
                     style="background:#ffffff; border-radius:0 0 6px 6px;">
 
-                    <tr>
+                     <tr>
                       <td style="padding:40px 30px; text-align:center; color:#333;">
 
                         <h2 style="margin-bottom:10px;">Delegate Registration Confirmed !</h2>
@@ -823,32 +823,32 @@ router.post("/", async (req, res) => {
                           <strong>DIEMEX 2026 Team</strong>
                         </p>
 
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
                     <!-- FOOTER -->
-                    <tr>
+                     <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center;">
                         <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                    <tr>
+                     <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; text-align:center;">
                         Organizer: <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         Bengaluru, India | pad@maxxmedia.in | www.diemex.in
-                      </td>
-                    </tr>
+                       </td>
+                     </tr>
 
-                  </table>
+                    </table>
 
-                </td>
-              </tr>
+                  </td>
+                </tr>
 
-            </table>
+              </table>
 
           </body>
           </html>
@@ -995,27 +995,20 @@ router.post("/", async (req, res) => {
     console.log(`📧 Sending email to user: ${data.email}`);
     
     // Prepare email options with attachments for QR code
-    let emailOptions = {
-      to: data.email,
-      subject: subject,
-      html: html
-    };
-    
-    // Add QR code as inline attachment for visitor and delegate registrations
     if ((formType === "visitor-registration" || formType === "delegate-registration") && qrCodeBuffer) {
-      emailOptions.attachments = [{
-        filename: `qrcode_${visitorCode}.png`,
-        content: qrCodeBuffer,
-        cid: `qrcode_${visitorCode}`, // Same cid as in img src
-        contentType: 'image/png'
-      }];
-    }
-    
-    // Check if sendEmailWithAttachments exists, otherwise use sendEmail
-    if (emailService.sendEmailWithAttachments && emailOptions.attachments) {
-      await emailService.sendEmailWithAttachments(emailOptions);
+      // Use the attachment method from EmailService
+      await emailService.sendEmailWithAttachment({
+        to: data.email,
+        subject: subject,
+        html: html,
+        attachment: {
+          filename: `qrcode_${visitorCode}.png`,
+          content: qrCodeBuffer,
+          cid: `qrcode_${visitorCode}`,
+          contentType: 'image/png'
+        }
+      });
     } else {
-      // Fallback to regular email without attachments
       await emailService.sendEmail(data.email, subject, html);
     }
     console.log(`✅ User email sent successfully to ${data.email}`);
