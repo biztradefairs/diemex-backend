@@ -18,10 +18,10 @@ function generateInwardTemplate({
     .map(([key, value]) => {
       if (Array.isArray(value)) value = value.join(", ");
       return `
-          <tr>
+           <tr>
           <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
           <td style="padding:6px 0;">: ${value || "N/A"}</td>
-          </tr>
+           </tr>
       `;
     })
     .join("");
@@ -108,17 +108,37 @@ function generateInwardTemplate({
   `;
 }
 
-// Helper function to generate QR code as data URL
-async function generateQRCode(data) {
+// Helper function to generate QR code as buffer (for email attachments)
+async function generateQRCodeBuffer(data) {
   try {
-    // Generate QR code with DIEMEX 2026 text inside
+    const qrData = data || "DIEMEX 2026";
+    const buffer = await QRCode.toBuffer(qrData, {
+      errorCorrectionLevel: 'H',
+      margin: 2,
+      width: 200,
+      color: {
+        dark: '#0F2F5C',
+        light: '#FFFFFF'
+      },
+      type: 'png'
+    });
+    return buffer;
+  } catch (error) {
+    console.error("QR Code generation error:", error);
+    return null;
+  }
+}
+
+// Helper function to generate QR code as data URL (fallback)
+async function generateQRCodeDataURL(data) {
+  try {
     const qrData = data || "DIEMEX 2026";
     const qrCodeDataURL = await QRCode.toDataURL(qrData, {
       errorCorrectionLevel: 'H',
       margin: 2,
       width: 200,
       color: {
-        dark: '#0F2F5C',  // Blue color to match brand
+        dark: '#0F2F5C',
         light: '#FFFFFF'
       }
     });
@@ -131,7 +151,7 @@ async function generateQRCode(data) {
 
 router.get("/visitor/:code", async (req, res) => {
   try {
-    const Visitor = require("../models/Visitor"); // Adjust path as needed
+    const Visitor = require("../models/Visitor");
     const visitor = await Visitor.findOne({
       visitorCode: req.params.code
     });
@@ -164,20 +184,24 @@ router.post("/", async (req, res) => {
     let subject = "";
     let html = "";
     let visitorCode = null;
-    
-    // Generate QR code and visitor code for visitor and delegate registrations
+    let qrCodeBuffer = null;
     let qrCodeDataURL = null;
+    
+    // Generate QR code for visitor and delegate registrations
     if (formType === "visitor-registration" || formType === "delegate-registration") {
       // Create a unique visitor code
       visitorCode = `diemex-${Date.now()}`;
       
-      // Create a unique QR code data with registration info
+      // Create a unique QR code content
       const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 8-10 Oct 2026`;
-      qrCodeDataURL = await generateQRCode(qrContent);
+      
+      // Generate both buffer (for attachments) and data URL (for fallback)
+      qrCodeBuffer = await generateQRCodeBuffer(qrContent);
+      qrCodeDataURL = await generateQRCodeDataURL(qrContent);
       
       // Save to database if Visitor model exists
       try {
-        const Visitor = require("../models/Visitor"); // Adjust path as needed
+        const Visitor = require("../models/Visitor");
         await Visitor.create({
           visitorCode,
           firstName: data.firstName,
@@ -503,21 +527,19 @@ router.post("/", async (req, res) => {
                           Below are your registration details and visitor badge.
                         </p>
 
-                        <!-- QR CODE BADGE -->
+                        <!-- QR CODE BADGE - Using CID for email compatibility -->
                         <div style="margin:30px 0; text-align:center;">
-                          ${qrCodeDataURL ? `
-                            <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                              <img src="${qrCodeDataURL}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
-                              <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
-                              <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
-                              <p style="margin:5px 0; font-size:12px; color:#666;">Code: ${visitorCode}</p>
-                            </div>
-                          ` : '<p>QR Code will be available at the registration desk</p>'}
+                          <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+                            <img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
+                            <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
+                            <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
+                          </div>
                         </div>
 
-                        <!-- BUTTON - Now with proper download link -->
+                        <!-- BUTTON - Download link -->
                         <div style="margin:30px 0;">
-                          <a href="#" 
+                          <a href="cid:qrcode_${visitorCode}" 
                              download="diemex-2026-visitor-badge.png"
                              style="
                                background:#0F2F5C;
@@ -529,8 +551,7 @@ router.post("/", async (req, res) => {
                                display:inline-block;
                                font-weight:bold;
                                cursor:pointer;
-                             "
-                             onclick="downloadQRCode(event)">
+                             ">
                             Download Badge
                           </a>
                           <p style="font-size:12px; color:#666; margin-top:10px;">
@@ -541,27 +562,6 @@ router.post("/", async (req, res) => {
                         <div style="margin-top:15px; font-size:16px; font-weight:bold; padding:10px; background:#f5f5f5; border-radius:5px;">
                           Visitor Code: ${visitorCode}
                         </div>
-
-                        <script>
-                          function downloadQRCode(event) {
-                            event.preventDefault();
-                            const qrImage = document.querySelector('img[alt="Visitor QR Code"]');
-                            if(qrImage && qrImage.src) {
-                              fetch(qrImage.src)
-                                .then(res => res.blob())
-                                .then(blob => {
-                                  const link = document.createElement('a');
-                                  link.download = 'diemex-2026-visitor-badge.png';
-                                  link.href = URL.createObjectURL(blob);
-                                  link.click();
-                                  URL.revokeObjectURL(link.href);
-                                })
-                                .catch(err => console.error('Download failed:', err));
-                            } else {
-                              alert('QR Code not available for download');
-                            }
-                          }
-                        </script>
 
                         <p style="font-size:15px;">
                           We look forward to seeing you at the event.
@@ -814,49 +814,25 @@ router.post("/", async (req, res) => {
                         </p>
 
                         <div style="margin:30px 0; text-align:center;">
-                          ${qrCodeDataURL ? `
-                            <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                              <img src="${qrCodeDataURL}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
-                              <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
-                              <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
-                              <p style="margin:5px 0; font-size:12px; color:#666;">Code: ${visitorCode}</p>
-                            </div>
-                          ` : '<p>QR Code will be available at the registration desk</p>'}
+                          <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+                            <img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
+                            <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
+                            <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
+                          </div>
                         </div>
 
-                        <a href="#"
+                        <a href="cid:qrcode_${visitorCode}"
                            download="diemex-2026-delegate-badge.png"
                            style="background:#0F2F5C; color:#fff; padding:15px 35px;
                                   text-decoration:none; border-radius:30px; display:inline-block;
-                                  cursor:pointer;"
-                           onclick="downloadQRCode(event)">
+                                  cursor:pointer;">
                           Download Badge
                         </a>
 
                         <div style="margin-top:15px; font-size:16px; font-weight:bold; padding:10px; background:#f5f5f5; border-radius:5px;">
                           Delegate Code: ${visitorCode}
                         </div>
-
-                        <script>
-                          function downloadQRCode(event) {
-                            event.preventDefault();
-                            const qrImage = document.querySelector('img[alt="Delegate QR Code"]');
-                            if(qrImage && qrImage.src) {
-                              fetch(qrImage.src)
-                                .then(res => res.blob())
-                                .then(blob => {
-                                  const link = document.createElement('a');
-                                  link.download = 'diemex-2026-delegate-badge.png';
-                                  link.href = URL.createObjectURL(blob);
-                                  link.click();
-                                  URL.revokeObjectURL(link.href);
-                                })
-                                .catch(err => console.error('Download failed:', err));
-                            } else {
-                              alert('QR Code not available for download');
-                            }
-                          }
-                        </script>
 
                         <p style="margin-top:25px;">We look forward to seeing you at the event.</p>
 
@@ -1048,7 +1024,25 @@ router.post("/", async (req, res) => {
 
     // Send email to user with their submitted details
     console.log(`📧 Sending email to user: ${data.email}`);
-    await emailService.sendEmail(data.email, subject, html);
+    
+    // Prepare email options with attachments for QR code
+    let emailOptions = {
+      to: data.email,
+      subject: subject,
+      html: html
+    };
+    
+    // Add QR code as inline attachment for visitor and delegate registrations
+    if ((formType === "visitor-registration" || formType === "delegate-registration") && qrCodeBuffer) {
+      emailOptions.attachments = [{
+        filename: `qrcode_${visitorCode}.png`,
+        content: qrCodeBuffer,
+        cid: `qrcode_${visitorCode}`, // Same cid as in img src
+        contentType: 'image/png'
+      }];
+    }
+    
+    await emailService.sendEmailWithAttachments(emailOptions);
     console.log(`✅ User email sent successfully to ${data.email}`);
     
     // Send notification to admin
