@@ -18,10 +18,10 @@ function generateInwardTemplate({
     .map(([key, value]) => {
       if (Array.isArray(value)) value = value.join(", ");
       return `
-         <tr>
+          <tr>
           <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
           <td style="padding:6px 0;">: ${value || "N/A"}</td>
-         </tr>
+          </tr>
       `;
     })
     .join("");
@@ -129,6 +129,23 @@ async function generateQRCode(data) {
   }
 }
 
+router.get("/visitor/:code", async (req, res) => {
+  try {
+    const Visitor = require("../models/Visitor"); // Adjust path as needed
+    const visitor = await Visitor.findOne({
+      visitorCode: req.params.code
+    });
+
+    if (!visitor) {
+      return res.status(404).json({ message: "Visitor not found" });
+    }
+
+    res.json(visitor);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.post("/", async (req, res) => {
   try {
     const { formType, captchaToken, submittedAt, ...data } = req.body;
@@ -146,13 +163,37 @@ router.post("/", async (req, res) => {
 
     let subject = "";
     let html = "";
+    let visitorCode = null;
     
-    // Generate QR code for visitor and delegate registrations
+    // Generate QR code and visitor code for visitor and delegate registrations
     let qrCodeDataURL = null;
     if (formType === "visitor-registration" || formType === "delegate-registration") {
+      // Create a unique visitor code
+      visitorCode = `diemex-${Date.now()}`;
+      
       // Create a unique QR code data with registration info
-      const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nDate: 8-10 Oct 2026`;
+      const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 8-10 Oct 2026`;
       qrCodeDataURL = await generateQRCode(qrContent);
+      
+      // Save to database if Visitor model exists
+      try {
+        const Visitor = require("../models/Visitor"); // Adjust path as needed
+        await Visitor.create({
+          visitorCode,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.mobile || data.phone,
+          address: data.address,
+          company: data.company,
+          designation: data.designation,
+          formType: formType
+        });
+        console.log(`✅ Visitor saved with code: ${visitorCode}`);
+      } catch (dbError) {
+        console.error("Database save error:", dbError);
+        // Continue even if database save fails
+      }
     }
 
     // Safely access data with fallbacks to prevent undefined errors
@@ -469,13 +510,14 @@ router.post("/", async (req, res) => {
                               <img src="${qrCodeDataURL}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
                               <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
                               <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
+                              <p style="margin:5px 0; font-size:12px; color:#666;">Code: ${visitorCode}</p>
                             </div>
                           ` : '<p>QR Code will be available at the registration desk</p>'}
                         </div>
 
                         <!-- BUTTON - Now with proper download link -->
                         <div style="margin:30px 0;">
-                          <a href="${qrCodeDataURL ? `data:application/octet-stream,${encodeURIComponent(qrCodeDataURL)}` : '#'}"
+                          <a href="#" 
                              download="diemex-2026-visitor-badge.png"
                              style="
                                background:#0F2F5C;
@@ -496,17 +538,27 @@ router.post("/", async (req, res) => {
                           </p>
                         </div>
 
+                        <div style="margin-top:15px; font-size:16px; font-weight:bold; padding:10px; background:#f5f5f5; border-radius:5px;">
+                          Visitor Code: ${visitorCode}
+                        </div>
+
                         <script>
                           function downloadQRCode(event) {
                             event.preventDefault();
                             const qrImage = document.querySelector('img[alt="Visitor QR Code"]');
                             if(qrImage && qrImage.src) {
-                              const link = document.createElement('a');
-                              link.download = 'diemex-2026-visitor-badge.png';
-                              link.href = qrImage.src;
-                              link.click();
+                              fetch(qrImage.src)
+                                .then(res => res.blob())
+                                .then(blob => {
+                                  const link = document.createElement('a');
+                                  link.download = 'diemex-2026-visitor-badge.png';
+                                  link.href = URL.createObjectURL(blob);
+                                  link.click();
+                                  URL.revokeObjectURL(link.href);
+                                })
+                                .catch(err => console.error('Download failed:', err));
                             } else {
-                              window.location.href = event.target.href;
+                              alert('QR Code not available for download');
                             }
                           }
                         </script>
@@ -767,11 +819,12 @@ router.post("/", async (req, res) => {
                               <img src="${qrCodeDataURL}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
                               <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
                               <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
+                              <p style="margin:5px 0; font-size:12px; color:#666;">Code: ${visitorCode}</p>
                             </div>
                           ` : '<p>QR Code will be available at the registration desk</p>'}
                         </div>
 
-                        <a href="${qrCodeDataURL ? `data:application/octet-stream,${encodeURIComponent(qrCodeDataURL)}` : '#'}"
+                        <a href="#"
                            download="diemex-2026-delegate-badge.png"
                            style="background:#0F2F5C; color:#fff; padding:15px 35px;
                                   text-decoration:none; border-radius:30px; display:inline-block;
@@ -780,17 +833,27 @@ router.post("/", async (req, res) => {
                           Download Badge
                         </a>
 
+                        <div style="margin-top:15px; font-size:16px; font-weight:bold; padding:10px; background:#f5f5f5; border-radius:5px;">
+                          Delegate Code: ${visitorCode}
+                        </div>
+
                         <script>
                           function downloadQRCode(event) {
                             event.preventDefault();
                             const qrImage = document.querySelector('img[alt="Delegate QR Code"]');
                             if(qrImage && qrImage.src) {
-                              const link = document.createElement('a');
-                              link.download = 'diemex-2026-delegate-badge.png';
-                              link.href = qrImage.src;
-                              link.click();
+                              fetch(qrImage.src)
+                                .then(res => res.blob())
+                                .then(blob => {
+                                  const link = document.createElement('a');
+                                  link.download = 'diemex-2026-delegate-badge.png';
+                                  link.href = URL.createObjectURL(blob);
+                                  link.click();
+                                  URL.revokeObjectURL(link.href);
+                                })
+                                .catch(err => console.error('Download failed:', err));
                             } else {
-                              window.location.href = event.target.href;
+                              alert('QR Code not available for download');
                             }
                           }
                         </script>
@@ -1003,7 +1066,7 @@ router.post("/", async (req, res) => {
             lightBg: "#E8D6DC",
             stripColor: "#F2E3E7",
             titleColor: "#A84C7D",
-            data
+            data: { ...data, visitorCode: visitorCode || 'N/A' }
           });
           break;
 
@@ -1044,7 +1107,7 @@ router.post("/", async (req, res) => {
             lightBg: "#DDEFE2",
             stripColor: "#CFE3D5",
             titleColor: "#0F8F4F",
-            data
+            data: { ...data, visitorCode: visitorCode || 'N/A' }
           });
           break;
 
@@ -1071,7 +1134,8 @@ router.post("/", async (req, res) => {
 
     return res.status(200).json({ 
       success: true, 
-      message: "Form submitted successfully. Please check your email for confirmation." 
+      message: "Form submitted successfully. Please check your email for confirmation.",
+      visitorCode: visitorCode || null
     });
 
   } catch (error) {
