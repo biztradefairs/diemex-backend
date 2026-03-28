@@ -145,6 +145,124 @@ router.get("/visitor/:code", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+router.get("/visitors/all", async (req, res) => {
+  try {
+    let Visitor;
+    try {
+      Visitor = require("../models/Visitor");
+    } catch (e) {
+      return res.status(200).json({ success: true, total: 0, checkedIn: 0 });
+    }
+    
+    const allVisitors = await Visitor.find({});
+    const checkedInVisitors = await Visitor.find({ checkedIn: true });
+    
+    res.json({
+      success: true,
+      total: allVisitors.length,
+      checkedIn: checkedInVisitors.length
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get recent check-ins
+router.get("/visitors/checked-in", async (req, res) => {
+  try {
+    let Visitor;
+    try {
+      Visitor = require("../models/Visitor");
+    } catch (e) {
+      return res.status(200).json({ success: true, visitors: [] });
+    }
+    
+    const checkedInVisitors = await Visitor.find({ checkedIn: true })
+      .sort({ checkInTime: -1 })
+      .limit(20);
+    
+    res.json({
+      success: true,
+      visitors: checkedInVisitors.map(v => ({
+        name: `${v.firstName || ''} ${v.lastName || ''}`.trim(),
+        company: v.company || 'N/A',
+        checkInTime: v.checkInTime,
+        visitorCode: v.visitorCode
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Visitor check-in endpoint
+router.post("/visitor/checkin", async (req, res) => {
+  try {
+    const { visitorCode } = req.body;
+    
+    if (!visitorCode) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Visitor code is required" 
+      });
+    }
+    
+    let Visitor;
+    try {
+      Visitor = require("../models/Visitor");
+    } catch (e) {
+      return res.status(500).json({ 
+        success: false, 
+        message: "Visitor model not found" 
+      });
+    }
+    
+    const visitor = await Visitor.findOne({ visitorCode });
+    
+    if (!visitor) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Visitor not found" 
+      });
+    }
+    
+    if (visitor.checkedIn) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Visitor already checked in",
+        alreadyCheckedIn: true,
+        checkInTime: visitor.checkInTime
+      });
+    }
+    
+    // Update visitor check-in status
+    visitor.checkedIn = true;
+    visitor.checkInTime = new Date();
+    await visitor.save();
+    
+    res.json({
+      success: true,
+      message: "Visitor checked in successfully",
+      visitor: {
+        firstName: visitor.firstName,
+        lastName: visitor.lastName,
+        company: visitor.company,
+        email: visitor.email,
+        visitorCode: visitor.visitorCode,
+        checkInTime: visitor.checkInTime
+      }
+    });
+    
+  } catch (err) {
+    console.error("Check-in error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      error: err.message 
+    });
+  }
+});
+
 
 router.post("/", async (req, res) => {
   try {
