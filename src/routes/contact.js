@@ -1,7 +1,28 @@
 const express = require("express");
 const router = express.Router();
 const emailService = require("../services/EmailService");
-const QRCode = require('qrcode'); // You'll need to install this: npm install qrcode
+const QRCode = require('qrcode');
+
+// Helper function to generate QR code as buffer
+async function generateQRCodeBuffer(data) {
+  try {
+    const qrData = data || "DIEMEX 2026";
+    const buffer = await QRCode.toBuffer(qrData, {
+      errorCorrectionLevel: 'H',
+      margin: 2,
+      width: 200,
+      color: {
+        dark: '#0F2F5C',
+        light: '#FFFFFF'
+      },
+      type: 'png'
+    });
+    return buffer;
+  } catch (error) {
+    console.error("QR Code generation error:", error);
+    return null;
+  }
+}
 
 function generateInwardTemplate({
   title,
@@ -18,10 +39,10 @@ function generateInwardTemplate({
     .map(([key, value]) => {
       if (Array.isArray(value)) value = value.join(", ");
       return `
-           <tr>
-          <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
-          <td style="padding:6px 0;">: ${value || "N/A"}</td>
-           </tr>
+          <tr>
+            <td width="40%" style="padding:6px 0;"><strong>${key}</strong></td>
+            <td style="padding:6px 0;">: ${value || "N/A"}</td>
+          </tr>
       `;
     })
     .join("");
@@ -108,47 +129,6 @@ function generateInwardTemplate({
   `;
 }
 
-// Helper function to generate QR code as buffer (for email attachments)
-async function generateQRCodeBuffer(data) {
-  try {
-    const qrData = data || "DIEMEX 2026";
-    const buffer = await QRCode.toBuffer(qrData, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
-      width: 200,
-      color: {
-        dark: '#0F2F5C',
-        light: '#FFFFFF'
-      },
-      type: 'png'
-    });
-    return buffer;
-  } catch (error) {
-    console.error("QR Code generation error:", error);
-    return null;
-  }
-}
-
-// Helper function to generate QR code as data URL (fallback)
-async function generateQRCodeDataURL(data) {
-  try {
-    const qrData = data || "DIEMEX 2026";
-    const qrCodeDataURL = await QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
-      width: 200,
-      color: {
-        dark: '#0F2F5C',
-        light: '#FFFFFF'
-      }
-    });
-    return qrCodeDataURL;
-  } catch (error) {
-    console.error("QR Code generation error:", error);
-    return null;
-  }
-}
-
 router.get("/visitor/:code", async (req, res) => {
   try {
     const Visitor = require("../models/Visitor");
@@ -185,7 +165,6 @@ router.post("/", async (req, res) => {
     let html = "";
     let visitorCode = null;
     let qrCodeBuffer = null;
-    let qrCodeDataURL = null;
     
     // Generate QR code for visitor and delegate registrations
     if (formType === "visitor-registration" || formType === "delegate-registration") {
@@ -195,9 +174,8 @@ router.post("/", async (req, res) => {
       // Create a unique QR code content
       const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 8-10 Oct 2026`;
       
-      // Generate both buffer (for attachments) and data URL (for fallback)
+      // Generate buffer for email attachments
       qrCodeBuffer = await generateQRCodeBuffer(qrContent);
-      qrCodeDataURL = await generateQRCodeDataURL(qrContent);
       
       // Save to database if Visitor model exists
       try {
@@ -530,7 +508,7 @@ router.post("/", async (req, res) => {
                         <!-- QR CODE BADGE - Using CID for email compatibility -->
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            <img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            ${qrCodeBuffer ? `<img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />` : '<p>QR Code will be available at the registration desk</p>'}
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
@@ -815,7 +793,7 @@ router.post("/", async (req, res) => {
 
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            <img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            ${qrCodeBuffer ? `<img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />` : '<p>QR Code will be available at the registration desk</p>'}
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
@@ -892,15 +870,6 @@ router.post("/", async (req, res) => {
               .field-label { font-weight: bold; color: #9333EA; }
               .field-value { margin-left: 10px; }
               hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-              .badge {
-                display: inline-block;
-                background: #9333EA;
-                color: white;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 14px;
-                font-weight: bold;
-              }
             </style>
           </head>
           <body>
@@ -1042,7 +1011,13 @@ router.post("/", async (req, res) => {
       }];
     }
     
-    await emailService.sendEmailWithAttachments(emailOptions);
+    // Check if sendEmailWithAttachments exists, otherwise use sendEmail
+    if (emailService.sendEmailWithAttachments && emailOptions.attachments) {
+      await emailService.sendEmailWithAttachments(emailOptions);
+    } else {
+      // Fallback to regular email without attachments
+      await emailService.sendEmail(data.email, subject, html);
+    }
     console.log(`✅ User email sent successfully to ${data.email}`);
     
     // Send notification to admin
@@ -1136,8 +1111,7 @@ router.post("/", async (req, res) => {
     console.error("❌ Contact API Error:", error);
     console.error("Error details:", {
       message: error.message,
-      stack: error.stack,
-      response: error.response?.body
+      stack: error.stack
     });
     
     return res.status(500).json({ 
