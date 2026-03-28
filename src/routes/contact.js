@@ -220,7 +220,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td align="center" style="padding:30px;">
                         <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                         <p style="margin:5px 0 0; font-size:14px;">
@@ -304,7 +304,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
@@ -344,7 +344,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td align="center" style="padding:30px;">
                         <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                         <p style="margin:5px 0 0; font-size:14px;">
@@ -428,7 +428,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
@@ -468,7 +468,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td align="center" style="padding:30px;">
                         <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                         <p style="margin:5px 0 0; font-size:14px;">
@@ -567,7 +567,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
@@ -607,7 +607,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td align="center" style="padding:30px;">
                         <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                         <p style="margin:5px 0 0; font-size:14px;">
@@ -714,7 +714,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
                         Organizer: <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         T9, Swastik Manandi Arcade, Bengaluru, India<br/>
@@ -754,7 +754,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td align="center" style="padding:30px;">
                        <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                         <p style="margin:5px 0 0; font-size:14px;">
@@ -836,7 +836,7 @@ router.post("/", async (req, res) => {
                      <tr>
                       <td style="background:#E6EEF7; padding:20px; font-size:12px; text-align:center;">
                         Organizer: <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /><br/>
                         Bengaluru, India | pad@maxxmedia.in | www.diemex.in
@@ -957,7 +957,7 @@ router.post("/", async (req, res) => {
                 
                 <p>Best regards,<br/>
                 <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 /></p>
               </div>
