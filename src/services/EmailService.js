@@ -82,6 +82,72 @@ class EmailService {
   }
 
   /**
+   * Send email with attachment (QR code, PDF, etc.)
+   */
+  async sendEmailWithAttachment({ to, subject, html, attachment }) {
+    // Check if initialized
+    if (!this.initialized) {
+      console.error("❌ Email service not initialized. Check your SendGrid configuration.");
+      // For development, log instead of sending
+      console.log("📧 WOULD SEND EMAIL WITH ATTACHMENT:", { 
+        to, 
+        subject, 
+        htmlLength: html.length,
+        attachmentFilename: attachment.filename,
+        from: process.env.SENDGRID_FROM 
+      });
+      return { success: true, mock: true };
+    }
+
+    try {
+      const msg = {
+        to,
+        from: process.env.SENDGRID_FROM,
+        subject,
+        html,
+        attachments: [{
+          content: attachment.content.toString('base64'),
+          filename: attachment.filename,
+          type: attachment.contentType || 'image/png',
+          disposition: 'inline',
+          content_id: attachment.cid
+        }]
+      };
+
+      console.log(`📧 Attempting to send email with attachment:`);
+      console.log(`   To: ${to}`);
+      console.log(`   From: ${process.env.SENDGRID_FROM}`);
+      console.log(`   Subject: ${subject}`);
+      console.log(`   Attachment: ${attachment.filename}`);
+      console.log(`   CID: ${attachment.cid}`);
+
+      const response = await sgMail.send(msg);
+
+      console.log(`✅ Email with attachment sent successfully to ${to}`);
+      console.log(`📧 Message ID: ${response[0]?.headers?.['x-message-id'] || 'Unknown'}`);
+
+      return {
+        success: true,
+        messageId: response[0]?.headers?.['x-message-id'],
+      };
+    } catch (error) {
+      console.error("❌ SendGrid Error Details:");
+      console.error("- Message:", error.message);
+      
+      if (error.response) {
+        console.error("- Status Code:", error.response.statusCode);
+        console.error("- Response Body:", JSON.stringify(error.response.body, null, 2));
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.body || 'Unknown error'
+      };
+    }
+  }
+
+  /**
    * Send password reset email with reset link
    */
   async sendPasswordResetEmail(email, name, resetUrl) {
@@ -103,7 +169,7 @@ class EmailService {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 40px 0;">
-          <tr>
+           <tr>
             <td align="center">
               <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
                 
@@ -112,7 +178,7 @@ class EmailService {
                   <td style="background: linear-gradient(135deg, #004D9F 0%, #00A3E0 100%); padding: 40px 30px; text-align: center;">
                     <h1 style="color: white; margin: 0; font-size: 36px; font-weight: 600; letter-spacing: 1px;">DIEMEX</h1>
                     <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">Exhibitor Portal</p>
-                  </td>
+                   </td>
                 </tr>
                 
                 <!-- Main Content -->
@@ -146,7 +212,7 @@ class EmailService {
                                     border: none;">
                             🔐 Reset My Password
                           </a>
-                        </td>
+                         </td>
                       </tr>
                     </table>
                     
@@ -184,12 +250,12 @@ class EmailService {
                     <p style="color: #999999; margin: 10px 0 0; font-size: 11px; text-align: center;">
                       This email was sent to ${email}
                     </p>
-                  </td>
+                   </td>
                 </tr>
               </table>
-            </td>
-          </tr>
-        </table>
+             </td>
+           </tr>
+         </table>
       </body>
       </html>
     `;
@@ -218,7 +284,7 @@ class EmailService {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 40px 0;">
-          <tr>
+           <tr>
             <td align="center">
               <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
                 
@@ -229,7 +295,7 @@ class EmailService {
                       <span style="color: white; font-size: 40px;">✓</span>
                     </div>
                     <h1 style="color: white; margin: 0; font-size: 28px;">Password Reset Successful!</h1>
-                  </td>
+                   </td>
                 </tr>
                 
                 <!-- Main Content -->
@@ -257,7 +323,7 @@ class EmailService {
                                     box-shadow: 0 4px 15px rgba(0, 77, 159, 0.3);">
                             🔐 Go to Login
                           </a>
-                        </td>
+                         </td>
                       </tr>
                     </table>
                     
@@ -279,12 +345,12 @@ class EmailService {
                     <p style="color: #999999; margin: 10px 0 0; font-size: 11px; text-align: center;">
                       This email was sent to ${email}
                     </p>
-                  </td>
+                   </td>
                 </tr>
               </table>
-            </td>
-          </tr>
-        </table>
+             </td>
+           </tr>
+         </table>
       </body>
       </html>
     `;
@@ -338,17 +404,11 @@ class EmailService {
     `;
     return this.sendEmail(visitorData.email, subject, html);
   }
-  // src/services/EmailService.js - Add this method
 
-async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
-  try {
-    const transporter = this.getTransporter();
-    
-    const mailOptions = {
-      from: `"DIEMEX Exhibition" <${process.env.EMAIL_FROM || 'noreply@diemex.com'}>`,
-      to: to,
-      subject: `Invoice ${invoiceNumber} from DIEMEX Exhibition`,
-      html: `
+  async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
+    try {
+      const subject = `Invoice ${invoiceNumber} from DIEMEX Exhibition`;
+      const html = `
         <!DOCTYPE html>
         <html>
         <head>
@@ -404,25 +464,26 @@ async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
           </div>
         </body>
         </html>
-      `,
-      attachments: [
-        {
+      `;
+      
+      return await this.sendEmailWithAttachment({
+        to,
+        subject,
+        html,
+        attachment: {
           filename: `invoice-${invoiceNumber}.pdf`,
           content: pdfBuffer,
+          cid: `invoice_${invoiceNumber}`,
           contentType: 'application/pdf'
         }
-      ]
-    };
-    
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Invoice email sent to ${to}: ${info.messageId}`);
-    return info;
-    
-  } catch (error) {
-    console.error('❌ Failed to send invoice email:', error);
-    throw error;
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to send invoice email:', error);
+      throw error;
+    }
   }
-}
+  
   // Test method to verify configuration
   async testConnection() {
     if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
@@ -439,68 +500,6 @@ async sendInvoiceEmail({ to, invoiceNumber, amount, pdfBuffer, dueDate }) {
 
     return true;
   }
-  async sendEmailWithAttachment({ to, subject, html, attachment }) {
-  // Check if initialized
-  if (!this.initialized) {
-    console.error("❌ Email service not initialized. Check your SendGrid configuration.");
-    // For development, log instead of sending
-    console.log("📧 WOULD SEND EMAIL WITH ATTACHMENT:", { 
-      to, 
-      subject, 
-      htmlLength: html.length,
-      attachmentFilename: attachment.filename,
-      from: process.env.SENDGRID_FROM 
-    });
-    return { success: true, mock: true };
-  }
-
-  try {
-    const msg = {
-      to,
-      from: process.env.SENDGRID_FROM,
-      subject,
-      html,
-      attachments: [{
-        content: attachment.content.toString('base64'),
-        filename: attachment.filename,
-        type: attachment.contentType || 'image/png',
-        disposition: 'inline',
-        content_id: attachment.cid
-      }]
-    };
-
-    console.log(`📧 Attempting to send email with QR code:`);
-    console.log(`   To: ${to}`);
-    console.log(`   From: ${process.env.SENDGRID_FROM}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   Attachment: ${attachment.filename}`);
-    console.log(`   CID: ${attachment.cid}`);
-
-    const response = await sgMail.send(msg);
-
-    console.log(`✅ Email with QR code sent successfully to ${to}`);
-    console.log(`📧 Message ID: ${response[0]?.headers?.['x-message-id'] || 'Unknown'}`);
-
-    return {
-      success: true,
-      messageId: response[0]?.headers?.['x-message-id'],
-    };
-  } catch (error) {
-    console.error("❌ SendGrid Error Details:");
-    console.error("- Message:", error.message);
-    
-    if (error.response) {
-      console.error("- Status Code:", error.response.statusCode);
-      console.error("- Response Body:", JSON.stringify(error.response.body, null, 2));
-    }
-
-    return {
-      success: false,
-      error: error.message,
-      details: error.response?.body || 'Unknown error'
-    };
-  }
-}
 }
 
 module.exports = new EmailService();
