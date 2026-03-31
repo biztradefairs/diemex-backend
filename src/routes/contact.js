@@ -64,7 +64,7 @@ function generateInwardTemplate({
             <tr>
               <td style="background:#0F2F5C; padding:40px 30px; text-align:center;">
                 <img 
-                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                  src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
               </td>
@@ -100,7 +100,7 @@ function generateInwardTemplate({
                     <!-- LEFT LOGO -->
                     <td align="left">
                       <img 
-                        src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png"
+                        src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                         style="max-width:120px; display:block;"
                       />
                     </td>
