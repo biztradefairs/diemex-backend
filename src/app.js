@@ -6,10 +6,12 @@ const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
 const database = require('./config/database');
+
 const fs = require('fs');
 require('express-async-errors');
 
 // Import routes
+const { trackVisitor, getVisitorStats } = require('./middleware/visitorTracker');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const exhibitorRoutes = require('./routes/exhibitors');
@@ -38,6 +40,7 @@ const floorPlanRoutes = require('./routes/floorPlanRoutes');
 const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
 const invoiceGenerateRoutes = require('./routes/invoiceGenerateRoutes');
 const extraRequirementsRoutes = require('./routes/extraRequirementsRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 class AppServer {
   constructor() {
     this.app = express();
@@ -221,6 +224,10 @@ const uploadDirs = [
       }
     };
 
+    this.app.use(cookieParser());
+
+
+    this.app.use(trackVisitor);
     // Serve from uploads directory
     this.app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), staticOptions));
     
@@ -247,6 +254,13 @@ const uploadDirs = [
         url: `/uploads/${type}/${filename}`
       });
     });
+    this.app.get('/api/visitor-stats', authenticate, authorize(['admin']), (req, res) => {
+  const stats = getVisitorStats();
+  res.json({
+    success: true,
+    data: stats
+  });
+});
 
     console.log('✅ Static file serving configured');
     console.log(`📂 Uploads directory: ${path.join(__dirname, 'uploads')}`);
@@ -658,7 +672,7 @@ setupRoutes() {
   this.app.use('/api/exhibitor-credentials', exhibitorCredentialsRoutes);
   this.app.use('/api/invoices', invoiceGenerateRoutes);
   this.app.use('/api/extra-requirements', extraRequirementsRoutes);
-
+  this.app.use('/api/dashboard', dashboardRoutes);
   // ======================
   // Documentation & Info
   // ======================

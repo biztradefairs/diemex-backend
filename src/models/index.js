@@ -118,6 +118,10 @@ const modelFactories = {
     const factory = require('./mysql/SecurityDeposit');
     return factory(database.getConnection('mysql'));
   },
+  Visitor: () => {
+  const factory = require('./mysql/Visitor');
+  return factory(database.getConnection('mysql'));
+},
 
   // ================= MONGO MODELS =================
 
