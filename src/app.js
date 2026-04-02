@@ -7,6 +7,7 @@ const path = require('path');
 const http = require('http');
 const database = require('./config/database');
 const cookieParser = require('cookie-parser');
+const { authenticate, authorize } = require('./middleware/auth');
 const fs = require('fs');
 require('express-async-errors');
 
@@ -41,6 +42,7 @@ const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
 const invoiceGenerateRoutes = require('./routes/invoiceGenerateRoutes');
 const extraRequirementsRoutes = require('./routes/extraRequirementsRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+
 class AppServer {
   constructor() {
     this.app = express();
