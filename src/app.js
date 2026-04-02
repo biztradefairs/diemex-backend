@@ -6,7 +6,7 @@ const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
 const database = require('./config/database');
-
+const cookieParser = require('cookie-parser');
 const fs = require('fs');
 require('express-async-errors');
 
