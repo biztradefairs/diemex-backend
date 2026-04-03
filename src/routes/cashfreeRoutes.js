@@ -11,7 +11,10 @@ const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
 const CASHFREE_MODE = process.env.CASHFREE_MODE || 'production';
 
 // Use production URLs
-const CASHFREE_API_URL = 'https://api.cashfree.com/pg';
+const CASHFREE_API_URL =
+  process.env.CASHFREE_MODE === 'sandbox'
+    ? 'https://sandbox.cashfree.com/pg'
+    : 'https://api.cashfree.com/pg';
 const CASHFREE_ORDER_URL = `${CASHFREE_API_URL}/orders`;
 
 // Create Cashfree Order
