@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateExhibitor, authenticateAdmin } = require('../middleware/auth');
+const crypto = require('crypto');
 
 // ==================== CASH/CHEQUE/DD PAYMENT ROUTES ====================
 
@@ -26,12 +27,10 @@ router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
 
     const sequelize = require('../config/database').getConnection('mysql');
     
-    // Generate payment reference
     const paymentReference = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const paymentId = require('crypto').randomUUID();
+    const paymentId = crypto.randomUUID();
     const now = new Date();
 
-    // Insert payment record
     await sequelize.query(`
       INSERT INTO payments (
         id, exhibitor_id, invoice_id, requirement_id, payment_reference,
@@ -50,7 +49,6 @@ router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
       ]
     });
 
-    // Update invoice status to pending_verification
     if (invoiceId) {
       await sequelize.query(`
         UPDATE invoices 
@@ -63,7 +61,6 @@ router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
       });
     }
 
-    // Update requirement status
     if (requirementId) {
       await sequelize.query(`
         UPDATE requirements 
@@ -220,7 +217,6 @@ router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
 
-    // Update payment status
     await sequelize.query(`
       UPDATE payments 
       SET status = ?, 
@@ -232,7 +228,6 @@ router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
       replacements: [status, adminRemarks || null, now, now, paymentId]
     });
 
-    // Get payment details to update related records
     const [payments] = await sequelize.query(`
       SELECT * FROM payments WHERE id = ?
     `, {
@@ -243,7 +238,6 @@ router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
       const payment = payments[0];
       
       if (status === 'verified') {
-        // Update invoice status
         if (payment.invoice_id) {
           await sequelize.query(`
             UPDATE invoices 
@@ -256,7 +250,6 @@ router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
           });
         }
 
-        // Update requirement status
         if (payment.requirement_id) {
           await sequelize.query(`
             UPDATE requirements 
