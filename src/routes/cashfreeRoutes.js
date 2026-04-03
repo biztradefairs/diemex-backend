@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateExhibitor } = require('../middleware/auth');
+const { authenticateAny } = require('../middleware/auth');
 const crypto = require('crypto');
 const axios = require('axios');
 
@@ -10,7 +10,7 @@ const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID;
 const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
 
 // Create Cashfree Order
-router.post('/create-order', authenticateExhibitor, async (req, res) => {
+router.post('/create-order', authenticateAny, async (req, res) => {
   try {
     const { amount, invoiceId, requirementsId, customerDetails } = req.body;
 
@@ -161,7 +161,7 @@ router.post('/webhook', async (req, res) => {
 });
 
 // Get Payment Status
-router.get('/payment-status/:orderId', authenticateExhibitor, async (req, res) => {
+router.get('/payment-status/:orderId', authenticateAny, async (req, res) => {
   try {
     const { orderId } = req.params;
     
