@@ -1,9 +1,7 @@
+// src/routes/paymentRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticateExhibitor, authenticateAdmin } = require('../middleware/auth');
-
-// Cashfree payment routes - MAKE SURE THESE ARE COMMENTED OUT OR REMOVED IF NOT USING
-// const { Cashfree } = require('cashfree-pg');
 
 // ==================== CASH/CHEQUE/DD PAYMENT ROUTES ====================
 
