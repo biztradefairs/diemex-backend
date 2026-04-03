@@ -42,6 +42,8 @@ const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
 const invoiceGenerateRoutes = require('./routes/invoiceGenerateRoutes');
 const extraRequirementsRoutes = require('./routes/extraRequirementsRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const cashfreeRoutes = require('./routes/cashfreeRoutes');
 
 class AppServer {
   constructor() {
@@ -675,6 +677,9 @@ setupRoutes() {
   this.app.use('/api/invoices', invoiceGenerateRoutes);
   this.app.use('/api/extra-requirements', extraRequirementsRoutes);
   this.app.use('/api/dashboard', dashboardRoutes);
+  this.app.use('/api/payments', paymentRoutes);
+  this.app.use('/api/cashfree', cashfreeRoutes);
+
   // ======================
   // Documentation & Info
   // ======================
