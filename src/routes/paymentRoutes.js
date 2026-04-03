@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const { authenticateExhibitor, authenticateAdmin } = require('../middleware/auth');
+
+// Cashfree payment routes - MAKE SURE THESE ARE COMMENTED OUT OR REMOVED IF NOT USING
+// const { Cashfree } = require('cashfree-pg');
+
+// ==================== CASH/CHEQUE/DD PAYMENT ROUTES ====================
 
 // Submit cash payment details
 router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
@@ -26,7 +30,7 @@ router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
     
     // Generate payment reference
     const paymentReference = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const paymentId = crypto.randomUUID();
+    const paymentId = require('crypto').randomUUID();
     const now = new Date();
 
     // Insert payment record
@@ -41,7 +45,7 @@ router.post('/cash-payment', authenticateExhibitor, async (req, res) => {
     `, {
       replacements: [
         paymentId, req.user.id, invoiceId, requirementId, paymentReference,
-        amount, amountPaid || amount, paymentMode, paymentDate || now,
+        amount, amountPaid || amount, paymentMode, paymentDate || now.toISOString().split('T')[0],
         chequeNumber || null, chequeDate || null, bankName || null,
         ddNumber || null, ddDate || null,
         remarks || null, status, now, now
@@ -183,6 +187,32 @@ router.get('/admin/pending', authenticateAdmin, async (req, res) => {
   }
 });
 
+// Get all payments (admin)
+router.get('/admin/all', authenticateAdmin, async (req, res) => {
+  try {
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [payments] = await sequelize.query(`
+      SELECT p.*, e.company as exhibitor_company, e.name as exhibitor_name
+      FROM payments p
+      JOIN exhibitors e ON p.exhibitor_id = e.id
+      ORDER BY p.created_at DESC
+    `);
+
+    res.json({
+      success: true,
+      data: payments
+    });
+
+  } catch (error) {
+    console.error('Error fetching all payments:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Verify payment (admin)
 router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
   try {
@@ -250,6 +280,35 @@ router.put('/admin/:paymentId/verify', authenticateAdmin, async (req, res) => {
 
   } catch (error) {
     console.error('Error verifying payment:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get payment statistics (admin)
+router.get('/admin/stats', authenticateAdmin, async (req, res) => {
+  try {
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [stats] = await sequelize.query(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending_verification' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END) as verified,
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN status = 'verified' THEN amount ELSE 0 END) as total_verified_amount
+      FROM payments
+    `);
+
+    res.json({
+      success: true,
+      data: stats[0]
+    });
+
+  } catch (error) {
+    console.error('Error fetching payment stats:', error);
     res.status(500).json({
       success: false,
       error: error.message
