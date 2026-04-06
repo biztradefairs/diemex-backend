@@ -316,6 +316,10 @@ const uploadDirs = [
     this.app.use(cors(corsOptions));
     // Pre-flight requests
     this.app.options('*', cors(corsOptions));
+    this.app.use((req, res, next) => {
+  console.log('🌐 CORS Request from:', req.headers.origin);
+  next();
+});
 
     // HTTP request logging
     this.app.use(morgan(this.env === 'development' ? 'dev' : 'combined'));

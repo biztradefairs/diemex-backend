@@ -7,19 +7,7 @@ const { authenticate, authenticateAny, authorize } = require('../middleware/auth
 // PUBLIC / EXHIBITOR ROUTES (with authentication)
 // =============================================
 
-router.use((req, res, next) => {
-  // Allow your frontend domain
-  res.setHeader('Access-Control-Allow-Origin', 'https://www.diemex.in');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
+
 
 // Generate invoice from requirements (for exhibitors after submission)
 router.post('/generate-from-requirements', authenticateAny, async (req, res) => {
