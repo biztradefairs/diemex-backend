@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, authenticateAny, authorize } = require('../middleware/auth');
+const axios = require('axios');
 
 // =============================================
 // PUBLIC / EXHIBITOR ROUTES (with authentication)
@@ -667,11 +668,24 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const totalSGST = totalGST / 2;
 
     // ================= HEADER =================
-    let y = 50;
 
-doc.image('https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png', 50, y, {
-  width: 120
-});
+
+let y = 50;
+
+try {
+  const imageUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png';
+
+  const response = await axios.get(imageUrl, {
+    responseType: 'arraybuffer'
+  });
+
+  const imageBuffer = Buffer.from(response.data, 'binary');
+
+  doc.image(imageBuffer, 50, y, { width: 120 });
+
+} catch (imgError) {
+  console.error('Image load failed:', imgError.message);
+}
 
     doc.fontSize(8)
       .font('Helvetica')
@@ -806,10 +820,13 @@ doc.image('https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlog
 
     doc.end();
 
-  } catch (error) {
-    console.error('PDF Error:', error);
+  }  catch (error) {
+  console.error('PDF Error:', error);
+
+  if (!res.headersSent) {
     res.status(500).json({ success: false, error: error.message });
   }
+}
 });
 // Get invoice with details (for exhibitors)
 router.get('/:id/details', authenticateAny, async (req, res) => {
