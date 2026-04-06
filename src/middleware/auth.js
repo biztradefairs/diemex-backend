@@ -1,8 +1,6 @@
+// src/middleware/auth.js
 const jwt = require('jsonwebtoken');
 
-/* ============================
-   ADMIN / EDITOR / VIEWER AUTH
-============================ */
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -47,9 +45,6 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-/* ============================
-   ROLE AUTHORIZATION (USERS)
-============================ */
 const authorize = (roles = []) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -64,9 +59,6 @@ const authorize = (roles = []) => {
   };
 };
 
-/* ============================
-   EXHIBITOR AUTH (SEPARATE)
-============================ */
 const authenticateExhibitor = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -113,10 +105,10 @@ const authenticateExhibitor = async (req, res, next) => {
         ? 'Token expired'
         : 'Invalid token'
     });
-  };
-
+  }
 };
-  const authenticateAny = async (req, res, next) => {
+
+const authenticateAny = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -144,7 +136,7 @@ const authenticateExhibitor = async (req, res, next) => {
   } catch {
     return res.status(401).json({ success: false, error: 'Invalid token' });
   }
-}
+};
 
 module.exports = {
   authenticate,

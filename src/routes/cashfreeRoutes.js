@@ -8,38 +8,21 @@ const axios = require('axios');
 // Cashfree Configuration
 const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID;
 const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
-// IMPORTANT: Read from environment variable, don't default to sandbox
 const CASHFREE_MODE = process.env.CASHFREE_ENVIRONMENT || process.env.CASHFREE_MODE || 'production';
 
-// Define URLs based on mode
 const CASHFREE_API_URL = CASHFREE_MODE === 'sandbox'
     ? 'https://sandbox.cashfree.com/pg'
     : 'https://api.cashfree.com/pg';
 
 const CASHFREE_ORDER_URL = `${CASHFREE_API_URL}/orders`;
 
-// Log configuration on startup
 console.log('🔧 Cashfree Configuration:');
 console.log(`  Mode: ${CASHFREE_MODE}`);
 console.log(`  API URL: ${CASHFREE_API_URL}`);
-console.log(`  Order URL: ${CASHFREE_ORDER_URL}`);
-console.log(`  App ID: ${CASHFREE_APP_ID ? '✓ Set (' + CASHFREE_APP_ID.substring(0, 10) + '...)' : '✗ Missing'}`);
-console.log(`  Secret Key: ${CASHFREE_SECRET_KEY ? '✓ Set (' + CASHFREE_SECRET_KEY.substring(0, 15) + '...)' : '✗ Missing'}`);
+console.log(`  App ID: ${CASHFREE_APP_ID ? '✓ Set' : '✗ Missing'}`);
+console.log(`  Secret Key: ${CASHFREE_SECRET_KEY ? '✓ Set' : '✗ Missing'}`);
 
-// Verify webhook signature
-const verifyWebhookSignature = (body, signature, secretKey) => {
-  try {
-    const expectedSignature = crypto
-      .createHmac('sha256', secretKey)
-      .update(JSON.stringify(body))
-      .digest('base64');
-    return signature === expectedSignature;
-  } catch (error) {
-    console.error('Signature verification error:', error);
-    return false;
-  }
-};
-// Webhook for payment status updates
+// Webhook for payment status updates - THIS MARKS INVOICE AS PAID ON SUCCESS
 router.post('/webhook', async (req, res) => {
   try {
     console.log('📨 Webhook received');
@@ -55,6 +38,7 @@ router.post('/webhook', async (req, res) => {
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
     
+    // Update cashfree_orders table
     await sequelize.query(`
       UPDATE cashfree_orders 
       SET order_status = ?, payment_id = ?, updated_at = ?
@@ -72,21 +56,58 @@ router.post('/webhook', async (req, res) => {
     if (orders.length > 0) {
       const order = orders[0];
       
+      // CRITICAL: On successful payment, mark invoice as PAID automatically
       if (payment_status === 'SUCCESS' || payment_status === 'PAID') {
-        console.log(`✅ Payment successful for order ${order_id}, updating invoice ${order.invoice_id}`);
+        console.log(`✅ Payment successful for order ${order_id}, updating invoice ${order.invoice_id} to PAID`);
         
-        await sequelize.query(`
-          UPDATE invoices 
-          SET status = 'paid', 
-              paid_at = ?, 
-              updated_at = ?
-          WHERE id = ?
+        // Get current invoice to check status
+        const [invoices] = await sequelize.query(`
+          SELECT * FROM invoices WHERE id = ?
         `, {
-          replacements: [now, now, order.invoice_id]
+          replacements: [order.invoice_id]
         });
         
-        console.log(`✅ Invoice ${order.invoice_id} marked as paid`);
+        if (invoices.length > 0) {
+          const invoice = invoices[0];
+          let metadata = {};
+          
+          if (invoice.metadata) {
+            metadata = typeof invoice.metadata === 'string' 
+              ? JSON.parse(invoice.metadata) 
+              : invoice.metadata;
+          }
+          
+          // Add payment info to metadata
+          metadata.paymentInfo = {
+            paymentId: payment_id,
+            orderId: order_id,
+            paidAt: now.toISOString(),
+            amount: order.amount,
+            gateway: 'cashfree',
+            status: 'success'
+          };
+          
+          // Update invoice status to PAID
+          await sequelize.query(`
+            UPDATE invoices 
+            SET status = 'paid', 
+                paid_at = ?, 
+                metadata = ?,
+                updated_at = ?
+            WHERE id = ?
+          `, {
+            replacements: [now, JSON.stringify(metadata), now, order.invoice_id]
+          });
+          
+          console.log(`✅✅✅ Invoice ${order.invoice_id} marked as PAID successfully!`);
+        } else {
+          console.log(`⚠️ Invoice ${order.invoice_id} not found`);
+        }
+      } else {
+        console.log(`⚠️ Payment status for order ${order_id} is ${payment_status} - not marking as paid`);
       }
+    } else {
+      console.log(`⚠️ No order found for order_id: ${order_id}`);
     }
     
     res.status(200).json({ success: true });
@@ -143,8 +164,6 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     };
 
     console.log(`💰 Using Cashfree ${CASHFREE_MODE} mode`);
-    console.log(`🌐 API URL: ${CASHFREE_ORDER_URL}`);
-    console.log(`🔑 App ID: ${CASHFREE_APP_ID.substring(0, 10)}...`);
     console.log(`📦 Order amount: ${amount}`);
     
     const response = await axios.post(CASHFREE_ORDER_URL, orderData, {
@@ -157,13 +176,10 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     });
 
     console.log('✅ Cashfree order created:', response.data.order_id);
-    console.log('✅ Payment Session ID:', response.data.payment_session_id);
 
-    // Store in database
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
 
-    // Ensure table exists
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS cashfree_orders (
         id VARCHAR(36) PRIMARY KEY,
@@ -205,12 +221,11 @@ router.post('/create-order', authenticateAny, async (req, res) => {
   } catch (error) {
     console.error('❌ Cashfree error:', error.response?.data || error.message);
     
-    // Provide detailed error message
     let errorMessage = error.response?.data?.message || error.message;
     let statusCode = error.response?.status || 500;
     
     if (statusCode === 401) {
-      errorMessage = `Authentication failed. Please check your ${CASHFREE_MODE} credentials. Make sure you're using the correct API keys for ${CASHFREE_MODE} environment.`;
+      errorMessage = `Authentication failed. Please check your ${CASHFREE_MODE} credentials.`;
     }
     
     res.status(statusCode).json({ 
@@ -221,7 +236,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
   }
 });
 
-// Verify payment status
+// Verify payment status - THIS ALSO MARKS INVOICE AS PAID ON VERIFICATION
 router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -251,13 +266,42 @@ router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
         const order = orders[0];
         const now = new Date();
         
-        await sequelize.query(`
-          UPDATE invoices 
-          SET status = 'paid', paid_at = ?, updated_at = ?
-          WHERE id = ?
+        // Get current invoice
+        const [invoices] = await sequelize.query(`
+          SELECT * FROM invoices WHERE id = ?
         `, {
-          replacements: [now, now, order.invoice_id]
+          replacements: [order.invoice_id]
         });
+        
+        if (invoices.length > 0 && invoices[0].status !== 'paid') {
+          const invoice = invoices[0];
+          let metadata = {};
+          
+          if (invoice.metadata) {
+            metadata = typeof invoice.metadata === 'string' 
+              ? JSON.parse(invoice.metadata) 
+              : invoice.metadata;
+          }
+          
+          metadata.paymentInfo = {
+            paymentId: payment.payment_id,
+            orderId: orderId,
+            paidAt: now.toISOString(),
+            amount: order.amount,
+            gateway: 'cashfree',
+            status: 'success'
+          };
+          
+          await sequelize.query(`
+            UPDATE invoices 
+            SET status = 'paid', paid_at = ?, metadata = ?, updated_at = ?
+            WHERE id = ?
+          `, {
+            replacements: [now, JSON.stringify(metadata), now, order.invoice_id]
+          });
+          
+          console.log(`✅ Payment verified and invoice ${order.invoice_id} marked as PAID`);
+        }
       }
     }
     
