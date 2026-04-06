@@ -54,7 +54,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
         customer_phone: customerDetails?.customerPhone || req.user.phone || '9999999999'
       },
       order_meta: {
-        return_url: `${process.env.FRONTEND_URL || 'https://www.diemex.in'}/dashboard/requirements/payment-status?order_id={order_id}&invoiceId=${invoiceId}`
+        return_url: `${process.env.FRONTEND_URL || 'https://www.diemex.in'}/dashboard/requirements/success?order_id={order_id}&invoiceId=${invoiceId}`
       }
     };
 
