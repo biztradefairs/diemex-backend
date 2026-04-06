@@ -303,8 +303,7 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
   }
 });
 
-// Download invoice PDF (for exhibitors)
-// Download invoice PDF (for exhibitors) - Professional Invoice Style
+// Download invoice PDF (for exhibitors) - SleekBill Style
 router.get('/:id/download', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
@@ -355,6 +354,8 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     
     // Generate PDF using PDFKit
     const PDFDocument = require('pdfkit');
+    const fs = require('fs');
+    const path = require('path');
     
     // Create PDF document
     const doc = new PDFDocument({
@@ -426,48 +427,63 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     };
     
     // Colors
-    const primaryColor = '#1e3a8a'; // Dark Blue
-    const secondaryColor = '#3b82f6'; // Light Blue
+    const primaryColor = '#1e3a8a';
     const borderColor = '#e5e7eb';
     const textColor = '#1f2937';
-    const lightBg = '#f8fafc';
     
-    // ============= HEADER SECTION =============
+    // ============= HEADER SECTION - SleekBill Style =============
     let y = 50;
     
-    // Company Logo / Name
-    doc.fontSize(22)
+    // Try to load and add logo (Left side)
+    const logoUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774094980/speakers/avatars/suexnf73ytsmdzooski2.png';
+    
+    try {
+      // Fetch logo from URL
+      const https = require('https');
+      const logoResponse = await new Promise((resolve, reject) => {
+        https.get(logoUrl, (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        });
+      });
+      
+      // Add logo to PDF (left side)
+      doc.image(logoResponse, 50, y, { width: 60, height: 60 });
+    } catch (err) {
+      console.log('Could not load logo, continuing without it:', err.message);
+    }
+    
+    // Company Name and Details (Right side of logo)
+    doc.fontSize(16)
        .font('Helvetica-Bold')
        .fillColor(primaryColor)
-       .text('MAXX BUSINESS MEDIA PVT. LTD.', { align: 'center' });
+       .text('MAXX BUSINESS MEDIA PVT. LTD.', 130, y + 5, { align: 'left' });
     
-    doc.fontSize(10)
+    doc.fontSize(8)
        .font('Helvetica')
        .fillColor('#4b5563')
-       .text('Exhibition & Event Management', { align: 'center' });
+       .text('T9, Swastik Manandi Arcade, Subedar Chatram Rd,', 130, y + 28, { align: 'left' })
+       .text('VV Giri Colony, Seshadripuram, Bengaluru, Karnataka 560020', 130, y + 40, { align: 'left' });
     
-    doc.moveDown(0.5);
-    
-    // Company Address
-    doc.fontSize(8)
-       .fillColor('#6b7280')
-       .text('501, Corporate Avenue, Andheri East, Mumbai - 400093, Maharashtra, IN', { align: 'center' })
-       .text('Email: info@maxxbusinessmedia.com | Phone: +91 22 1234 5678 | Website: www.maxxbusinessmedia.com', { align: 'center' })
-       .moveDown(0.5);
-    
-    // GST and Other IDs
     doc.fontSize(7)
        .fillColor('#6b7280')
-       .text('GSTIN: 27AAAFM1234G1Z2 | PAN: AAACB1234F | CIN: U12345MH2020PTC123456', { align: 'center' });
+       .text('Email: info@maxxbusinessmedia.com | Phone: +91 22 1234 5678', 130, y + 55, { align: 'left' });
+    
+    // GST and Other IDs below company name
+    doc.fontSize(6)
+       .fillColor('#6b7280')
+       .text('GSTIN: 27AAAFM1234G1Z2 | PAN: AAACB1234F | CIN: U12345MH2020PTC123456', 130, y + 68, { align: 'left' });
     
     // Separator Line
     doc.strokeColor(borderColor)
        .lineWidth(1)
-       .moveTo(50, doc.y + 5)
-       .lineTo(545, doc.y + 5)
+       .moveTo(50, y + 85)
+       .lineTo(545, y + 85)
        .stroke();
     
-    doc.moveDown(1);
+    doc.moveDown(2);
     
     // INVOICE Title
     doc.fontSize(18)
@@ -475,7 +491,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
        .fillColor(primaryColor)
        .text('TAX INVOICE', { align: 'center' });
     
-    doc.moveDown(0.5);
+    doc.moveDown(1);
     
     // ============= INVOICE INFO & BILL TO - Two Column Layout =============
     const infoY = doc.y;
@@ -559,7 +575,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       const gstRate = item.gstRate || 18;
       const cgst = taxableValue * (gstRate / 2) / 100;
       const sgst = taxableValue * (gstRate / 2) / 100;
-      const igst = 0; // For now, assuming domestic
+      const igst = 0;
       return {
         ...item,
         taxableValue,
@@ -587,7 +603,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     doc.rect(50, tableTop - 5, 495, 25).fill('#f0f9ff');
     doc.fillColor(primaryColor);
     
-    doc.fontSize(8)
+    doc.fontSize(7)
        .font('Helvetica-Bold')
        .text('S.No', colPositions.sno, tableTop)
        .text('Item Description', colPositions.description, tableTop, { width: 195 })
@@ -619,11 +635,11 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       totalSGST += item.sgst;
       totalAmount += total;
       
-      doc.fontSize(8)
+      doc.fontSize(7)
          .font('Helvetica')
          .text((index + 1).toString(), colPositions.sno, currentY)
          .text(item.description || 'N/A', colPositions.description, currentY, { width: 190 })
-         .text('', colPositions.hsn, currentY) // HSN placeholder
+         .text('', colPositions.hsn, currentY)
          .text(quantity.toString(), colPositions.qty, currentY)
          .text(formatNumber(price), colPositions.price, currentY)
          .text(formatNumber(taxable), colPositions.taxable, currentY)
@@ -632,24 +648,14 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       
       currentY += 20;
       
-      // Sub-description if available
-      if (item.subDescription) {
-        doc.fontSize(7)
-           .fillColor('#6b7280')
-           .text(item.subDescription, colPositions.description + 10, currentY, { width: 250 });
-        currentY += 15;
-      }
-      
       doc.fillColor(textColor);
       
-      // Add new page if needed
       if (currentY > 700) {
         doc.addPage();
         currentY = 50;
-        // Re-draw headers on new page
         doc.rect(50, currentY - 5, 495, 25).fill('#f0f9ff');
         doc.fillColor(primaryColor);
-        doc.fontSize(8).font('Helvetica-Bold')
+        doc.fontSize(7).font('Helvetica-Bold')
            .text('S.No', colPositions.sno, currentY)
            .text('Item Description', colPositions.description, currentY)
            .text('HSN/SAC', colPositions.hsn, currentY)
@@ -673,8 +679,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     currentY += 10;
     
     // ============= TOTALS SECTION =============
-    const totalIGST = 0;
-    const totalGST = totalCGST + totalSGST + totalIGST;
+    const totalGST = totalCGST + totalSGST;
     const securityDeposit = invoice.metadata?.totals?.deposit || 0;
     const grandTotal = totalAmount + securityDeposit;
     
@@ -682,56 +687,48 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const totalsX = 380;
     let totalsY = currentY;
     
-    doc.fontSize(9);
+    doc.fontSize(8);
     
     doc.text('Total Taxable Value:', totalsX, totalsY)
        .font('Helvetica-Bold')
        .text(formatNumber(totalTaxable), totalsX + 120, totalsY)
        .font('Helvetica');
     
-    totalsY += 18;
+    totalsY += 16;
     doc.text('CGST (9%):', totalsX, totalsY)
        .font('Helvetica-Bold')
        .text(formatNumber(totalCGST), totalsX + 120, totalsY)
        .font('Helvetica');
     
-    totalsY += 18;
+    totalsY += 16;
     doc.text('SGST (9%):', totalsX, totalsY)
        .font('Helvetica-Bold')
        .text(formatNumber(totalSGST), totalsX + 120, totalsY)
        .font('Helvetica');
     
-    if (totalIGST > 0) {
-      totalsY += 18;
-      doc.text('IGST (18%):', totalsX, totalsY)
-         .font('Helvetica-Bold')
-         .text(formatNumber(totalIGST), totalsX + 120, totalsY)
-         .font('Helvetica');
-    }
-    
-    totalsY += 18;
+    totalsY += 16;
     doc.text('Total Tax Amount:', totalsX, totalsY)
        .font('Helvetica-Bold')
        .text(formatNumber(totalGST), totalsX + 120, totalsY)
        .font('Helvetica');
     
     if (securityDeposit > 0) {
-      totalsY += 18;
+      totalsY += 16;
       doc.text('Security Deposit:', totalsX, totalsY)
          .font('Helvetica-Bold')
          .text(formatNumber(securityDeposit), totalsX + 120, totalsY)
          .font('Helvetica');
     }
     
-    totalsY += 22;
+    totalsY += 20;
     doc.font('Helvetica-Bold')
-       .fontSize(11)
+       .fontSize(10)
        .fillColor(primaryColor)
        .text('Grand Total:', totalsX, totalsY)
        .text(formatNumber(grandTotal), totalsX + 120, totalsY);
     
     // Total in words
-    doc.fontSize(8)
+    doc.fontSize(7)
        .font('Helvetica')
        .fillColor('#4b5563')
        .text(`Total Amount (in words): ${numberToWords(grandTotal)}`, 50, totalsY + 10);
@@ -739,50 +736,61 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     totalsY += 40;
     
     // ============= BANK DETAILS SECTION =============
-    doc.fontSize(9)
+    doc.fontSize(8)
        .font('Helvetica-Bold')
        .fillColor(primaryColor)
-       .text('Bank Account Details:', 50, totalsY);
+       .text('Account Holder Name:', 50, totalsY);
     
     doc.fontSize(8)
        .font('Helvetica')
-       .fillColor('#4b5563');
-    
-    const bankY = totalsY + 15;
-    doc.text('Account Holder Name:', 50, bankY)
-       .font('Helvetica-Bold')
-       .text('MAXX BUSINESS MEDIA PRIVATE LIMITED', 140, bankY)
-       .font('Helvetica');
-    
-    doc.text('Bank Name:', 50, bankY + 15)
-       .font('Helvetica-Bold')
-       .text('ICICI BANK LTD.', 140, bankY + 15)
-       .font('Helvetica');
-    
-    doc.text('Account Number:', 50, bankY + 30)
-       .font('Helvetica-Bold')
-       .text('123456789012', 140, bankY + 30)
-       .font('Helvetica');
-    
-    doc.text('IFSC Code:', 50, bankY + 45)
-       .font('Helvetica-Bold')
-       .text('ICIC0001234', 140, bankY + 45)
-       .font('Helvetica');
-    
-    doc.text('Branch:', 50, bankY + 60)
-       .font('Helvetica-Bold')
-       .text('Andheri East, Mumbai', 140, bankY + 60)
-       .font('Helvetica');
-    
-    // ============= TERMS & CONDITIONS =============
-    const termsY = bankY + 90;
+       .fillColor('#4b5563')
+       .text('MAXX BUSINESS MEDIA PRIVATE LIMITED', 160, totalsY);
     
     doc.fontSize(8)
        .font('Helvetica-Bold')
-       .fillColor(primaryColor)
-       .text('Terms & Conditions:', 50, termsY);
+       .text('Bank Name:', 50, totalsY + 16);
     
+    doc.fontSize(8)
+       .font('Helvetica')
+       .fillColor('#4b5563')
+       .text('ICICI BANK LTD.', 160, totalsY + 16);
+    
+    doc.fontSize(8)
+       .font('Helvetica-Bold')
+       .text('Account Number:', 50, totalsY + 32);
+    
+    doc.fontSize(8)
+       .font('Helvetica')
+       .fillColor('#4b5563')
+       .text('123456789012', 160, totalsY + 32);
+    
+    doc.fontSize(8)
+       .font('Helvetica-Bold')
+       .text('IFSC Code:', 50, totalsY + 48);
+    
+    doc.fontSize(8)
+       .font('Helvetica')
+       .fillColor('#4b5563')
+       .text('ICIC0001234', 160, totalsY + 48);
+    
+    doc.fontSize(8)
+       .font('Helvetica-Bold')
+       .text('Branch:', 50, totalsY + 64);
+    
+    doc.fontSize(8)
+       .font('Helvetica')
+       .fillColor('#4b5563')
+       .text('Andheri East, Mumbai', 160, totalsY + 64);
+    
+    const bankY = totalsY + 90;
+    
+    // ============= TERMS & CONDITIONS =============
     doc.fontSize(7)
+       .font('Helvetica-Bold')
+       .fillColor(primaryColor)
+       .text('Terms & Conditions:', 50, bankY);
+    
+    doc.fontSize(6)
        .font('Helvetica')
        .fillColor('#6b7280');
     
@@ -794,33 +802,33 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       '5. This is a computer generated invoice and does not require a physical signature.'
     ];
     
-    let termsYPos = termsY + 15;
+    let termsYPos = bankY + 12;
     terms.forEach(term => {
       doc.text(term, 50, termsYPos);
-      termsYPos += 12;
+      termsYPos += 10;
     });
     
     // ============= NOTES SECTION =============
     if (invoice.notes || invoice.metadata?.notes) {
-      termsYPos += 10;
-      doc.fontSize(8)
+      termsYPos += 8;
+      doc.fontSize(7)
          .font('Helvetica-Bold')
          .fillColor(primaryColor)
          .text('Notes:', 50, termsYPos);
       
-      doc.fontSize(7)
+      doc.fontSize(6)
          .font('Helvetica')
          .fillColor('#6b7280')
-         .text(invoice.notes || invoice.metadata?.notes || '', 50, termsYPos + 15, { width: 495 });
+         .text(invoice.notes || invoice.metadata?.notes || '', 50, termsYPos + 12, { width: 495 });
     }
     
     // ============= FOOTER =============
     const footerY = 780;
     
-    doc.fontSize(7)
+    doc.fontSize(6)
        .fillColor('#9ca3af')
        .text('Thank you for your business!', 50, footerY, { align: 'center', width: 495 })
-       .text(`This invoice is generated on ${new Date().toLocaleString()}`, 50, footerY + 12, { align: 'center', width: 495 });
+       .text(`This invoice is generated on ${new Date().toLocaleString()}`, 50, footerY + 10, { align: 'center', width: 495 });
     
     // Finalize PDF
     doc.end();
@@ -833,7 +841,6 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     });
   }
 });
-
 // Get invoice with details (for exhibitors)
 router.get('/:id/details', authenticateAny, async (req, res) => {
   try {
