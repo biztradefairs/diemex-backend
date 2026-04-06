@@ -354,7 +354,14 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     
     // Generate PDF using PDFKit
     const PDFDocument = require('pdfkit');
-    const path = require('path');
+    
+    // Register a font that supports Unicode (optional but recommended)
+    // If you have a font file, you can register it:
+    // const fontPath = path.join(__dirname, '../fonts/NotoSans-Regular.ttf');
+    // if (fs.existsSync(fontPath)) {
+    //   doc.registerFont('NotoSans', fontPath);
+    //   doc.font('NotoSans');
+    // }
     
     // Create PDF document
     const doc = new PDFDocument({
@@ -369,10 +376,18 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     // Pipe PDF to response
     doc.pipe(res);
     
-    // Helper function to format currency
+    // Helper function to format currency - FIXED VERSION
     const formatCurrency = (amount) => {
-      return `₹${(amount || 0).toLocaleString('en-IN')}`;
+      const num = amount || 0;
+      // Use 'Rs.' which works perfectly in PDFs
+      return `Rs. ${num.toLocaleString('en-IN')}`;
     };
+    
+    // Alternative if you want ₹ symbol (might work depending on PDF viewer)
+    // const formatCurrency = (amount) => {
+    //   const num = amount || 0;
+    //   return `\u20B9 ${num.toLocaleString('en-IN')}`;
+    // };
     
     // Helper function to format date
     const formatDate = (dateString) => {
