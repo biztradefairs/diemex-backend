@@ -671,6 +671,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
 
 
 let y = 50;
+let logoBottom = y + 40
 
 try {
   const imageUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png';
@@ -690,9 +691,9 @@ try {
     doc.fontSize(8)
       .font('Helvetica')
       .fillColor('#6b7280')
-      .text('T9, Swastik Manandi Arcade', 50, y + 20)
-      .text('Seshadripuram, Bengaluru', 50, y + 30)
-      .text('GSTIN: 27AAAFM1234G1Z2', 50, y + 42);
+      .text('T9, Swastik Manandi Arcade', 50, logoBottom + 20)
+      .text('Seshadripuram, Bengaluru', 50, logoBottom + 30)
+      .text('GSTIN: 27AAAFM1234G1Z2', 50, logoBottom + 42);
 
     doc.fontSize(9)
       .fillColor('#374151')
@@ -762,7 +763,7 @@ try {
       doc.text(index + 1, 55, yPos);
       doc.text(item.description || 'N/A', 90, yPos, { width: 220 });
       doc.text(qty, 320, yPos);
-      doc.text(formatNumber(price), 360, yPos);
+      doc.text(`₹ ${formatNumber(price)}`, 360, yPos);
       doc.text(formatNumber(taxable), 410, yPos);
       doc.text(formatNumber(gst), 460, yPos);
       doc.text(formatNumber(total), 500, yPos);
