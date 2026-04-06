@@ -303,440 +303,216 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
   }
 });
 
-// Download invoice PDF (for exhibitors) - Professional Style
 router.get('/:id/download', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const sequelize = require('../config/database').getConnection('mysql');
-    
-    const [invoices] = await sequelize.query(`
-      SELECT * FROM invoices WHERE id = ?
-    `, {
-      replacements: [id]
-    });
-    
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Invoice not found'
-      });
+
+    const [invoices] = await sequelize.query(
+      `SELECT * FROM invoices WHERE id = ?`,
+      { replacements: [id] }
+    );
+
+    if (!invoices.length) {
+      return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
-    
+
     const invoice = invoices[0];
-    
-    // Parse JSON fields
+
     if (invoice.items && typeof invoice.items === 'string') {
       invoice.items = JSON.parse(invoice.items);
     }
     if (invoice.metadata && typeof invoice.metadata === 'string') {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
-    
-    // Get requirement data for full details
-    let requirementData = null;
-    if (invoice.metadata?.requirementsId) {
-      const [requirements] = await sequelize.query(`
-        SELECT * FROM requirements WHERE id = ?
-      `, {
-        replacements: [invoice.metadata.requirementsId]
-      });
-      
-      if (requirements && requirements.length > 0) {
-        const req = requirements[0];
-        if (req.data && typeof req.data === 'string') {
-          requirementData = JSON.parse(req.data);
-        } else {
-          requirementData = req.data;
-        }
-      }
-    }
-    
-    // Generate PDF using PDFKit
+
+    const exhibitorInfo = invoice.metadata?.exhibitorInfo || {};
+    const items = invoice.items || [];
+
     const PDFDocument = require('pdfkit');
-    
-    // Create PDF document
-    const doc = new PDFDocument({
-      margin: 50,
-      size: 'A4',
-      bufferPages: true,
-      info: {
-        Title: `Invoice ${invoice.invoiceNumber}`,
-        Author: 'Maxx Business Media Pvt. Ltd.',
-        Subject: 'Exhibition Invoice'
-      }
-    });
-    
-    // Set response headers for PDF download
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.invoiceNumber}.pdf"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    
-    // Pipe PDF to response
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`
+    );
+
     doc.pipe(res);
-    
-    // ============= HELPER FUNCTIONS =============
-    const formatCurrency = (amount) => {
-      const num = amount || 0;
-      return `Rs. ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    };
-    
-    const formatNumber = (amount) => {
-      const num = amount || 0;
-      return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    };
-    
-    const formatDate = (dateString) => {
-      if (!dateString) return 'N/A';
-      return new Date(dateString).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
+
+    // ================= HELPERS =================
+    const formatNumber = (num) =>
+      (num || 0).toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
       });
-    };
-    
-    const numberToWords = (num) => {
-      if (!num) return 'Zero Rupees Only';
-      const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-      const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-      
-      const numToWords = (n) => {
-        if (n < 20) return a[n];
-        return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
-      };
-      
-      const rupees = Math.floor(num);
-      let words = '';
-      if (rupees >= 10000000) words += numToWords(Math.floor(rupees / 10000000)) + ' Crore ';
-      let r = rupees % 10000000;
-      if (r >= 100000) words += numToWords(Math.floor(r / 100000)) + ' Lakh ';
-      r = r % 100000;
-      if (r >= 1000) words += numToWords(Math.floor(r / 1000)) + ' Thousand ';
-      r = r % 1000;
-      if (r >= 100) words += numToWords(Math.floor(r / 100)) + ' Hundred ';
-      r = r % 100;
-      if (r > 0) words += numToWords(r);
-      
-      words = words.trim() + ' Rupees Only';
-      return words;
-    };
-    
-    // Colors
-    const primaryColor = '#1e3a8a';
-    const borderColor = '#e5e7eb';
-    const textColor = '#1f2937';
-    
-    // ============= HEADER SECTION =============
+
+    const formatDate = (d) =>
+      new Date(d).toLocaleDateString('en-IN');
+
+    // ================= CALCULATIONS =================
+    let totalTaxable = 0;
+    let totalGST = 0;
+    let grandTotal = 0;
+
+    items.forEach((item) => {
+      const taxable = item.total || 0;
+      const gst = taxable * 0.18;
+
+      totalTaxable += taxable;
+      totalGST += gst;
+      grandTotal += taxable + gst;
+    });
+
+    const totalCGST = totalGST / 2;
+    const totalSGST = totalGST / 2;
+
+    // ================= HEADER =================
     let y = 50;
-    
-    // LEFT COLUMN - Company Name and Address
-    doc.fontSize(14)
-       .font('Helvetica-Bold')
-       .fillColor(primaryColor)
-       .text('MAXX BUSINESS MEDIA PVT. LTD.', 50, y);
-    
-    doc.fontSize(7)
-       .font('Helvetica')
-       .fillColor('#6b7280')
-       .text('T9, Swastik Manandi Arcade, Subedar Chatram Rd,', 50, y + 18)
-       .text('VV Giri Colony, Seshadripuram, Bengaluru,', 50, y + 28)
-       .text('Karnataka 560020', 50, y + 38)
-       .text('GSTIN: 27AAAFM1234G1Z2 | PAN: AAACB1234F', 50, y + 50);
-    
-    // RIGHT COLUMN - Invoice Details
-    const exhibitorInfo = invoice.metadata?.exhibitorInfo || requirementData?.generalInfo || {};
-    const invoiceNumber = invoice.invoiceNumber;
-    
+
+    doc.fontSize(16)
+      .font('Helvetica-Bold')
+      .fillColor('#1e3a8a')
+      .text('MAXX BUSINESS MEDIA PVT. LTD.', 50, y);
+
     doc.fontSize(8)
-       .font('Helvetica')
-       .fillColor('#6b7280')
-       .text(`Invoice No: ${invoiceNumber}`, 400, y, { align: 'right' })
-       .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 400, y + 12, { align: 'right' })
-       .text(`Due Date: ${formatDate(invoice.dueDate)}`, 400, y + 24, { align: 'right' });
-    
-    // Separator Line after header
-    doc.strokeColor(borderColor)
-       .lineWidth(1)
-       .moveTo(50, y + 70)
-       .lineTo(545, y + 70)
-       .stroke();
-    
-    // ============= TAX INVOICE TITLE =============
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor(primaryColor)
-       .text('TAX INVOICE', 297, y + 85, { align: 'center' });
-    
-    // Separator Line after title
-    doc.strokeColor(borderColor)
-       .lineWidth(1)
-       .moveTo(50, y + 105)
-       .lineTo(545, y + 105)
-       .stroke();
-    
-    // ============= BILL TO SECTION =============
-    let currentY = y + 125;
-    
-    // Bill To Title with underline
-    doc.fontSize(10)
-       .font('Helvetica-Bold')
-       .fillColor(textColor)
-       .text('Bill To:', 50, currentY);
-    
-    // Line under Bill To
-    doc.strokeColor(borderColor)
-       .lineWidth(0.5)
-       .moveTo(50, currentY + 3)
-       .lineTo(120, currentY + 3)
-       .stroke();
-    
-    currentY += 15;
-    
-    // Bill To Details
+      .font('Helvetica')
+      .fillColor('#6b7280')
+      .text('T9, Swastik Manandi Arcade', 50, y + 20)
+      .text('Seshadripuram, Bengaluru', 50, y + 30)
+      .text('GSTIN: 27AAAFM1234G1Z2', 50, y + 42);
+
     doc.fontSize(9)
-       .font('Helvetica')
-       .fillColor('#4b5563');
-    
+      .fillColor('#374151')
+      .text(`Invoice No: ${invoice.invoiceNumber}`, 350, y, { align: 'right' })
+      .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 350, y + 15, { align: 'right' })
+      .text(`Due Date: ${formatDate(invoice.dueDate)}`, 350, y + 30, { align: 'right' });
+
+    doc.moveTo(50, y + 70).lineTo(550, y + 70).stroke('#e5e7eb');
+
+    // ================= TITLE =================
+    doc.fontSize(20)
+      .font('Helvetica-Bold')
+      .fillColor('#1e3a8a')
+      .text('TAX INVOICE', 50, y + 85, { align: 'center', width: 500 });
+
+    doc.moveTo(50, y + 110).lineTo(550, y + 110).stroke('#e5e7eb');
+
+    // ================= BILL TO =================
+    let currentY = y + 130;
+
+    doc.fontSize(11).font('Helvetica-Bold').text('Bill To:', 50, currentY);
+
+    currentY += 15;
+
+    doc.fontSize(9).font('Helvetica').fillColor('#374151');
+
     doc.text(exhibitorInfo.companyName || 'N/A', 50, currentY);
     currentY += 14;
     doc.text(exhibitorInfo.name || 'N/A', 50, currentY);
     currentY += 14;
-    
-    const address = exhibitorInfo.address || 'Not provided';
-    if (address !== 'Not provided' && address.length > 0) {
-      doc.text(address, 50, currentY, { width: 250 });
-      currentY += 14;
-    }
-    
     doc.text(`Phone: ${exhibitorInfo.phone || 'N/A'}`, 50, currentY);
     currentY += 14;
     doc.text(`Email: ${exhibitorInfo.email || 'N/A'}`, 50, currentY);
     currentY += 14;
-    doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not registered'}`, 50, currentY);
-    currentY += 20;
-    
-    // ============= ITEMS TABLE =============
-    const items = invoice.items || [];
-    
-    if (items.length === 0) {
-      doc.text('No items found for this invoice', 50, currentY);
-    } else {
-      // Table Headers
-      const colX = {
-        sno: 50,
-        description: 70,
-        qty: 300,
-        price: 350,
-        taxable: 400,
-        gst: 450,
-        amount: 500
-      };
-      
-      // Header background
-      doc.rect(50, currentY - 3, 495, 18).fill('#f0f9ff');
-      doc.fillColor(primaryColor);
-      doc.fontSize(8).font('Helvetica-Bold');
-      
-      doc.text('S.No', colX.sno, currentY);
-      doc.text('Description', colX.description, currentY, { width: 225 });
-      doc.text('Qty', colX.qty, currentY);
-      doc.text('Price', colX.price, currentY);
-      doc.text('Taxable', colX.taxable, currentY);
-      doc.text('GST', colX.gst, currentY);
-      doc.text('Amount', colX.amount, currentY);
-      
-      doc.fillColor(textColor);
-      
-      // Table Rows
-      let tableY = currentY + 18;
-      let totalTaxable = 0;
-      let totalCGST = 0;
-      let totalSGST = 0;
-      let totalAmount = 0;
-      
-      items.forEach((item, index) => {
-        const quantity = item.quantity || 1;
-        const price = item.unitPrice || 0;
-        const taxable = item.total || (quantity * price);
-        const gstAmount = taxable * 0.18;
-        const cgst = gstAmount / 2;
-        const sgst = gstAmount / 2;
-        const total = taxable + gstAmount;
-        
-        totalTaxable += taxable;
-        totalCGST += cgst;
-        totalSGST += sgst;
-        totalAmount += total;
-        
-        doc.fontSize(8).font('Helvetica');
-        doc.text((index + 1).toString(), colX.sno, tableY);
-        doc.text(item.description || 'N/A', colX.description, tableY, { width: 225 });
-        doc.text(quantity.toString(), colX.qty, tableY);
-        doc.text(formatNumber(price), colX.price, tableY);
-        doc.text(formatNumber(taxable), colX.taxable, tableY);
-        doc.text(formatNumber(gstAmount), colX.gst, tableY);
-        doc.text(formatNumber(total), colX.amount, tableY);
-        
-        tableY += 16;
-        
-        if (tableY > 700) {
-          doc.addPage();
-          tableY = 50;
-          // Re-draw headers on new page
-          doc.rect(50, tableY - 3, 495, 18).fill('#f0f9ff');
-          doc.fillColor(primaryColor);
-          doc.fontSize(8).font('Helvetica-Bold');
-          doc.text('S.No', colX.sno, tableY);
-          doc.text('Description', colX.description, tableY, { width: 225 });
-          doc.text('Qty', colX.qty, tableY);
-          doc.text('Price', colX.price, tableY);
-          doc.text('Taxable', colX.taxable, tableY);
-          doc.text('GST', colX.gst, tableY);
-          doc.text('Amount', colX.amount, tableY);
-          doc.fillColor(textColor);
-          tableY += 18;
-        }
-      });
-      
-      // Table Footer Line
-      doc.strokeColor(borderColor)
-         .lineWidth(0.5)
-         .moveTo(50, tableY)
-         .lineTo(545, tableY)
-         .stroke();
-      
-      tableY += 10;
-      
-      // ============= TOTALS SECTION =============
-      const totalGST = totalCGST + totalSGST;
-      const securityDeposit = invoice.metadata?.totals?.deposit || 0;
-      const grandTotal = totalAmount + securityDeposit;
-      
-      doc.fontSize(8);
-      
-      // Right-aligned totals
-      const totalsStartX = 380;
-      let totalsY = tableY;
-      
-      doc.text('Total Taxable Value:', totalsStartX, totalsY);
-      doc.font('Helvetica-Bold').text(formatNumber(totalTaxable), 510, totalsY, { align: 'right' });
-      doc.font('Helvetica');
-      
-      totalsY += 14;
-      doc.text('CGST (9%):', totalsStartX, totalsY);
-      doc.font('Helvetica-Bold').text(formatNumber(totalCGST), 510, totalsY, { align: 'right' });
-      doc.font('Helvetica');
-      
-      totalsY += 14;
-      doc.text('SGST (9%):', totalsStartX, totalsY);
-      doc.font('Helvetica-Bold').text(formatNumber(totalSGST), 510, totalsY, { align: 'right' });
-      doc.font('Helvetica');
-      
-      totalsY += 14;
-      doc.text('Total Tax Amount:', totalsStartX, totalsY);
-      doc.font('Helvetica-Bold').text(formatNumber(totalGST), 510, totalsY, { align: 'right' });
-      doc.font('Helvetica');
-      
-      if (securityDeposit > 0) {
-        totalsY += 14;
-        doc.text('Security Deposit:', totalsStartX, totalsY);
-        doc.font('Helvetica-Bold').text(formatNumber(securityDeposit), 510, totalsY, { align: 'right' });
-        doc.font('Helvetica');
-      }
-      
-      totalsY += 16;
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(primaryColor);
-      doc.text('Grand Total:', totalsStartX, totalsY);
-      doc.text(formatNumber(grandTotal), 510, totalsY, { align: 'right' });
-      
-      // Total in words
-      doc.fontSize(7).font('Helvetica').fillColor('#4b5563');
-      doc.text(`Total Amount (in words): ${numberToWords(grandTotal)}`, 50, totalsY + 12);
-      
-      totalsY += 45;
-      
-      // ============= BANK DETAILS =============
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(primaryColor);
-      doc.text('Bank Account Details:', 50, totalsY);
-      
-      // Line under Bank Details
-      doc.strokeColor(borderColor)
-         .lineWidth(0.5)
-         .moveTo(50, totalsY + 3)
-         .lineTo(170, totalsY + 3)
-         .stroke();
-      
-      const bankStartY = totalsY + 18;
-      
-      doc.fontSize(8).font('Helvetica').fillColor('#4b5563');
-      doc.text('Account Holder:', 50, bankStartY);
-      doc.font('Helvetica-Bold').text('MAXX BUSINESS MEDIA PRIVATE LIMITED', 140, bankStartY);
-      doc.font('Helvetica');
-      
-      doc.text('Bank Name:', 50, bankStartY + 16);
-      doc.font('Helvetica-Bold').text('ICICI BANK LTD.', 140, bankStartY + 16);
-      doc.font('Helvetica');
-      
-      doc.text('Account Number:', 50, bankStartY + 32);
-      doc.font('Helvetica-Bold').text('123456789012', 140, bankStartY + 32);
-      doc.font('Helvetica');
-      
-      doc.text('IFSC Code:', 50, bankStartY + 48);
-      doc.font('Helvetica-Bold').text('ICIC0001234', 140, bankStartY + 48);
-      doc.font('Helvetica');
-      
-      doc.text('Branch:', 50, bankStartY + 64);
-      doc.font('Helvetica-Bold').text('Andheri East, Mumbai', 140, bankStartY + 64);
-      doc.font('Helvetica');
-      
-      const termsStartY = bankStartY + 90;
-      
-      // ============= TERMS & CONDITIONS =============
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(primaryColor);
-      doc.text('Terms & Conditions:', 50, termsStartY);
-      
-      // Line under Terms
-      doc.strokeColor(borderColor)
-         .lineWidth(0.5)
-         .moveTo(50, termsStartY + 3)
-         .lineTo(170, termsStartY + 3)
-         .stroke();
-      
-      doc.fontSize(7).font('Helvetica').fillColor('#6b7280');
-      const terms = [
-        '1. All payments are non-refundable after the event starts.',
-        '2. Payment should be made to the mentioned account only.',
-        '3. The 30-day return policy is applicable to non-broken products only.',
-        '4. All disputes are subject to Mumbai jurisdiction.',
-        '5. This is a computer generated invoice and does not require a physical signature.'
-      ];
-      
-      let termsY = termsStartY + 15;
-      terms.forEach(term => {
-        doc.text(term, 50, termsY);
-        termsY += 10;
-      });
-    }
-    
-    // ============= FOOTER =============
-    const footerY = 780;
-    doc.fontSize(6).fillColor('#9ca3af');
-    doc.text('Thank you for your business!', 50, footerY, { align: 'center', width: 495 });
-    doc.text(`Generated on ${new Date().toLocaleString()}`, 50, footerY + 10, { align: 'center', width: 495 });
-    
-    // Finalize PDF
+    doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not provided'}`, 50, currentY);
+
+    // ================= TABLE =================
+    let tableY = currentY + 30;
+
+    doc.rect(50, tableY, 500, 20).fill('#e0f2fe');
+
+    doc.fillColor('#1e3a8a')
+      .font('Helvetica-Bold')
+      .fontSize(9);
+
+    doc.text('S.No', 55, tableY + 5);
+    doc.text('Description', 90, tableY + 5);
+    doc.text('Qty', 320, tableY + 5);
+    doc.text('Price', 360, tableY + 5);
+    doc.text('Taxable', 410, tableY + 5);
+    doc.text('GST', 460, tableY + 5);
+    doc.text('Amount', 500, tableY + 5);
+
+    tableY += 25;
+
+    doc.font('Helvetica').fillColor('#111827');
+
+    items.forEach((item, index) => {
+      const yPos = tableY + index * 18;
+
+      const qty = item.quantity || 1;
+      const price = item.unitPrice || 0;
+      const taxable = item.total || qty * price;
+      const gst = taxable * 0.18;
+      const total = taxable + gst;
+
+      doc.text(index + 1, 55, yPos);
+      doc.text(item.description || 'N/A', 90, yPos, { width: 220 });
+      doc.text(qty, 320, yPos);
+      doc.text(formatNumber(price), 360, yPos);
+      doc.text(formatNumber(taxable), 410, yPos);
+      doc.text(formatNumber(gst), 460, yPos);
+      doc.text(formatNumber(total), 500, yPos);
+    });
+
+    // ================= TOTAL =================
+    let totalsY = tableY + items.length * 20 + 20;
+
+    doc.fontSize(9).font('Helvetica');
+
+    doc.text('Total Taxable Value:', 350, totalsY);
+    doc.text(formatNumber(totalTaxable), 500, totalsY, { align: 'right' });
+
+    totalsY += 15;
+
+    doc.text('CGST (9%):', 350, totalsY);
+    doc.text(formatNumber(totalCGST), 500, totalsY, { align: 'right' });
+
+    totalsY += 15;
+
+    doc.text('SGST (9%):', 350, totalsY);
+    doc.text(formatNumber(totalSGST), 500, totalsY, { align: 'right' });
+
+    totalsY += 15;
+
+    doc.text('Total Tax:', 350, totalsY);
+    doc.text(formatNumber(totalGST), 500, totalsY, { align: 'right' });
+
+    totalsY += 20;
+
+    doc.font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor('#1e3a8a');
+
+    doc.text('Grand Total:', 350, totalsY);
+    doc.text(formatNumber(grandTotal), 500, totalsY, { align: 'right' });
+
+    // ================= TERMS =================
+    let termsY = totalsY + 40;
+
+    doc.fontSize(9).font('Helvetica-Bold').text('Terms & Conditions:', 50, termsY);
+
+    termsY += 15;
+
+    doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
+
+    [
+      '1. Payment should be made to mentioned account.',
+      '2. No refund after event starts.',
+      '3. Disputes subject to jurisdiction.'
+    ].forEach((term) => {
+      doc.text(term, 50, termsY);
+      termsY += 12;
+    });
+
     doc.end();
-    
-    console.log(`✅ PDF generated successfully for invoice: ${invoice.invoiceNumber}`);
-    
+
   } catch (error) {
-    console.error('❌ Error generating PDF:', error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
+    console.error('PDF Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 // Get invoice with details (for exhibitors)
