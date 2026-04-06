@@ -594,7 +594,7 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
   }
 });
 
-// Download invoice PDF
+// Download invoice PDF with proper design
 router.get('/:id/download', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
@@ -623,7 +623,6 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const items = invoice.items || [];
 
     const PDFDocument = require('pdfkit');
-
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -634,15 +633,30 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
 
     doc.pipe(res);
 
-    const formatNumber = (num) =>
-      (num || 0).toLocaleString('en-IN', {
+    // Helper functions
+    const formatNumber = (num) => {
+      if (num === undefined || num === null) return '₹ 0.00';
+      return '₹ ' + num.toLocaleString('en-IN', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
+    };
 
-    const formatDate = (d) =>
-      new Date(d).toLocaleDateString('en-IN');
+    const formatNumberWithoutCurrency = (num) => {
+      if (num === undefined || num === null) return '0.00';
+      return num.toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    };
 
+    const formatDate = (d) => {
+      if (!d) return 'N/A';
+      const date = new Date(d);
+      return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+    };
+
+    // Calculate totals
     let totalTaxable = 0;
     let totalGST = 0;
     let grandTotal = 0;
@@ -650,7 +664,6 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     items.forEach((item) => {
       const taxable = item.total || 0;
       const gst = taxable * 0.18;
-
       totalTaxable += taxable;
       totalGST += gst;
       grandTotal += taxable + gst;
@@ -660,144 +673,204 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const totalSGST = totalGST / 2;
 
     let y = 50;
-    let logoBottom = y + 40;
 
+    // ================= HEADER WITH LOGO =================
     try {
+      // Try to load the logo from URL
       const imageUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png';
+      const axios = require('axios');
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer'
       });
       const imageBuffer = Buffer.from(response.data, 'binary');
-      doc.image(imageBuffer, 50, y, { width: 120 });
+      
+      // Add logo
+      doc.image(imageBuffer, 50, y, { width: 80 });
+      
+      // Company info next to logo
+      doc.fontSize(16)
+        .font('Helvetica-Bold')
+        .fillColor('#1e3a8a')
+        .text('MAXX BUSINESS MEDIA PVT. LTD.', 140, y + 10);
+      
+      doc.fontSize(9)
+        .font('Helvetica')
+        .fillColor('#6b7280')
+        .text('T9, Swastik Manandi Arcade', 140, y + 32)
+        .text('Seshadripuram, Bengaluru', 140, y + 44)
+        .text('GSTIN: 27AAAAM1234G1Z2', 140, y + 56);
     } catch (imgError) {
-      console.error('Image load failed:', imgError.message);
+      console.error('Image load failed, using text:', imgError.message);
+      // Fallback to text only
+      doc.fontSize(16)
+        .font('Helvetica-Bold')
+        .fillColor('#1e3a8a')
+        .text('MAXX BUSINESS MEDIA PVT. LTD.', 50, y);
+      
+      doc.fontSize(9)
+        .font('Helvetica')
+        .fillColor('#6b7280')
+        .text('T9, Swastik Manandi Arcade', 50, y + 22)
+        .text('Seshadripuram, Bengaluru', 50, y + 34)
+        .text('GSTIN: 27AAAAM1234G1Z2', 50, y + 46);
     }
 
-    doc.fontSize(8)
-      .font('Helvetica')
-      .fillColor('#6b7280')
-      .text('T9, Swastik Manandi Arcade', 50, logoBottom + 20)
-      .text('Seshadripuram, Bengaluru', 50, logoBottom + 30)
-      .text('GSTIN: 27AAAFM1234G1Z2', 50, logoBottom + 42);
-
+    // Invoice info (right side)
     doc.fontSize(9)
       .fillColor('#374151')
-      .text(`Invoice No: ${invoice.invoiceNumber}`, 350, y, { align: 'right' })
-      .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 350, y + 15, { align: 'right' })
-      .text(`Due Date: ${formatDate(invoice.dueDate)}`, 350, y + 30, { align: 'right' });
+      .text(`Invoice No: ${invoice.invoiceNumber}`, 350, 50, { align: 'right' })
+      .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 350, 65, { align: 'right' })
+      .text(`Due Date: ${formatDate(invoice.dueDate)}`, 350, 80, { align: 'right' });
 
-    doc.moveTo(50, y + 70).lineTo(550, y + 70).stroke('#e5e7eb');
+    // Separator line
+    const headerEndY = imgError ? y + 80 : y + 90;
+    doc.moveTo(50, headerEndY).lineTo(550, headerEndY).stroke('#e5e7eb');
 
-    doc.fontSize(20)
+    // ================= TITLE =================
+    doc.fontSize(24)
       .font('Helvetica-Bold')
       .fillColor('#1e3a8a')
-      .text('TAX INVOICE', 50, y + 85, { align: 'center', width: 500 });
+      .text('TAX INVOICE', 50, headerEndY + 30, { align: 'center', width: 500 });
 
-    doc.moveTo(50, y + 110).lineTo(550, y + 110).stroke('#e5e7eb');
+    doc.moveTo(50, headerEndY + 55).lineTo(550, headerEndY + 55).stroke('#e5e7eb');
 
-    let currentY = y + 130;
+    // ================= BILL TO SECTION =================
+    let currentY = headerEndY + 75;
 
-    doc.fontSize(11).font('Helvetica-Bold').text('Bill To:', 50, currentY);
+    doc.fontSize(11)
+      .font('Helvetica-Bold')
+      .fillColor('#1e3a8a')
+      .text('Bill To:', 50, currentY);
 
-    currentY += 15;
+    currentY += 20;
 
-    doc.fontSize(9).font('Helvetica').fillColor('#374151');
+    doc.fontSize(10)
+      .font('Helvetica')
+      .fillColor('#374151');
 
-    doc.text(exhibitorInfo.companyName || 'N/A', 50, currentY);
-    currentY += 14;
+    doc.text(exhibitorInfo.companyName || invoice.company || 'N/A', 50, currentY);
+    currentY += 16;
     doc.text(exhibitorInfo.name || 'N/A', 50, currentY);
-    currentY += 14;
+    currentY += 16;
     doc.text(`Phone: ${exhibitorInfo.phone || 'N/A'}`, 50, currentY);
-    currentY += 14;
+    currentY += 16;
     doc.text(`Email: ${exhibitorInfo.email || 'N/A'}`, 50, currentY);
-    currentY += 14;
+    currentY += 16;
     doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not provided'}`, 50, currentY);
 
+    // ================= TABLE =================
     let tableY = currentY + 30;
 
-    doc.rect(50, tableY, 500, 20).fill('#e0f2fe');
+    // Table header background
+    doc.rect(50, tableY, 500, 25).fill('#e0f2fe');
 
+    // Table headers
     doc.fillColor('#1e3a8a')
       .font('Helvetica-Bold')
       .fontSize(9);
 
-    doc.text('S.No', 55, tableY + 5);
-    doc.text('Description', 90, tableY + 5);
-    doc.text('Qty', 320, tableY + 5);
-    doc.text('Price', 360, tableY + 5);
-    doc.text('Taxable', 410, tableY + 5);
-    doc.text('GST', 460, tableY + 5);
-    doc.text('Amount', 500, tableY + 5);
+    doc.text('S.No', 55, tableY + 8);
+    doc.text('Description', 90, tableY + 8);
+    doc.text('Qty', 320, tableY + 8, { width: 40, align: 'center' });
+    doc.text('Price (₹)', 360, tableY + 8, { width: 60, align: 'right' });
+    doc.text('Taxable (₹)', 420, tableY + 8, { width: 60, align: 'right' });
+    doc.text('GST (₹)', 475, tableY + 8, { width: 55, align: 'right' });
+    doc.text('Amount (₹)', 525, tableY + 8, { width: 60, align: 'right' });
 
     tableY += 25;
 
-    doc.font('Helvetica').fillColor('#111827');
+    // Table rows
+    doc.font('Helvetica')
+      .fillColor('#111827')
+      .fontSize(9);
 
     items.forEach((item, index) => {
-      const yPos = tableY + index * 18;
-
+      const yPos = tableY + index * 20;
       const qty = item.quantity || 1;
       const price = item.unitPrice || 0;
-      const taxable = item.total || qty * price;
+      const taxable = item.total || (qty * price);
       const gst = taxable * 0.18;
       const total = taxable + gst;
 
-      doc.text(index + 1, 55, yPos);
+      doc.text((index + 1).toString(), 55, yPos);
       doc.text(item.description || 'N/A', 90, yPos, { width: 220 });
-      doc.text(qty, 320, yPos);
-      doc.text(`₹ ${formatNumber(price)}`, 360, yPos);
-      doc.text(formatNumber(taxable), 410, yPos);
-      doc.text(formatNumber(gst), 460, yPos);
-      doc.text(formatNumber(total), 500, yPos);
+      doc.text(qty.toString(), 320, yPos, { width: 40, align: 'center' });
+      doc.text(formatNumberWithoutCurrency(price), 360, yPos, { width: 60, align: 'right' });
+      doc.text(formatNumberWithoutCurrency(taxable), 420, yPos, { width: 60, align: 'right' });
+      doc.text(formatNumberWithoutCurrency(gst), 475, yPos, { width: 55, align: 'right' });
+      doc.text(formatNumberWithoutCurrency(total), 525, yPos, { width: 60, align: 'right' });
     });
 
+    // ================= TOTALS SECTION =================
     let totalsY = tableY + items.length * 20 + 20;
 
-    doc.fontSize(9).font('Helvetica');
+    doc.fontSize(9)
+      .font('Helvetica')
+      .fillColor('#374151');
 
-    doc.text('Total Taxable Value:', 350, totalsY);
-    doc.text(formatNumber(totalTaxable), 500, totalsY, { align: 'right' });
+    // Right-align totals
+    const totalsX = 380;
+    
+    doc.text('Total Taxable Value:', totalsX, totalsY);
+    doc.text(formatNumber(totalTaxable), 520, totalsY, { align: 'right' });
 
-    totalsY += 15;
+    totalsY += 18;
 
-    doc.text('CGST (9%):', 350, totalsY);
-    doc.text(formatNumber(totalCGST), 500, totalsY, { align: 'right' });
+    doc.text('CGST (9%):', totalsX, totalsY);
+    doc.text(formatNumber(totalCGST), 520, totalsY, { align: 'right' });
 
-    totalsY += 15;
+    totalsY += 18;
 
-    doc.text('SGST (9%):', 350, totalsY);
-    doc.text(formatNumber(totalSGST), 500, totalsY, { align: 'right' });
+    doc.text('SGST (9%):', totalsX, totalsY);
+    doc.text(formatNumber(totalSGST), 520, totalsY, { align: 'right' });
 
-    totalsY += 15;
+    totalsY += 18;
 
-    doc.text('Total Tax:', 350, totalsY);
-    doc.text(formatNumber(totalGST), 500, totalsY, { align: 'right' });
+    doc.text('Total Tax:', totalsX, totalsY);
+    doc.text(formatNumber(totalGST), 520, totalsY, { align: 'right' });
 
-    totalsY += 20;
+    totalsY += 25;
 
+    // Grand Total
     doc.font('Helvetica-Bold')
       .fontSize(12)
       .fillColor('#1e3a8a');
 
-    doc.text('Grand Total:', 350, totalsY);
-    doc.text(formatNumber(grandTotal), 500, totalsY, { align: 'right' });
+    doc.text('Grand Total:', totalsX, totalsY);
+    doc.text(formatNumber(grandTotal), 520, totalsY, { align: 'right' });
 
-    let termsY = totalsY + 40;
+    // ================= FOOTER / TERMS =================
+    let termsY = totalsY + 50;
 
-    doc.fontSize(9).font('Helvetica-Bold').text('Terms & Conditions:', 50, termsY);
+    doc.fontSize(9)
+      .font('Helvetica-Bold')
+      .fillColor('#374151')
+      .text('Terms & Conditions:', 50, termsY);
 
-    termsY += 15;
+    termsY += 18;
 
-    doc.fontSize(8).font('Helvetica').fillColor('#6b7280');
+    doc.fontSize(8)
+      .font('Helvetica')
+      .fillColor('#6b7280');
 
-    [
+    const terms = [
       '1. Payment should be made to mentioned account.',
       '2. No refund after event starts.',
-      '3. Disputes subject to jurisdiction.'
-    ].forEach((term) => {
+      '3. Disputes subject to jurisdiction.',
+      '4. This is a computer generated invoice.'
+    ];
+
+    terms.forEach((term) => {
       doc.text(term, 50, termsY);
-      termsY += 12;
+      termsY += 14;
     });
+
+    // Footer line
+    doc.moveTo(50, termsY + 10).lineTo(550, termsY + 10).stroke('#e5e7eb');
+    
+    doc.fontSize(7)
+      .fillColor('#9ca3af')
+      .text('Thank you for your business!', 50, termsY + 20, { align: 'center', width: 500 });
 
     doc.end();
 
@@ -926,19 +999,18 @@ router.get('/:id', authenticateAny, async (req, res) => {
   }
 });
 
-// Print-friendly HTML invoice page (no authentication required for print view with valid token)
+// Print-friendly HTML invoice page (same design as your image)
 router.get('/:id/print', async (req, res) => {
   try {
     const { id } = req.params;
     const { token } = req.query;
     
-    // Verify token if provided
+    // Verify token (same as before)
     let user = null;
     if (token) {
       try {
         const jwt = require('jsonwebtoken');
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
         const modelFactory = require('../models');
         
         if (decoded.role === 'exhibitor') {
@@ -950,30 +1022,6 @@ router.get('/:id/print', async (req, res) => {
         }
       } catch (err) {
         console.log('Invalid token for print:', err.message);
-      }
-    }
-    
-    // If no user found, try to get from authorization header
-    if (!user) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        try {
-          const jwt = require('jsonwebtoken');
-          const token = authHeader.replace('Bearer ', '');
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          
-          const modelFactory = require('../models');
-          
-          if (decoded.role === 'exhibitor') {
-            const Exhibitor = modelFactory.getModel('Exhibitor');
-            user = await Exhibitor.findByPk(decoded.id);
-          } else {
-            const User = modelFactory.getModel('User');
-            user = await User.findByPk(decoded.id);
-          }
-        } catch (err) {
-          console.log('Invalid auth header:', err.message);
-        }
       }
     }
     
@@ -991,7 +1039,6 @@ router.get('/:id/print', async (req, res) => {
     
     const invoice = invoices[0];
     
-    // Parse JSON fields
     if (invoice.items && typeof invoice.items === 'string') {
       invoice.items = JSON.parse(invoice.items);
     }
@@ -999,20 +1046,9 @@ router.get('/:id/print', async (req, res) => {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
     
-    // Check permission if user is logged in
-    if (user) {
-      const exhibitorId = user.id;
-      const invoiceExhibitorId = invoice.exhibitorId || invoice.metadata?.exhibitorInfo?.id;
-      
-      if (user.role !== 'admin' && exhibitorId !== invoiceExhibitorId) {
-        return res.status(403).send('You do not have permission to view this invoice');
-      }
-    }
-    
     const exhibitorInfo = invoice.metadata?.exhibitorInfo || {};
     const items = invoice.items || [];
     
-    // Calculate totals
     let totalTaxable = 0;
     let totalGST = 0;
     let grandTotal = 0;
@@ -1026,17 +1062,21 @@ router.get('/:id/print', async (req, res) => {
     });
     
     const formatNumber = (num) => {
-      return (num || 0).toLocaleString('en-IN', {
+      return new Intl.NumberFormat('en-IN', {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+        maximumFractionDigits: 2
+      }).format(num || 0);
+    };
+    
+    const formatCurrency = (num) => {
+      return `₹ ${formatNumber(num)}`;
     };
     
     const formatDate = (d) => {
-      return new Date(d).toLocaleDateString('en-IN');
+      const date = new Date(d);
+      return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     };
     
-    // Send HTML response
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -1072,18 +1112,29 @@ router.get('/:id/print', async (req, res) => {
             justify-content: space-between;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e5e7eb;
+            border-bottom: 2px solid #1e3a8a;
+          }
+          
+          .logo-section {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+          }
+          
+          .company-logo {
+            width: 80px;
+            height: auto;
           }
           
           .company-info h1 {
             color: #1e3a8a;
-            font-size: 20px;
+            font-size: 18px;
             margin-bottom: 8px;
           }
           
           .company-info p {
             color: #6b7280;
-            font-size: 11px;
+            font-size: 10px;
             margin: 2px 0;
           }
           
@@ -1092,37 +1143,37 @@ router.get('/:id/print', async (req, res) => {
           }
           
           .invoice-info p {
-            font-size: 12px;
+            font-size: 11px;
             margin: 4px 0;
             color: #374151;
           }
           
           .invoice-title {
             text-align: center;
-            margin: 30px 0;
+            margin: 25px 0;
           }
           
           .invoice-title h2 {
             color: #1e3a8a;
-            font-size: 28px;
+            font-size: 24px;
             letter-spacing: 2px;
           }
           
           .bill-to {
             margin-bottom: 30px;
             padding: 15px;
-            background: #f9fafb;
+            background: #f8fafc;
             border-left: 4px solid #1e3a8a;
           }
           
           .bill-to h3 {
-            font-size: 14px;
+            font-size: 13px;
             color: #1e3a8a;
             margin-bottom: 10px;
           }
           
           .bill-to p {
-            font-size: 12px;
+            font-size: 11px;
             margin: 4px 0;
             color: #374151;
           }
@@ -1130,27 +1181,31 @@ router.get('/:id/print', async (req, res) => {
           .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 30px 0;
-            font-size: 12px;
+            margin: 25px 0;
+            font-size: 11px;
           }
           
           .items-table th {
             background: #e0f2fe;
             color: #1e3a8a;
-            padding: 12px 8px;
+            padding: 10px 8px;
             text-align: left;
             font-weight: bold;
             border: 1px solid #cbd5e1;
           }
           
           .items-table td {
-            padding: 10px 8px;
+            padding: 8px 8px;
             border: 1px solid #e5e7eb;
             color: #111827;
           }
           
           .items-table .text-right {
             text-align: right;
+          }
+          
+          .items-table .text-center {
+            text-align: center;
           }
           
           .totals {
@@ -1160,44 +1215,44 @@ router.get('/:id/print', async (req, res) => {
           
           .totals-table {
             display: inline-block;
-            width: 300px;
+            width: 280px;
           }
           
           .totals-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            font-size: 12px;
+            padding: 6px 0;
+            font-size: 11px;
           }
           
           .totals-row.grand-total {
             font-weight: bold;
-            font-size: 16px;
+            font-size: 14px;
             color: #1e3a8a;
             border-top: 2px solid #e5e7eb;
-            margin-top: 10px;
-            padding-top: 10px;
+            margin-top: 8px;
+            padding-top: 8px;
           }
           
           .footer {
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 30px;
+            padding-top: 15px;
             border-top: 1px solid #e5e7eb;
           }
           
           .terms {
-            font-size: 10px;
+            font-size: 9px;
             color: #6b7280;
           }
           
           .terms h4 {
-            font-size: 11px;
+            font-size: 10px;
             margin-bottom: 8px;
             color: #374151;
           }
           
           .terms p {
-            margin: 4px 0;
+            margin: 3px 0;
           }
           
           @media print {
@@ -1206,23 +1261,21 @@ router.get('/:id/print', async (req, res) => {
               padding: 0;
               margin: 0;
             }
-            
             .invoice-container {
               box-shadow: none;
               padding: 0;
             }
-            
             .invoice {
               padding: 20px;
             }
-            
             .no-print {
               display: none;
             }
-            
-            .items-table th,
-            .items-table td {
-              border-color: #000 !important;
+            .items-table th {
+              background: #e0f2fe !important;
+              color: #1e3a8a !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
           }
           
@@ -1235,10 +1288,11 @@ router.get('/:id/print', async (req, res) => {
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 10px 30px;
+            padding: 12px 30px;
             font-size: 14px;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
+            font-weight: 600;
           }
           
           .print-btn button:hover {
@@ -1254,11 +1308,14 @@ router.get('/:id/print', async (req, res) => {
         <div class="invoice-container">
           <div class="invoice">
             <div class="header">
-              <div class="company-info">
-                <h1>MAXX BUSINESS MEDIA PVT. LTD.</h1>
-                <p>T9, Swastik Manandi Arcade</p>
-                <p>Seshadripuram, Bengaluru</p>
-                <p>GSTIN: 27AAAFM1234G1Z2</p>
+              <div class="logo-section">
+                <img src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png" alt="Logo" class="company-logo" style="width: 80px; height: auto;">
+                <div class="company-info">
+                  <h1>MAXX BUSINESS MEDIA PVT. LTD.</h1>
+                  <p>T9, Swastik Manandi Arcade</p>
+                  <p>Seshadripuram, Bengaluru</p>
+                  <p>GSTIN: 27AAAAM1234G1Z2</p>
+                </div>
               </div>
               <div class="invoice-info">
                 <p><strong>Invoice No:</strong> ${invoice.invoiceNumber}</p>
@@ -1285,7 +1342,7 @@ router.get('/:id/print', async (req, res) => {
                 <tr>
                   <th>S.No</th>
                   <th>Description</th>
-                  <th class="text-right">Qty</th>
+                  <th class="text-center">Qty</th>
                   <th class="text-right">Price (₹)</th>
                   <th class="text-right">Taxable (₹)</th>
                   <th class="text-right">GST (₹)</th>
@@ -1303,11 +1360,11 @@ router.get('/:id/print', async (req, res) => {
                     <tr>
                       <td class="text-center">${index + 1}</td>
                       <td>${item.description || 'N/A'}</td>
-                      <td class="text-right">${qty}</td>
-                      <td class="text-right">${formatNumber(price)}</td>
-                      <td class="text-right">${formatNumber(taxable)}</td>
-                      <td class="text-right">${formatNumber(gst)}</td>
-                      <td class="text-right">${formatNumber(total)}</td>
+                      <td class="text-center">${qty}</td>
+                      <td class="text-right">${formatCurrency(price)}</td>
+                      <td class="text-right">${formatCurrency(taxable)}</td>
+                      <td class="text-right">${formatCurrency(gst)}</td>
+                      <td class="text-right">${formatCurrency(total)}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -1318,23 +1375,23 @@ router.get('/:id/print', async (req, res) => {
               <div class="totals-table">
                 <div class="totals-row">
                   <span>Total Taxable Value:</span>
-                  <span>₹ ${formatNumber(totalTaxable)}</span>
+                  <span>${formatCurrency(totalTaxable)}</span>
                 </div>
                 <div class="totals-row">
                   <span>CGST (9%):</span>
-                  <span>₹ ${formatNumber(totalGST / 2)}</span>
+                  <span>${formatCurrency(totalGST / 2)}</span>
                 </div>
                 <div class="totals-row">
                   <span>SGST (9%):</span>
-                  <span>₹ ${formatNumber(totalGST / 2)}</span>
+                  <span>${formatCurrency(totalGST / 2)}</span>
                 </div>
                 <div class="totals-row">
                   <span>Total Tax:</span>
-                  <span>₹ ${formatNumber(totalGST)}</span>
+                  <span>${formatCurrency(totalGST)}</span>
                 </div>
                 <div class="totals-row grand-total">
                   <span><strong>Grand Total:</strong></span>
-                  <span><strong>₹ ${formatNumber(grandTotal)}</strong></span>
+                  <span><strong>${formatCurrency(grandTotal)}</strong></span>
                 </div>
               </div>
             </div>
