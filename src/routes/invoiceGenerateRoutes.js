@@ -1430,77 +1430,121 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
   }
 });
 
-// Update invoice status (admin) - KEEP THIS FUNCTIONALITY
 router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body;
     
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Status is required'
+      });
+    }
+    
     const sequelize = require('../config/database').getConnection('mysql');
     
-    // Get current invoice first
-    const [currentInvoices] = await sequelize.query(`
+    // First check if invoice exists
+    const [existingInvoices] = await sequelize.query(`
       SELECT * FROM invoices WHERE id = ?
     `, {
       replacements: [id]
     });
     
-    if (!currentInvoices || currentInvoices.length === 0) {
+    if (!existingInvoices || existingInvoices.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Invoice not found'
       });
     }
     
-    const currentInvoice = currentInvoices[0];
-    let metadata = {};
+    const currentInvoice = existingInvoices[0];
+    const now = new Date();
     
+    // Parse existing metadata safely
+    let metadata = {};
     if (currentInvoice.metadata) {
-      metadata = typeof currentInvoice.metadata === 'string' 
-        ? JSON.parse(currentInvoice.metadata) 
-        : currentInvoice.metadata;
+      try {
+        metadata = typeof currentInvoice.metadata === 'string' 
+          ? JSON.parse(currentInvoice.metadata) 
+          : currentInvoice.metadata;
+      } catch (e) {
+        console.error('Error parsing metadata:', e);
+        metadata = {};
+      }
     }
     
-    // Add admin status change log
+    // Initialize statusHistory if not exists
     if (!metadata.statusHistory) {
       metadata.statusHistory = [];
     }
     
+    // Add status change to history
     metadata.statusHistory.push({
       from: currentInvoice.status,
       to: status,
-      changedBy: req.user.id,
-      changedAt: new Date().toISOString(),
+      changedBy: req.user?.id || 'admin',
+      changedAt: now.toISOString(),
       notes: notes || ''
     });
     
-    const now = new Date();
-    const paidAt = status === 'paid' ? now : currentInvoice.paid_at;
+    // Calculate paid_at if status is paid
+    let paidAt = currentInvoice.paid_at;
+    if (status === 'paid' && !paidAt) {
+      paidAt = now;
+    } else if (status !== 'paid') {
+      paidAt = null;
+    }
     
-    await sequelize.query(`
+    // Build update query safely
+    const updateFields = ['status = ?', 'notes = ?', 'metadata = ?', 'paid_at = ?', 'updated_at = ?'];
+    const updateValues = [status, notes || currentInvoice.notes || null, JSON.stringify(metadata), paidAt, now];
+    
+    // Add condition for id
+    updateValues.push(id);
+    
+    const query = `
       UPDATE invoices 
-      SET status = ?, 
-          notes = ?, 
-          metadata = ?,
-          paid_at = ?,
-          updated_at = ?
+      SET ${updateFields.join(', ')}
       WHERE id = ?
-    `, {
-      replacements: [status, notes || currentInvoice.notes, JSON.stringify(metadata), paidAt, now, id]
+    `;
+    
+    console.log('Executing admin update:', { id, status, notes });
+    
+    await sequelize.query(query, {
+      replacements: updateValues
     });
     
-    const [updated] = await sequelize.query(`
+    // Fetch updated invoice
+    const [updatedInvoices] = await sequelize.query(`
       SELECT * FROM invoices WHERE id = ?
     `, {
       replacements: [id]
     });
     
-    const invoice = updated[0];
-    if (invoice.metadata && typeof invoice.metadata === 'string') {
-      invoice.metadata = JSON.parse(invoice.metadata);
+    if (!updatedInvoices || updatedInvoices.length === 0) {
+      throw new Error('Failed to fetch updated invoice');
     }
     
-    console.log(`✅ Admin ${req.user.id} changed invoice ${invoice.invoiceNumber} status from ${currentInvoice.status} to ${status}`);
+    let invoice = updatedInvoices[0];
+    
+    // Parse JSON fields safely
+    if (invoice.metadata && typeof invoice.metadata === 'string') {
+      try {
+        invoice.metadata = JSON.parse(invoice.metadata);
+      } catch (e) {
+        invoice.metadata = {};
+      }
+    }
+    if (invoice.items && typeof invoice.items === 'string') {
+      try {
+        invoice.items = JSON.parse(invoice.items);
+      } catch (e) {
+        invoice.items = [];
+      }
+    }
+    
+    console.log(`✅ Admin updated invoice ${invoice.invoiceNumber} from ${currentInvoice.status} to ${status}`);
     
     res.json({
       success: true,
@@ -1509,14 +1553,14 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     });
     
   } catch (error) {
-    console.error('Error updating invoice:', error);
+    console.error('❌ Error updating invoice:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
-
 // Get invoice stats (admin)
 router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) => {
   try {
