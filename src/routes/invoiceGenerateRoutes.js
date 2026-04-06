@@ -303,7 +303,7 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
   }
 });
 
-// Download invoice PDF (for exhibitors) - SleekBill Style
+// Download invoice PDF (for exhibitors) - Professional Style
 router.get('/:id/download', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
@@ -355,7 +355,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     // Generate PDF using PDFKit
     const PDFDocument = require('pdfkit');
     
-    // Create PDF document with proper settings
+    // Create PDF document
     const doc = new PDFDocument({
       margin: 50,
       size: 'A4',
@@ -378,7 +378,8 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     // ============= HELPER FUNCTIONS =============
     const formatCurrency = (amount) => {
       const num = amount || 0;
-      return `₹ ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      // Use Rs. instead of ₹ symbol for better PDF compatibility
+      return `Rs. ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
     
     const formatNumber = (amount) => {
@@ -426,104 +427,86 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     const borderColor = '#e5e7eb';
     const textColor = '#1f2937';
     
-    // ============= HEADER SECTION =============
+    // ============= HEADER SECTION - Three Column Layout =============
     let y = 50;
     
-    // Add logo (simple text logo since PDFKit may have issues with external images)
-    doc.fontSize(22)
+    // LEFT COLUMN - Logo and Company Name
+    doc.fontSize(14)
        .font('Helvetica-Bold')
        .fillColor(primaryColor)
-       .text('MAXX BUSINESS MEDIA', 50, y, { align: 'left' });
+       .text('MAXX BUSINESS', 50, y);
     
-    doc.fontSize(10)
-       .font('Helvetica')
-       .fillColor('#4b5563')
-       .text('PVT. LTD.', 50, y + 22, { align: 'left' });
+    doc.fontSize(12)
+       .font('Helvetica-Bold')
+       .text('MEDIA PVT. LTD.', 50, y + 16);
     
-    // Company Address - Right aligned
-    doc.fontSize(8)
+    doc.fontSize(7)
        .font('Helvetica')
        .fillColor('#6b7280')
-       .text('T9, Swastik Manandi Arcade, Subedar Chatram Rd,', 300, y, { align: 'right' })
-       .text('VV Giri Colony, Seshadripuram, Bengaluru,', 300, y + 12, { align: 'right' })
-       .text('Karnataka 560020', 300, y + 24, { align: 'right' })
-       .text('Email: info@maxxbusinessmedia.com | Phone: +91 22 1234 5678', 300, y + 38, { align: 'right' })
-       .text('GSTIN: 27AAAFM1234G1Z2 | PAN: AAACB1234F', 300, y + 52, { align: 'right' });
+       .text('T9, Swastik Manandi Arcade, Subedar Chatram Rd,', 50, y + 34)
+       .text('VV Giri Colony, Seshadripuram, Bengaluru,', 50, y + 44)
+       .text('Karnataka 560020', 50, y + 54)
+       .text('GSTIN: 27AAAFM1234G1Z2 | PAN: AAACB1234F', 50, y + 66);
+    
+    // CENTER COLUMN - TAX INVOICE
+    doc.fontSize(18)
+       .font('Helvetica-Bold')
+       .fillColor(primaryColor)
+       .text('TAX INVOICE', 297, y + 25, { align: 'center' });
+    
+    // RIGHT COLUMN - Original for Recipient & Invoice Details
+    const exhibitorInfo = invoice.metadata?.exhibitorInfo || requirementData?.generalInfo || {};
+    const invoiceNumber = invoice.invoiceNumber;
+    
+    doc.fontSize(8)
+       .font('Helvetica-Bold')
+       .fillColor(textColor)
+       .text('Original for Recipient', 400, y, { align: 'right' });
+    
+    doc.fontSize(7)
+       .font('Helvetica')
+       .fillColor('#6b7280')
+       .text(`Invoice No: ${invoiceNumber}`, 400, y + 20, { align: 'right' })
+       .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 400, y + 32, { align: 'right' })
+       .text(`Due Date: ${formatDate(invoice.dueDate)}`, 400, y + 44, { align: 'right' })
+       .text(`Order No: ${invoice.metadata?.requirementsId?.slice(-8) || 'N/A'}`, 400, y + 56, { align: 'right' });
     
     // Separator Line
     doc.strokeColor(borderColor)
        .lineWidth(1)
-       .moveTo(50, y + 75)
-       .lineTo(545, y + 75)
+       .moveTo(50, y + 85)
+       .lineTo(545, y + 85)
        .stroke();
     
     doc.moveDown(1);
     
-    // INVOICE Title
-    doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .fillColor(primaryColor)
-       .text('TAX INVOICE', { align: 'center' });
+    // ============= BILL TO SECTION =============
+    const infoY = doc.y + 10;
     
-    doc.moveDown(1);
-    
-    // ============= INVOICE INFO & BILL TO =============
-    const infoY = doc.y;
-    
-    // Left Column - Invoice Details
     doc.fontSize(9)
        .font('Helvetica-Bold')
        .fillColor(textColor)
-       .text('Invoice Details:', 50, infoY);
+       .text('Bill To:', 50, infoY);
     
-    doc.font('Helvetica')
+    doc.fontSize(8)
+       .font('Helvetica')
        .fillColor('#4b5563');
     
-    let leftY = infoY + 15;
-    
-    doc.text('Invoice No:', 50, leftY);
-    doc.font('Helvetica-Bold').text(invoice.invoiceNumber, 130, leftY);
-    doc.font('Helvetica');
-    
-    leftY += 16;
-    doc.text('Invoice Date:', 50, leftY);
-    doc.font('Helvetica-Bold').text(formatDate(invoice.issueDate), 130, leftY);
-    doc.font('Helvetica');
-    
-    leftY += 16;
-    doc.text('Due Date:', 50, leftY);
-    doc.font('Helvetica-Bold').text(formatDate(invoice.dueDate), 130, leftY);
-    doc.font('Helvetica');
-    
-    leftY += 16;
-    doc.text('Order No:', 50, leftY);
-    doc.font('Helvetica-Bold').text(invoice.metadata?.requirementsId?.slice(-8) || 'N/A', 130, leftY);
-    doc.font('Helvetica');
-    
-    // Right Column - Bill To
-    const exhibitorInfo = invoice.metadata?.exhibitorInfo || requirementData?.generalInfo || {};
-    
-    doc.font('Helvetica-Bold')
-       .text('Bill To:', 300, infoY);
-    
-    doc.font('Helvetica')
-       .fillColor('#4b5563');
-    
-    let rightY = infoY + 15;
-    doc.text(exhibitorInfo.companyName || 'N/A', 300, rightY);
-    rightY += 14;
-    doc.text(exhibitorInfo.name || 'N/A', 300, rightY);
-    rightY += 14;
-    doc.text(exhibitorInfo.address || 'Not provided', 300, rightY, { width: 200 });
-    rightY += 14;
-    doc.text(`Phone: ${exhibitorInfo.phone || 'N/A'}`, 300, rightY);
-    rightY += 14;
-    doc.text(`Email: ${exhibitorInfo.email || 'N/A'}`, 300, rightY);
-    rightY += 14;
-    doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not registered'}`, 300, rightY);
+    let billY = infoY + 15;
+    doc.text(exhibitorInfo.companyName || 'N/A', 50, billY);
+    billY += 14;
+    doc.text(exhibitorInfo.name || 'N/A', 50, billY);
+    billY += 14;
+    doc.text(exhibitorInfo.address || 'Not provided', 50, billY, { width: 250 });
+    billY += 14;
+    doc.text(`Phone: ${exhibitorInfo.phone || 'N/A'}`, 50, billY);
+    billY += 14;
+    doc.text(`Email: ${exhibitorInfo.email || 'N/A'}`, 50, billY);
+    billY += 14;
+    doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not registered'}`, 50, billY);
     
     // Move down
-    doc.y = Math.max(leftY, rightY) + 20;
+    doc.y = billY + 20;
     
     // ============= ITEMS TABLE =============
     const tableTop = doc.y;
@@ -551,10 +534,10 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       doc.text('S.No', colX.sno, tableTop);
       doc.text('Item Description', colX.description, tableTop, { width: 255 });
       doc.text('Qty', colX.qty, tableTop);
-      doc.text('Price (₹)', colX.price, tableTop);
-      doc.text('Taxable (₹)', colX.taxable, tableTop);
-      doc.text('GST (₹)', colX.gst, tableTop);
-      doc.text('Amount (₹)', colX.amount, tableTop);
+      doc.text('Price (Rs.)', colX.price, tableTop);
+      doc.text('Taxable (Rs.)', colX.taxable, tableTop);
+      doc.text('GST (Rs.)', colX.gst, tableTop);
+      doc.text('Amount (Rs.)', colX.amount, tableTop);
       
       doc.fillColor(textColor);
       
@@ -593,6 +576,19 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
         if (currentY > 700) {
           doc.addPage();
           currentY = 50;
+          // Re-draw headers on new page
+          doc.rect(50, currentY - 3, 495, 18).fill('#f0f9ff');
+          doc.fillColor(primaryColor);
+          doc.fontSize(7).font('Helvetica-Bold');
+          doc.text('S.No', colX.sno, currentY);
+          doc.text('Item Description', colX.description, currentY, { width: 255 });
+          doc.text('Qty', colX.qty, currentY);
+          doc.text('Price (Rs.)', colX.price, currentY);
+          doc.text('Taxable (Rs.)', colX.taxable, currentY);
+          doc.text('GST (Rs.)', colX.gst, currentY);
+          doc.text('Amount (Rs.)', colX.amount, currentY);
+          doc.fillColor(textColor);
+          currentY += 18;
         }
       });
       
@@ -705,12 +701,10 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     // Finalize PDF
     doc.end();
     
-    // Log success
     console.log(`✅ PDF generated successfully for invoice: ${invoice.invoiceNumber}`);
     
   } catch (error) {
     console.error('❌ Error generating PDF:', error);
-    // Don't send JSON after headers are sent
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
