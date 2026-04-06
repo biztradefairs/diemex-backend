@@ -8,11 +8,23 @@ const axios = require('axios');
 // Cashfree Configuration
 const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID;
 const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
-const CASHFREE_MODE = process.env.CASHFREE_MODE || 'production';
+const CASHFREE_MODE = process.env.CASHFREE_MODE || 'sandbox'; // Use sandbox for testing
 
-const CASHFREE_API_URL = process.env.CASHFREE_MODE === 'sandbox'
-  ? 'https://sandbox.cashfree.com/pg'
-  : 'https://api.cashfree.com/pg';
+// Define URLs - THIS WAS MISSING
+const CASHFREE_API_URL = CASHFREE_MODE === 'sandbox'
+    ? 'https://sandbox.cashfree.com/pg'
+    : 'https://api.cashfree.com/pg';
+
+// ADD THIS LINE - CASHFREE_ORDER_URL was not defined
+const CASHFREE_ORDER_URL = `${CASHFREE_API_URL}/orders`;
+
+// Log configuration on startup
+console.log('🔧 Cashfree Configuration:');
+console.log(`  Mode: ${CASHFREE_MODE}`);
+console.log(`  API URL: ${CASHFREE_API_URL}`);
+console.log(`  Order URL: ${CASHFREE_ORDER_URL}`);
+console.log(`  App ID: ${CASHFREE_APP_ID ? '✓ Set' : '✗ Missing'}`);
+console.log(`  Secret Key: ${CASHFREE_SECRET_KEY ? '✓ Set' : '✗ Missing'}`);
 
 // Verify webhook signature
 const verifyWebhookSignature = (body, signature, secretKey) => {
@@ -35,7 +47,6 @@ router.post('/webhook', async (req, res) => {
     console.log('Headers:', req.headers);
     console.log('Body:', req.body);
     
-    // Verify webhook signature (optional but recommended)
     const signature = req.headers['x-webhook-signature'];
     if (signature && CASHFREE_SECRET_KEY) {
       const isValid = verifyWebhookSignature(req.body, signature, CASHFREE_SECRET_KEY);
@@ -55,7 +66,6 @@ router.post('/webhook', async (req, res) => {
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
     
-    // Update cashfree_orders table
     await sequelize.query(`
       UPDATE cashfree_orders 
       SET order_status = ?, payment_id = ?, updated_at = ?
@@ -64,7 +74,6 @@ router.post('/webhook', async (req, res) => {
       replacements: [payment_status, payment_id || null, now, order_id]
     });
     
-    // Get the order details
     const [orders] = await sequelize.query(`
       SELECT * FROM cashfree_orders WHERE order_id = ?
     `, {
@@ -77,7 +86,6 @@ router.post('/webhook', async (req, res) => {
       if (payment_status === 'SUCCESS' || payment_status === 'PAID') {
         console.log(`✅ Payment successful for order ${order_id}, updating invoice ${order.invoice_id}`);
         
-        // Update invoice status to paid
         await sequelize.query(`
           UPDATE invoices 
           SET status = 'paid', 
@@ -89,7 +97,6 @@ router.post('/webhook', async (req, res) => {
           replacements: [now, now, payment_id, now.toISOString(), order.invoice_id]
         });
         
-        // Update requirements if linked
         if (order.requirement_id) {
           await sequelize.query(`
             UPDATE requirements 
@@ -106,7 +113,6 @@ router.post('/webhook', async (req, res) => {
       } else if (payment_status === 'FAILED' || payment_status === 'CANCELLED') {
         console.log(`❌ Payment failed for order ${order_id}`);
         
-        // Update invoice status to pending (so user can try again)
         await sequelize.query(`
           UPDATE invoices 
           SET status = 'pending', 
@@ -119,12 +125,10 @@ router.post('/webhook', async (req, res) => {
       }
     }
     
-    // Always return 200 to acknowledge receipt
     res.status(200).json({ success: true });
     
   } catch (error) {
     console.error('❌ Webhook error:', error);
-    // Still return 200 to prevent Cashfree from retrying
     res.status(200).json({ success: false, error: error.message });
   }
 });
@@ -133,6 +137,8 @@ router.post('/webhook', async (req, res) => {
 router.post('/create-order', authenticateAny, async (req, res) => {
   try {
     console.log('📨 Creating Cashfree order...');
+    console.log('Request body:', req.body);
+    console.log('User from auth:', req.user);
     
     const { amount, invoiceId, requirementsId, customerDetails } = req.body;
 
@@ -151,10 +157,19 @@ router.post('/create-order', authenticateAny, async (req, res) => {
       });
     }
 
+    // Validate CASHFREE_ORDER_URL is defined
+    if (!CASHFREE_ORDER_URL) {
+      console.error('❌ CASHFREE_ORDER_URL is not defined');
+      return res.status(500).json({
+        success: false,
+        error: 'Payment gateway configuration error'
+      });
+    }
+
     const orderId = `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     
-    // IMPORTANT: Your webhook URL must be publicly accessible
-    const webhookUrl = `${process.env.BACKEND_URL || 'https://diemex-backend.onrender.com'}/api/payments/webhook`;
+    const webhookUrl = `${process.env.BACKEND_URL || 'https://diemex-backend.onrender.com'}/api/cashfree/webhook`;
+    const returnUrl = `${process.env.FRONTEND_URL || 'https://www.diemex.in'}/dashboard/invoice/${invoiceId}?payment_status=success&order_id=${orderId}`;
     
     const orderData = {
       order_id: orderId,
@@ -162,20 +177,21 @@ router.post('/create-order', authenticateAny, async (req, res) => {
       order_currency: 'INR',
       order_note: `Payment for Invoice: ${invoiceId}`,
       customer_details: {
-        customer_id: customerDetails?.customerId || req.user.id,
-        customer_name: customerDetails?.customerName || req.user.name || 'Customer',
-        customer_email: customerDetails?.customerEmail || req.user.email,
-        customer_phone: customerDetails?.customerPhone || req.user.phone || '9999999999'
+        customer_id: customerDetails?.customerId || req.user?.id || 'guest',
+        customer_name: customerDetails?.customerName || req.user?.name || 'Customer',
+        customer_email: customerDetails?.customerEmail || req.user?.email,
+        customer_phone: customerDetails?.customerPhone || req.user?.phone || '9999999999'
       },
       order_meta: {
-        return_url: `${process.env.FRONTEND_URL || 'https://www.diemex.in'}/dashboard/invoice/${invoiceId}?payment_status=success`,
-        notify_url: webhookUrl  // Add webhook URL here
+        return_url: returnUrl,
+        notify_url: webhookUrl
       }
     };
 
     console.log(`💰 Using Cashfree ${CASHFREE_MODE} mode`);
     console.log(`🌐 API URL: ${CASHFREE_ORDER_URL}`);
     console.log(`🔔 Webhook URL: ${webhookUrl}`);
+    console.log(`🔙 Return URL: ${returnUrl}`);
     
     const response = await axios.post(CASHFREE_ORDER_URL, orderData, {
       headers: {
@@ -216,7 +232,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, {
       replacements: [
-        crypto.randomUUID(), orderId, invoiceId, requirementsId, req.user.id,
+        crypto.randomUUID(), orderId, invoiceId, requirementsId, req.user?.id || 'guest',
         amount, 'PENDING', now, now
       ]
     });
@@ -232,6 +248,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Cashfree error:', error.response?.data || error.message);
+    console.error('Full error:', error);
     
     if (error.response?.status === 401 || error.response?.data?.message === 'authentication Failed') {
       return res.status(401).json({
@@ -242,17 +259,16 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     
     res.status(error.response?.status || 500).json({ 
       success: false, 
-      error: error.response?.data?.message || error.message 
+      error: error.response?.data?.message || error.message || 'Payment initialization failed'
     });
   }
 });
 
-// Verify payment status (call this after return from payment page)
+// Verify payment status
 router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
   try {
     const { orderId } = req.params;
     
-    // Call Cashfree API to verify payment status
     const response = await axios.get(`${CASHFREE_ORDER_URL}/${orderId}/payments`, {
       headers: {
         'Content-Type': 'application/json',
@@ -268,7 +284,6 @@ router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
     const sequelize = require('../config/database').getConnection('mysql');
     
     if (payment && payment.payment_status === 'SUCCESS') {
-      // Update invoice status
       const [orders] = await sequelize.query(`
         SELECT * FROM cashfree_orders WHERE order_id = ?
       `, {
@@ -326,6 +341,13 @@ router.get('/payment-status/:orderId', authenticateAny, async (req, res) => {
 // Test endpoint
 router.get('/test-credentials', async (req, res) => {
   try {
+    if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: 'Cashfree credentials not configured'
+      });
+    }
+    
     const testOrder = {
       order_id: `TEST_${Date.now()}`,
       order_amount: 1,
@@ -348,8 +370,9 @@ router.get('/test-credentials', async (req, res) => {
       }
     });
 
-    res.json({ success: true, message: 'Credentials valid!' });
+    res.json({ success: true, message: 'Credentials valid!', data: response.data });
   } catch (error) {
+    console.error('Test error:', error.response?.data || error.message);
     res.status(401).json({ 
       success: false, 
       error: error.response?.data?.message || 'Invalid credentials' 
