@@ -372,10 +372,9 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     // ================= HEADER =================
     let y = 50;
 
-    doc.fontSize(16)
-      .font('Helvetica-Bold')
-      .fillColor('#1e3a8a')
-      .text('MAXX BUSINESS MEDIA PVT. LTD.', 50, y);
+doc.image('https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png', 50, y, {
+  width: 120
+});
 
     doc.fontSize(8)
       .font('Helvetica')
