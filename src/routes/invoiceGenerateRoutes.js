@@ -838,6 +838,397 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
   }
 });
 
+// Print-friendly HTML invoice page (for printing)
+router.get('/:id/print', authenticateAny, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [invoices] = await sequelize.query(`
+      SELECT * FROM invoices WHERE id = ?
+    `, {
+      replacements: [id]
+    });
+    
+    if (!invoices || invoices.length === 0) {
+      return res.status(404).send('Invoice not found');
+    }
+    
+    const invoice = invoices[0];
+    
+    // Parse JSON fields
+    if (invoice.items && typeof invoice.items === 'string') {
+      invoice.items = JSON.parse(invoice.items);
+    }
+    if (invoice.metadata && typeof invoice.metadata === 'string') {
+      invoice.metadata = JSON.parse(invoice.metadata);
+    }
+    
+    const exhibitorInfo = invoice.metadata?.exhibitorInfo || {};
+    const items = invoice.items || [];
+    
+    // Calculate totals
+    let totalTaxable = 0;
+    let totalGST = 0;
+    let grandTotal = 0;
+    
+    items.forEach((item) => {
+      const taxable = item.total || 0;
+      const gst = taxable * 0.18;
+      totalTaxable += taxable;
+      totalGST += gst;
+      grandTotal += taxable + gst;
+    });
+    
+    const formatNumber = (num) => {
+      return (num || 0).toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    };
+    
+    const formatDate = (d) => {
+      return new Date(d).toLocaleDateString('en-IN');
+    };
+    
+    // Send HTML response
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Invoice ${invoice.invoiceNumber}</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            background: #f0f0f0;
+            padding: 40px 20px;
+          }
+          
+          .invoice-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+          }
+          
+          .invoice {
+            padding: 40px;
+          }
+          
+          /* Header Section */
+          .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+          }
+          
+          .company-info h1 {
+            color: #1e3a8a;
+            font-size: 20px;
+            margin-bottom: 8px;
+          }
+          
+          .company-info p {
+            color: #6b7280;
+            font-size: 11px;
+            margin: 2px 0;
+          }
+          
+          .invoice-info {
+            text-align: right;
+          }
+          
+          .invoice-info p {
+            font-size: 12px;
+            margin: 4px 0;
+            color: #374151;
+          }
+          
+          .invoice-title {
+            text-align: center;
+            margin: 30px 0;
+          }
+          
+          .invoice-title h2 {
+            color: #1e3a8a;
+            font-size: 28px;
+            letter-spacing: 2px;
+          }
+          
+          /* Bill To Section */
+          .bill-to {
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f9fafb;
+            border-left: 4px solid #1e3a8a;
+          }
+          
+          .bill-to h3 {
+            font-size: 14px;
+            color: #1e3a8a;
+            margin-bottom: 10px;
+          }
+          
+          .bill-to p {
+            font-size: 12px;
+            margin: 4px 0;
+            color: #374151;
+          }
+          
+          /* Table Styles */
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            font-size: 12px;
+          }
+          
+          .items-table th {
+            background: #e0f2fe;
+            color: #1e3a8a;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #cbd5e1;
+          }
+          
+          .items-table td {
+            padding: 10px 8px;
+            border: 1px solid #e5e7eb;
+            color: #111827;
+          }
+          
+          .items-table .text-right {
+            text-align: right;
+          }
+          
+          /* Totals Section */
+          .totals {
+            margin-top: 20px;
+            text-align: right;
+          }
+          
+          .totals-table {
+            display: inline-block;
+            width: 300px;
+          }
+          
+          .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 12px;
+          }
+          
+          .totals-row.grand-total {
+            font-weight: bold;
+            font-size: 16px;
+            color: #1e3a8a;
+            border-top: 2px solid #e5e7eb;
+            margin-top: 10px;
+            padding-top: 10px;
+          }
+          
+          /* Footer */
+          .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+          }
+          
+          .terms {
+            font-size: 10px;
+            color: #6b7280;
+          }
+          
+          .terms h4 {
+            font-size: 11px;
+            margin-bottom: 8px;
+            color: #374151;
+          }
+          
+          .terms p {
+            margin: 4px 0;
+          }
+          
+          /* Print Styles */
+          @media print {
+            body {
+              background: white;
+              padding: 0;
+              margin: 0;
+            }
+            
+            .invoice-container {
+              box-shadow: none;
+              padding: 0;
+            }
+            
+            .invoice {
+              padding: 20px;
+            }
+            
+            .no-print {
+              display: none;
+            }
+            
+            .items-table th,
+            .items-table td {
+              border-color: #000 !important;
+            }
+          }
+          
+          /* Print Button */
+          .print-btn {
+            text-align: center;
+            margin-bottom: 20px;
+          }
+          
+          .print-btn button {
+            background: #1e3a8a;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+          }
+          
+          .print-btn button:hover {
+            background: #1e40af;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-btn no-print">
+          <button onclick="window.print();">🖨️ Print Invoice</button>
+        </div>
+        
+        <div class="invoice-container">
+          <div class="invoice">
+            <!-- Header -->
+            <div class="header">
+              <div class="company-info">
+                <h1>MAXX BUSINESS MEDIA PVT. LTD.</h1>
+                <p>T9, Swastik Manandi Arcade</p>
+                <p>Seshadripuram, Bengaluru</p>
+                <p>GSTIN: 27AAAFM1234G1Z2</p>
+              </div>
+              <div class="invoice-info">
+                <p><strong>Invoice No:</strong> ${invoice.invoiceNumber}</p>
+                <p><strong>Invoice Date:</strong> ${formatDate(invoice.issueDate)}</p>
+                <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
+              </div>
+            </div>
+            
+            <!-- Title -->
+            <div class="invoice-title">
+              <h2>TAX INVOICE</h2>
+            </div>
+            
+            <!-- Bill To -->
+            <div class="bill-to">
+              <h3>Bill To:</h3>
+              <p><strong>${exhibitorInfo.companyName || 'N/A'}</strong></p>
+              <p>${exhibitorInfo.name || 'N/A'}</p>
+              <p>Phone: ${exhibitorInfo.phone || 'N/A'}</p>
+              <p>Email: ${exhibitorInfo.email || 'N/A'}</p>
+              <p>GSTIN: ${exhibitorInfo.gstNumber || 'Not provided'}</p>
+            </div>
+            
+            <!-- Items Table -->
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>S.No</th>
+                  <th>Description</th>
+                  <th class="text-right">Qty</th>
+                  <th class="text-right">Price (₹)</th>
+                  <th class="text-right">Taxable (₹)</th>
+                  <th class="text-right">GST (₹)</th>
+                  <th class="text-right">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((item, index) => {
+                  const qty = item.quantity || 1;
+                  const price = item.unitPrice || 0;
+                  const taxable = item.total || (qty * price);
+                  const gst = taxable * 0.18;
+                  const total = taxable + gst;
+                  return `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${item.description || 'N/A'}</td>
+                      <td class="text-right">${qty}</td>
+                      <td class="text-right">${formatNumber(price)}</td>
+                      <td class="text-right">${formatNumber(taxable)}</td>
+                      <td class="text-right">${formatNumber(gst)}</td>
+                      <td class="text-right">${formatNumber(total)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+            
+            <!-- Totals -->
+            <div class="totals">
+              <div class="totals-table">
+                <div class="totals-row">
+                  <span>Total Taxable Value:</span>
+                  <span>₹ ${formatNumber(totalTaxable)}</span>
+                </div>
+                <div class="totals-row">
+                  <span>CGST (9%):</span>
+                  <span>₹ ${formatNumber(totalGST / 2)}</span>
+                </div>
+                <div class="totals-row">
+                  <span>SGST (9%):</span>
+                  <span>₹ ${formatNumber(totalGST / 2)}</span>
+                </div>
+                <div class="totals-row">
+                  <span>Total Tax:</span>
+                  <span>₹ ${formatNumber(totalGST)}</span>
+                </div>
+                <div class="totals-row grand-total">
+                  <span><strong>Grand Total:</strong></span>
+                  <span><strong>₹ ${formatNumber(grandTotal)}</strong></span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="footer">
+              <div class="terms">
+                <h4>Terms & Conditions:</h4>
+                <p>1. Payment should be made to mentioned account.</p>
+                <p>2. No refund after event starts.</p>
+                <p>3. Disputes subject to jurisdiction.</p>
+                <p>4. This is a computer generated invoice.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('Error generating print view:', error);
+    res.status(500).send('Error generating invoice view');
+  }
+});
+
 // Get invoice stats (admin)
 router.get('/admin/stats', authenticate, authorize(['admin']), async (req, res) => {
   try {
