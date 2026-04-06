@@ -926,10 +926,56 @@ router.get('/:id', authenticateAny, async (req, res) => {
   }
 });
 
-// Print-friendly HTML invoice page
-router.get('/:id/print', authenticateAny, async (req, res) => {
+// Print-friendly HTML invoice page (no authentication required for print view with valid token)
+router.get('/:id/print', async (req, res) => {
   try {
     const { id } = req.params;
+    const { token } = req.query;
+    
+    // Verify token if provided
+    let user = null;
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        const modelFactory = require('../models');
+        
+        if (decoded.role === 'exhibitor') {
+          const Exhibitor = modelFactory.getModel('Exhibitor');
+          user = await Exhibitor.findByPk(decoded.id);
+        } else {
+          const User = modelFactory.getModel('User');
+          user = await User.findByPk(decoded.id);
+        }
+      } catch (err) {
+        console.log('Invalid token for print:', err.message);
+      }
+    }
+    
+    // If no user found, try to get from authorization header
+    if (!user) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const token = authHeader.replace('Bearer ', '');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          
+          const modelFactory = require('../models');
+          
+          if (decoded.role === 'exhibitor') {
+            const Exhibitor = modelFactory.getModel('Exhibitor');
+            user = await Exhibitor.findByPk(decoded.id);
+          } else {
+            const User = modelFactory.getModel('User');
+            user = await User.findByPk(decoded.id);
+          }
+        } catch (err) {
+          console.log('Invalid auth header:', err.message);
+        }
+      }
+    }
     
     const sequelize = require('../config/database').getConnection('mysql');
     
@@ -945,6 +991,7 @@ router.get('/:id/print', authenticateAny, async (req, res) => {
     
     const invoice = invoices[0];
     
+    // Parse JSON fields
     if (invoice.items && typeof invoice.items === 'string') {
       invoice.items = JSON.parse(invoice.items);
     }
@@ -952,9 +999,20 @@ router.get('/:id/print', authenticateAny, async (req, res) => {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
     
+    // Check permission if user is logged in
+    if (user) {
+      const exhibitorId = user.id;
+      const invoiceExhibitorId = invoice.exhibitorId || invoice.metadata?.exhibitorInfo?.id;
+      
+      if (user.role !== 'admin' && exhibitorId !== invoiceExhibitorId) {
+        return res.status(403).send('You do not have permission to view this invoice');
+      }
+    }
+    
     const exhibitorInfo = invoice.metadata?.exhibitorInfo || {};
     const items = invoice.items || [];
     
+    // Calculate totals
     let totalTaxable = 0;
     let totalGST = 0;
     let grandTotal = 0;
@@ -978,6 +1036,7 @@ router.get('/:id/print', authenticateAny, async (req, res) => {
       return new Date(d).toLocaleDateString('en-IN');
     };
     
+    // Send HTML response
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -1214,7 +1273,7 @@ router.get('/:id/print', authenticateAny, async (req, res) => {
             
             <div class="bill-to">
               <h3>Bill To:</h3>
-              <p><strong>${exhibitorInfo.companyName || 'N/A'}</strong></p>
+              <p><strong>${exhibitorInfo.companyName || invoice.company || 'N/A'}</strong></p>
               <p>${exhibitorInfo.name || 'N/A'}</p>
               <p>Phone: ${exhibitorInfo.phone || 'N/A'}</p>
               <p>Email: ${exhibitorInfo.email || 'N/A'}</p>
@@ -1297,7 +1356,7 @@ router.get('/:id/print', authenticateAny, async (req, res) => {
     
   } catch (error) {
     console.error('Error generating print view:', error);
-    res.status(500).send('Error generating invoice view');
+    res.status(500).send('Error generating invoice view: ' + error.message);
   }
 });
 
