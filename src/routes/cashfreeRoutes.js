@@ -22,7 +22,27 @@ console.log(`  API URL: ${CASHFREE_API_URL}`);
 console.log(`  App ID: ${CASHFREE_APP_ID ? '✓ Set' : '✗ Missing'}`);
 console.log(`  Secret Key: ${CASHFREE_SECRET_KEY ? '✓ Set' : '✗ Missing'}`);
 
-// Webhook for payment status updates - THIS MARKS INVOICE AS PAID ON SUCCESS
+// Helper function to get the correct paid date column name
+async function getPaidDateColumnName(sequelize) {
+  try {
+    const [columns] = await sequelize.query(`SHOW COLUMNS FROM invoices`);
+    const columnNames = columns.map(c => c.Field);
+    
+    if (columnNames.includes('paid_at')) {
+      return 'paid_at';
+    } else if (columnNames.includes('paidDate')) {
+      return 'paidDate';
+    } else if (columnNames.includes('paid_date')) {
+      return 'paid_date';
+    }
+    return null;
+  } catch (error) {
+    console.error('Error checking columns:', error);
+    return null;
+  }
+}
+
+// Webhook for payment status updates - MARKS INVOICE AS PAID ON SUCCESS
 router.post('/webhook', async (req, res) => {
   try {
     console.log('📨 Webhook received');
@@ -56,11 +76,11 @@ router.post('/webhook', async (req, res) => {
     if (orders.length > 0) {
       const order = orders[0];
       
-      // CRITICAL: On successful payment, mark invoice as PAID automatically
+      // On successful payment, mark invoice as PAID automatically
       if (payment_status === 'SUCCESS' || payment_status === 'PAID') {
         console.log(`✅ Payment successful for order ${order_id}, updating invoice ${order.invoice_id} to PAID`);
         
-        // Get current invoice to check status
+        // Get current invoice
         const [invoices] = await sequelize.query(`
           SELECT * FROM invoices WHERE id = ?
         `, {
@@ -72,9 +92,14 @@ router.post('/webhook', async (req, res) => {
           let metadata = {};
           
           if (invoice.metadata) {
-            metadata = typeof invoice.metadata === 'string' 
-              ? JSON.parse(invoice.metadata) 
-              : invoice.metadata;
+            try {
+              metadata = typeof invoice.metadata === 'string' 
+                ? JSON.parse(invoice.metadata) 
+                : invoice.metadata;
+            } catch (e) {
+              console.error('Error parsing metadata:', e);
+              metadata = {};
+            }
           }
           
           // Add payment info to metadata
@@ -84,22 +109,35 @@ router.post('/webhook', async (req, res) => {
             paidAt: now.toISOString(),
             amount: order.amount,
             gateway: 'cashfree',
-            status: 'success'
+            status: 'success',
+            webhookReceived: true
           };
           
-          // Update invoice status to PAID
-          await sequelize.query(`
+          // Get the correct paid date column name
+          const paidDateColumn = await getPaidDateColumnName(sequelize);
+          
+          // Build update query dynamically
+          let updateQuery = `
             UPDATE invoices 
             SET status = 'paid', 
-                paid_at = ?, 
                 metadata = ?,
                 updated_at = ?
-            WHERE id = ?
-          `, {
-            replacements: [now, JSON.stringify(metadata), now, order.invoice_id]
-          });
+          `;
+          let replacements = [JSON.stringify(metadata), now];
+          
+          // Add paid date column if it exists
+          if (paidDateColumn) {
+            updateQuery += `, ${paidDateColumn} = ?`;
+            replacements.push(now);
+          }
+          
+          updateQuery += ` WHERE id = ?`;
+          replacements.push(order.invoice_id);
+          
+          await sequelize.query(updateQuery, { replacements });
           
           console.log(`✅✅✅ Invoice ${order.invoice_id} marked as PAID successfully!`);
+          console.log(`   Paid date column used: ${paidDateColumn || 'none'}`);
         } else {
           console.log(`⚠️ Invoice ${order.invoice_id} not found`);
         }
@@ -176,10 +214,12 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     });
 
     console.log('✅ Cashfree order created:', response.data.order_id);
+    console.log('✅ Payment Session ID:', response.data.payment_session_id);
 
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
 
+    // Create table if not exists
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS cashfree_orders (
         id VARCHAR(36) PRIMARY KEY,
@@ -236,10 +276,12 @@ router.post('/create-order', authenticateAny, async (req, res) => {
   }
 });
 
-// Verify payment status - THIS ALSO MARKS INVOICE AS PAID ON VERIFICATION
+// Verify payment status - ALSO MARKS INVOICE AS PAID ON VERIFICATION
 router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
   try {
     const { orderId } = req.params;
+    
+    console.log(`🔍 Verifying payment for order: ${orderId}`);
     
     const response = await axios.get(`${CASHFREE_ORDER_URL}/${orderId}/payments`, {
       headers: {
@@ -278,9 +320,14 @@ router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
           let metadata = {};
           
           if (invoice.metadata) {
-            metadata = typeof invoice.metadata === 'string' 
-              ? JSON.parse(invoice.metadata) 
-              : invoice.metadata;
+            try {
+              metadata = typeof invoice.metadata === 'string' 
+                ? JSON.parse(invoice.metadata) 
+                : invoice.metadata;
+            } catch (e) {
+              console.error('Error parsing metadata:', e);
+              metadata = {};
+            }
           }
           
           metadata.paymentInfo = {
@@ -289,16 +336,32 @@ router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
             paidAt: now.toISOString(),
             amount: order.amount,
             gateway: 'cashfree',
-            status: 'success'
+            status: 'success',
+            verified: true
           };
           
-          await sequelize.query(`
+          // Get the correct paid date column name
+          const paidDateColumn = await getPaidDateColumnName(sequelize);
+          
+          // Build update query dynamically
+          let updateQuery = `
             UPDATE invoices 
-            SET status = 'paid', paid_at = ?, metadata = ?, updated_at = ?
-            WHERE id = ?
-          `, {
-            replacements: [now, JSON.stringify(metadata), now, order.invoice_id]
-          });
+            SET status = 'paid', 
+                metadata = ?,
+                updated_at = ?
+          `;
+          let replacements = [JSON.stringify(metadata), now];
+          
+          // Add paid date column if it exists
+          if (paidDateColumn) {
+            updateQuery += `, ${paidDateColumn} = ?`;
+            replacements.push(now);
+          }
+          
+          updateQuery += ` WHERE id = ?`;
+          replacements.push(order.invoice_id);
+          
+          await sequelize.query(updateQuery, { replacements });
           
           console.log(`✅ Payment verified and invoice ${order.invoice_id} marked as PAID`);
         }
@@ -335,6 +398,28 @@ router.get('/payment-status/:orderId', authenticateAny, async (req, res) => {
     
     res.json({ success: true, data: orders[0] || null });
   } catch (error) {
+    console.error('Error fetching payment status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get payment details by invoice ID
+router.get('/invoice/:invoiceId', authenticateAny, async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+    const sequelize = require('../config/database').getConnection('mysql');
+    
+    const [orders] = await sequelize.query(`
+      SELECT * FROM cashfree_orders WHERE invoice_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, {
+      replacements: [invoiceId]
+    });
+    
+    res.json({ success: true, data: orders[0] || null });
+  } catch (error) {
+    console.error('Error fetching payment by invoice:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
