@@ -13,21 +13,26 @@ router.get('/', exhibitorController.getAllExhibitors);
 // STATS ROUTES (FIXED)
 // ------------------------------
 
-// Get exhibitor statistics (admin only - to avoid conflict)
+// Add this before other routes
 router.get('/stats/count', authenticate, authorize(['admin']), async (req, res) => {
   try {
     const sequelize = require('../config/database').getConnection('mysql');
     
+    if (!sequelize) {
+      throw new Error('Database connection failed');
+    }
+    
+    // Test the connection first
+    await sequelize.query('SELECT 1');
+    
     // Get total exhibitors count
     const [exhibitorCount] = await sequelize.query(`
-      SELECT COUNT(*) as total FROM exhibitors WHERE status IN ('active', 'approved', 'pending')
+      SELECT COUNT(*) as total FROM exhibitors WHERE status IN ('active', 'approved')
     `);
     
     // Get pending verifications count
     const [pendingCount] = await sequelize.query(`
-      SELECT COUNT(*) as pending FROM invoices 
-      WHERE status = 'pending' 
-      AND JSON_EXTRACT(metadata, '$.paymentVerification.status') = 'pending_verification'
+      SELECT COUNT(*) as pending FROM invoices WHERE status = 'pending'
     `);
     
     // Get total revenue
@@ -35,28 +40,21 @@ router.get('/stats/count', authenticate, authorize(['admin']), async (req, res) 
       SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE status = 'paid'
     `);
     
-    // Get this month's registrations
-    const [monthlyRegistrations] = await sequelize.query(`
-      SELECT COUNT(*) as count FROM exhibitors 
-      WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) 
-      AND YEAR(created_at) = YEAR(CURRENT_DATE())
-    `);
-    
     res.json({
       success: true,
       data: {
         totalExhibitors: exhibitorCount[0]?.total || 0,
         pendingVerifications: pendingCount[0]?.pending || 0,
-        totalRevenue: revenue[0]?.total || 0,
-        monthlyRegistrations: monthlyRegistrations[0]?.count || 0
+        totalRevenue: revenue[0]?.total || 0
       }
     });
     
   } catch (error) {
-    console.error('Error fetching exhibitor stats:', error);
+    console.error('❌ Error in stats/count:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

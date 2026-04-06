@@ -1430,10 +1430,14 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
   }
 });
 
+
+// Update invoice status (admin) - FIXED VERSION
 router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body;
+    
+    console.log('📝 Admin update request:', { id, status, notes });
     
     if (!status) {
       return res.status(400).json({
@@ -1442,14 +1446,30 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       });
     }
     
+    // Validate status
+    const validStatuses = ['pending', 'paid', 'overdue', 'draft'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+    
     const sequelize = require('../config/database').getConnection('mysql');
     
-    // First check if invoice exists
-    const [existingInvoices] = await sequelize.query(`
-      SELECT * FROM invoices WHERE id = ?
-    `, {
-      replacements: [id]
-    });
+    if (!sequelize) {
+      console.error('❌ Database connection not found');
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error'
+      });
+    }
+    
+    // Check if invoice exists
+    const [existingInvoices] = await sequelize.query(
+      'SELECT * FROM invoices WHERE id = ?',
+      { replacements: [id] }
+    );
     
     if (!existingInvoices || existingInvoices.length === 0) {
       return res.status(404).json({
@@ -1461,25 +1481,25 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     const currentInvoice = existingInvoices[0];
     const now = new Date();
     
-    // Parse existing metadata safely
+    // Safely parse metadata
     let metadata = {};
     if (currentInvoice.metadata) {
       try {
         metadata = typeof currentInvoice.metadata === 'string' 
           ? JSON.parse(currentInvoice.metadata) 
           : currentInvoice.metadata;
-      } catch (e) {
-        console.error('Error parsing metadata:', e);
+      } catch (parseError) {
+        console.warn('Could not parse metadata, using empty object:', parseError.message);
         metadata = {};
       }
     }
     
-    // Initialize statusHistory if not exists
+    // Initialize statusHistory if needed
     if (!metadata.statusHistory) {
       metadata.statusHistory = [];
     }
     
-    // Add status change to history
+    // Add status change record
     metadata.statusHistory.push({
       from: currentInvoice.status,
       to: status,
@@ -1488,7 +1508,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       notes: notes || ''
     });
     
-    // Calculate paid_at if status is paid
+    // Handle paid_at field
     let paidAt = currentInvoice.paid_at;
     if (status === 'paid' && !paidAt) {
       paidAt = now;
@@ -1496,31 +1516,36 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       paidAt = null;
     }
     
-    // Build update query safely
-    const updateFields = ['status = ?', 'notes = ?', 'metadata = ?', 'paid_at = ?', 'updated_at = ?'];
-    const updateValues = [status, notes || currentInvoice.notes || null, JSON.stringify(metadata), paidAt, now];
-    
-    // Add condition for id
-    updateValues.push(id);
-    
-    const query = `
+    // Simple update query - avoid complex JSON operations
+    const updateQuery = `
       UPDATE invoices 
-      SET ${updateFields.join(', ')}
+      SET 
+        status = ?,
+        notes = ?,
+        metadata = ?,
+        paid_at = ?,
+        updated_at = ?
       WHERE id = ?
     `;
     
-    console.log('Executing admin update:', { id, status, notes });
+    const updateValues = [
+      status,
+      notes || currentInvoice.notes || null,
+      JSON.stringify(metadata),
+      paidAt,
+      now,
+      id
+    ];
     
-    await sequelize.query(query, {
-      replacements: updateValues
-    });
+    console.log('Executing update with values:', { status, id, hasNotes: !!notes });
+    
+    await sequelize.query(updateQuery, { replacements: updateValues });
     
     // Fetch updated invoice
-    const [updatedInvoices] = await sequelize.query(`
-      SELECT * FROM invoices WHERE id = ?
-    `, {
-      replacements: [id]
-    });
+    const [updatedInvoices] = await sequelize.query(
+      'SELECT * FROM invoices WHERE id = ?',
+      { replacements: [id] }
+    );
     
     if (!updatedInvoices || updatedInvoices.length === 0) {
       throw new Error('Failed to fetch updated invoice');
@@ -1528,7 +1553,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     
     let invoice = updatedInvoices[0];
     
-    // Parse JSON fields safely
+    // Safely parse JSON fields for response
     if (invoice.metadata && typeof invoice.metadata === 'string') {
       try {
         invoice.metadata = JSON.parse(invoice.metadata);
@@ -1544,7 +1569,7 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
       }
     }
     
-    console.log(`✅ Admin updated invoice ${invoice.invoiceNumber} from ${currentInvoice.status} to ${status}`);
+    console.log(`✅ Invoice ${invoice.invoiceNumber} updated from ${currentInvoice.status} to ${status}`);
     
     res.json({
       success: true,
@@ -1554,10 +1579,13 @@ router.put('/admin/:id', authenticate, authorize(['admin']), async (req, res) =>
     
   } catch (error) {
     console.error('❌ Error updating invoice:', error);
+    console.error('Stack trace:', error.stack);
+    
+    // Send detailed error for debugging
     res.status(500).json({
       success: false,
       error: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? error.stack : 'Internal server error'
     });
   }
 });
