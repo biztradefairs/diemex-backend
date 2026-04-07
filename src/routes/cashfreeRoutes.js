@@ -276,111 +276,92 @@ router.post('/create-order', authenticateAny, async (req, res) => {
   }
 });
 
-// Verify payment status - ALSO MARKS INVOICE AS PAID ON VERIFICATION
+// Verify payment AND update invoice status
 router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
   try {
     const { orderId } = req.params;
-    
-    console.log(`🔍 Verifying payment for order: ${orderId}`);
-    
-    const response = await axios.get(`${CASHFREE_ORDER_URL}/${orderId}/payments`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-version': '2023-08-01',
-        'x-client-id': CASHFREE_APP_ID,
-        'x-client-secret': CASHFREE_SECRET_KEY
-      }
-    });
-    
-    const payments = response.data;
-    const payment = payments[0];
-    
+
     const sequelize = require('../config/database').getConnection('mysql');
-    
-    if (payment && payment.payment_status === 'SUCCESS') {
-      const [orders] = await sequelize.query(`
-        SELECT * FROM cashfree_orders WHERE order_id = ?
-      `, {
-        replacements: [orderId]
+
+    // 1. Get order from DB
+    const [orders] = await sequelize.query(`
+      SELECT * FROM cashfree_orders WHERE order_id = ?
+    `, {
+      replacements: [orderId]
+    });
+
+    if (!orders.length) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found'
       });
-      
-      if (orders.length > 0) {
-        const order = orders[0];
-        const now = new Date();
-        
-        // Get current invoice
-        const [invoices] = await sequelize.query(`
-          SELECT * FROM invoices WHERE id = ?
-        `, {
-          replacements: [order.invoice_id]
-        });
-        
-        if (invoices.length > 0 && invoices[0].status !== 'paid') {
-          const invoice = invoices[0];
-          let metadata = {};
-          
-          if (invoice.metadata) {
-            try {
-              metadata = typeof invoice.metadata === 'string' 
-                ? JSON.parse(invoice.metadata) 
-                : invoice.metadata;
-            } catch (e) {
-              console.error('Error parsing metadata:', e);
-              metadata = {};
-            }
-          }
-          
-          metadata.paymentInfo = {
-            paymentId: payment.payment_id,
-            orderId: orderId,
-            paidAt: now.toISOString(),
-            amount: order.amount,
-            gateway: 'cashfree',
-            status: 'success',
-            verified: true
-          };
-          
-          // Get the correct paid date column name
-          const paidDateColumn = await getPaidDateColumnName(sequelize);
-          
-          // Build update query dynamically
-          let updateQuery = `
-            UPDATE invoices 
-            SET status = 'paid', 
-                metadata = ?,
-                updated_at = ?
-          `;
-          let replacements = [JSON.stringify(metadata), now];
-          
-          // Add paid date column if it exists
-          if (paidDateColumn) {
-            updateQuery += `, ${paidDateColumn} = ?`;
-            replacements.push(now);
-          }
-          
-          updateQuery += ` WHERE id = ?`;
-          replacements.push(order.invoice_id);
-          
-          await sequelize.query(updateQuery, { replacements });
-          
-          console.log(`✅ Payment verified and invoice ${order.invoice_id} marked as PAID`);
+    }
+
+    const order = orders[0];
+
+    // 2. Call Cashfree API to verify payment
+    const axios = require('axios');
+
+    const response = await axios.get(
+      `${process.env.CASHFREE_ENVIRONMENT === 'sandbox'
+        ? 'https://sandbox.cashfree.com/pg'
+        : 'https://api.cashfree.com/pg'
+      }/orders/${orderId}/payments`,
+      {
+        headers: {
+          'x-api-version': '2022-09-01',
+          'x-client-id': process.env.CASHFREE_APP_ID,
+          'x-client-secret': process.env.CASHFREE_SECRET_KEY
         }
       }
+    );
+
+    const payments = response.data;
+
+    // 3. Find SUCCESS payment
+    const successfulPayment = payments.find(
+      p => p.payment_status === 'SUCCESS'
+    );
+
+    if (!successfulPayment) {
+      return res.json({
+        success: true,
+        data: {
+          paymentStatus: 'PENDING'
+        }
+      });
     }
-    
-    res.json({
+
+    // ✅ 4. UPDATE INVOICE TO PAID (THIS IS THE MAIN FIX)
+    const now = new Date();
+
+    await sequelize.query(`
+      UPDATE invoices
+      SET status = 'paid',
+          paidDate = ?,
+          updated_at = ?
+      WHERE id = ?
+    `, {
+      replacements: [now, now, order.invoice_id]
+    });
+
+    console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
+
+    return res.json({
       success: true,
       data: {
+        paymentStatus: 'SUCCESS',
         orderId,
-        paymentStatus: payment?.payment_status || 'PENDING',
-        paymentId: payment?.payment_id,
-        amount: payment?.order_amount
+        paymentId: successfulPayment.cf_payment_id
       }
     });
-    
+
   } catch (error) {
-    console.error('Payment verification error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Verify payment error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
