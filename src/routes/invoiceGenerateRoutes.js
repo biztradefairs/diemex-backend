@@ -594,45 +594,72 @@ router.get('/my-invoices', authenticateAny, async (req, res) => {
   }
 });
 
-// Download invoice PDF with proper design
+// Download invoice PDF with proper design - FIXED VERSION
 router.get('/:id/download', authenticateAny, async (req, res) => {
   try {
     const { id } = req.params;
-
+    
+    console.log(`📄 Download requested for invoice: ${id}`);
+    
     const sequelize = require('../config/database').getConnection('mysql');
-
+    
     const [invoices] = await sequelize.query(
       `SELECT * FROM invoices WHERE id = ?`,
       { replacements: [id] }
     );
-
+    
     if (!invoices.length) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
-
+    
     const invoice = invoices[0];
-
+    
+    // Parse JSON fields
     if (invoice.items && typeof invoice.items === 'string') {
       invoice.items = JSON.parse(invoice.items);
     }
     if (invoice.metadata && typeof invoice.metadata === 'string') {
       invoice.metadata = JSON.parse(invoice.metadata);
     }
-
+    
     const exhibitorInfo = invoice.metadata?.exhibitorInfo || {};
     const items = invoice.items || [];
-
+    
+    // Set headers BEFORE any PDF generation
+    const filename = `invoice-${invoice.invoiceNumber}.pdf`;
+    
+    // CRITICAL: Set proper headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    // Disable compression for PDF
+    res.setHeader('Content-Transfer-Encoding', 'binary');
+    
+    // Calculate totals
+    let totalTaxable = 0;
+    let totalGST = 0;
+    let grandTotal = 0;
+    
+    items.forEach((item) => {
+      const taxable = item.total || 0;
+      const gst = taxable * 0.18;
+      totalTaxable += taxable;
+      totalGST += gst;
+      grandTotal += taxable + gst;
+    });
+    
+    const totalCGST = totalGST / 2;
+    const totalSGST = totalGST / 2;
+    
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`
-    );
-
+    
+    // Pipe to response
     doc.pipe(res);
-
+    
     // Helper functions
     const formatNumber = (num) => {
       if (num === undefined || num === null) return '₹ 0.00';
@@ -641,7 +668,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
         maximumFractionDigits: 2,
       });
     };
-
+    
     const formatNumberWithoutCurrency = (num) => {
       if (num === undefined || num === null) return '0.00';
       return num.toLocaleString('en-IN', {
@@ -649,45 +676,26 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
         maximumFractionDigits: 2,
       });
     };
-
+    
     const formatDate = (d) => {
       if (!d) return 'N/A';
       const date = new Date(d);
       return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     };
-
-    // Calculate totals
-    let totalTaxable = 0;
-    let totalGST = 0;
-    let grandTotal = 0;
-
-    items.forEach((item) => {
-      const taxable = item.total || 0;
-      const gst = taxable * 0.18;
-      totalTaxable += taxable;
-      totalGST += gst;
-      grandTotal += taxable + gst;
-    });
-
-    const totalCGST = totalGST / 2;
-    const totalSGST = totalGST / 2;
-
+    
     let y = 50;
-
+    
     // ================= HEADER WITH LOGO =================
     try {
-      // Try to load the logo from URL
-      const imageUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png';
       const axios = require('axios');
+      const imageUrl = 'https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png';
       const response = await axios.get(imageUrl, {
-        responseType: 'arraybuffer'
+        responseType: 'arraybuffer',
+        timeout: 5000
       });
       const imageBuffer = Buffer.from(response.data, 'binary');
-      
-      // Add logo
       doc.image(imageBuffer, 50, y, { width: 80 });
       
-      // Company info next to logo
       doc.fontSize(16)
         .font('Helvetica-Bold')
         .fillColor('#1e3a8a')
@@ -701,7 +709,6 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
         .text('GSTIN: 27AAAAM1234G1Z2', 140, y + 56);
     } catch (imgError) {
       console.error('Image load failed, using text:', imgError.message);
-      // Fallback to text only
       doc.fontSize(16)
         .font('Helvetica-Bold')
         .fillColor('#1e3a8a')
@@ -714,40 +721,40 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
         .text('Seshadripuram, Bengaluru', 50, y + 34)
         .text('GSTIN: 27AAAAM1234G1Z2', 50, y + 46);
     }
-
+    
     // Invoice info (right side)
     doc.fontSize(9)
       .fillColor('#374151')
       .text(`Invoice No: ${invoice.invoiceNumber}`, 350, 50, { align: 'right' })
       .text(`Invoice Date: ${formatDate(invoice.issueDate)}`, 350, 65, { align: 'right' })
       .text(`Due Date: ${formatDate(invoice.dueDate)}`, 350, 80, { align: 'right' });
-
+    
     // Separator line
-    const headerEndY = imgError ? y + 80 : y + 90;
+    const headerEndY = 130;
     doc.moveTo(50, headerEndY).lineTo(550, headerEndY).stroke('#e5e7eb');
-
+    
     // ================= TITLE =================
     doc.fontSize(24)
       .font('Helvetica-Bold')
       .fillColor('#1e3a8a')
       .text('TAX INVOICE', 50, headerEndY + 30, { align: 'center', width: 500 });
-
+    
     doc.moveTo(50, headerEndY + 55).lineTo(550, headerEndY + 55).stroke('#e5e7eb');
-
+    
     // ================= BILL TO SECTION =================
     let currentY = headerEndY + 75;
-
+    
     doc.fontSize(11)
       .font('Helvetica-Bold')
       .fillColor('#1e3a8a')
       .text('Bill To:', 50, currentY);
-
+    
     currentY += 20;
-
+    
     doc.fontSize(10)
       .font('Helvetica')
       .fillColor('#374151');
-
+    
     doc.text(exhibitorInfo.companyName || invoice.company || 'N/A', 50, currentY);
     currentY += 16;
     doc.text(exhibitorInfo.name || 'N/A', 50, currentY);
@@ -757,18 +764,18 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     doc.text(`Email: ${exhibitorInfo.email || 'N/A'}`, 50, currentY);
     currentY += 16;
     doc.text(`GSTIN: ${exhibitorInfo.gstNumber || 'Not provided'}`, 50, currentY);
-
+    
     // ================= TABLE =================
     let tableY = currentY + 30;
-
+    
     // Table header background
     doc.rect(50, tableY, 500, 25).fill('#e0f2fe');
-
+    
     // Table headers
     doc.fillColor('#1e3a8a')
       .font('Helvetica-Bold')
       .fontSize(9);
-
+    
     doc.text('S.No', 55, tableY + 8);
     doc.text('Description', 90, tableY + 8);
     doc.text('Qty', 320, tableY + 8, { width: 40, align: 'center' });
@@ -776,14 +783,14 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
     doc.text('Taxable (₹)', 420, tableY + 8, { width: 60, align: 'right' });
     doc.text('GST (₹)', 475, tableY + 8, { width: 55, align: 'right' });
     doc.text('Amount (₹)', 525, tableY + 8, { width: 60, align: 'right' });
-
+    
     tableY += 25;
-
+    
     // Table rows
     doc.font('Helvetica')
       .fillColor('#111827')
       .fontSize(9);
-
+    
     items.forEach((item, index) => {
       const yPos = tableY + index * 20;
       const qty = item.quantity || 1;
@@ -791,7 +798,7 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       const taxable = item.total || (qty * price);
       const gst = taxable * 0.18;
       const total = taxable + gst;
-
+      
       doc.text((index + 1).toString(), 55, yPos);
       doc.text(item.description || 'N/A', 90, yPos, { width: 220 });
       doc.text(qty.toString(), 320, yPos, { width: 40, align: 'center' });
@@ -800,84 +807,90 @@ router.get('/:id/download', authenticateAny, async (req, res) => {
       doc.text(formatNumberWithoutCurrency(gst), 475, yPos, { width: 55, align: 'right' });
       doc.text(formatNumberWithoutCurrency(total), 525, yPos, { width: 60, align: 'right' });
     });
-
+    
     // ================= TOTALS SECTION =================
     let totalsY = tableY + items.length * 20 + 20;
-
+    
     doc.fontSize(9)
       .font('Helvetica')
       .fillColor('#374151');
-
-    // Right-align totals
+    
     const totalsX = 380;
     
     doc.text('Total Taxable Value:', totalsX, totalsY);
     doc.text(formatNumber(totalTaxable), 520, totalsY, { align: 'right' });
-
+    
     totalsY += 18;
-
+    
     doc.text('CGST (9%):', totalsX, totalsY);
     doc.text(formatNumber(totalCGST), 520, totalsY, { align: 'right' });
-
+    
     totalsY += 18;
-
+    
     doc.text('SGST (9%):', totalsX, totalsY);
     doc.text(formatNumber(totalSGST), 520, totalsY, { align: 'right' });
-
+    
     totalsY += 18;
-
+    
     doc.text('Total Tax:', totalsX, totalsY);
     doc.text(formatNumber(totalGST), 520, totalsY, { align: 'right' });
-
+    
     totalsY += 25;
-
+    
     // Grand Total
     doc.font('Helvetica-Bold')
       .fontSize(12)
       .fillColor('#1e3a8a');
-
+    
     doc.text('Grand Total:', totalsX, totalsY);
     doc.text(formatNumber(grandTotal), 520, totalsY, { align: 'right' });
-
+    
     // ================= FOOTER / TERMS =================
     let termsY = totalsY + 50;
-
+    
     doc.fontSize(9)
       .font('Helvetica-Bold')
       .fillColor('#374151')
       .text('Terms & Conditions:', 50, termsY);
-
+    
     termsY += 18;
-
+    
     doc.fontSize(8)
       .font('Helvetica')
       .fillColor('#6b7280');
-
+    
     const terms = [
       '1. Payment should be made to mentioned account.',
       '2. No refund after event starts.',
       '3. Disputes subject to jurisdiction.',
       '4. This is a computer generated invoice.'
     ];
-
+    
     terms.forEach((term) => {
       doc.text(term, 50, termsY);
       termsY += 14;
     });
-
+    
     // Footer line
     doc.moveTo(50, termsY + 10).lineTo(550, termsY + 10).stroke('#e5e7eb');
     
     doc.fontSize(7)
       .fillColor('#9ca3af')
       .text('Thank you for your business!', 50, termsY + 20, { align: 'center', width: 500 });
-
+    
+    // End the document
     doc.end();
-
+    
+    console.log(`✅ PDF generated and sent for invoice: ${invoice.invoiceNumber}`);
+    
   } catch (error) {
-    console.error('PDF Error:', error);
+    console.error('PDF Generation Error:', error);
+    // Only send error response if headers haven't been sent yet
     if (!res.headersSent) {
-      res.status(500).json({ success: false, error: error.message });
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to generate PDF'
+      });
     }
   }
 });
