@@ -47,18 +47,24 @@ router.post('/webhook', async (req, res) => {
   try {
     console.log('📨 Webhook received');
     console.log('Body:', req.body);
-    
-    const { order_id, payment_id, payment_status } = req.body;
-    
+
+    // ✅ FIXED extraction
+    const order_id = req.body?.data?.order?.order_id;
+    const payment_id = req.body?.data?.payment?.cf_payment_id;
+    const payment_status = req.body?.data?.payment?.payment_status;
+
     if (!order_id) {
-      console.error('No order_id in webhook');
+      console.error('❌ No order_id in webhook');
       return res.status(400).json({ success: false, error: 'Missing order_id' });
     }
-    
+
+    console.log('✅ Order ID:', order_id);
+    console.log('💰 Payment Status:', payment_status);
+
     const sequelize = require('../config/database').getConnection('mysql');
     const now = new Date();
-    
-    // Update cashfree_orders table
+
+    // ✅ Update order
     await sequelize.query(`
       UPDATE cashfree_orders 
       SET order_status = ?, payment_id = ?, updated_at = ?
@@ -66,90 +72,35 @@ router.post('/webhook', async (req, res) => {
     `, {
       replacements: [payment_status, payment_id || null, now, order_id]
     });
-    
+
     const [orders] = await sequelize.query(`
       SELECT * FROM cashfree_orders WHERE order_id = ?
     `, {
       replacements: [order_id]
     });
-    
+
     if (orders.length > 0) {
       const order = orders[0];
-      
-      // On successful payment, mark invoice as PAID automatically
-      if (payment_status === 'SUCCESS' || payment_status === 'PAID') {
-        console.log(`✅ Payment successful for order ${order_id}, updating invoice ${order.invoice_id} to PAID`);
-        
-        // Get current invoice
-        const [invoices] = await sequelize.query(`
-          SELECT * FROM invoices WHERE id = ?
+
+      if (payment_status === 'SUCCESS') {
+        console.log(`🎉 Payment SUCCESS for ${order_id}`);
+
+        await sequelize.query(`
+          UPDATE invoices 
+          SET status = 'paid',
+              paidDate = ?,
+              updated_at = ?
+          WHERE id = ?
         `, {
-          replacements: [order.invoice_id]
+          replacements: [now, now, order.invoice_id]
         });
-        
-        if (invoices.length > 0) {
-          const invoice = invoices[0];
-          let metadata = {};
-          
-          if (invoice.metadata) {
-            try {
-              metadata = typeof invoice.metadata === 'string' 
-                ? JSON.parse(invoice.metadata) 
-                : invoice.metadata;
-            } catch (e) {
-              console.error('Error parsing metadata:', e);
-              metadata = {};
-            }
-          }
-          
-          // Add payment info to metadata
-          metadata.paymentInfo = {
-            paymentId: payment_id,
-            orderId: order_id,
-            paidAt: now.toISOString(),
-            amount: order.amount,
-            gateway: 'cashfree',
-            status: 'success',
-            webhookReceived: true
-          };
-          
-          // Get the correct paid date column name
-          const paidDateColumn = await getPaidDateColumnName(sequelize);
-          
-          // Build update query dynamically
-          let updateQuery = `
-            UPDATE invoices 
-            SET status = 'paid', 
-                metadata = ?,
-                updated_at = ?
-          `;
-          let replacements = [JSON.stringify(metadata), now];
-          
-          // Add paid date column if it exists
-          if (paidDateColumn) {
-            updateQuery += `, ${paidDateColumn} = ?`;
-            replacements.push(now);
-          }
-          
-          updateQuery += ` WHERE id = ?`;
-          replacements.push(order.invoice_id);
-          
-          await sequelize.query(updateQuery, { replacements });
-          
-          console.log(`✅✅✅ Invoice ${order.invoice_id} marked as PAID successfully!`);
-          console.log(`   Paid date column used: ${paidDateColumn || 'none'}`);
-        } else {
-          console.log(`⚠️ Invoice ${order.invoice_id} not found`);
-        }
-      } else {
-        console.log(`⚠️ Payment status for order ${order_id} is ${payment_status} - not marking as paid`);
+
+        console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
       }
-    } else {
-      console.log(`⚠️ No order found for order_id: ${order_id}`);
     }
-    
+
     res.status(200).json({ success: true });
-    
+
   } catch (error) {
     console.error('❌ Webhook error:', error);
     res.status(200).json({ success: false, error: error.message });
