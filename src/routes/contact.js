@@ -40,7 +40,7 @@ function generateInwardTemplate({
       if (Array.isArray(value)) value = value.join(", ");
       return `
         <tr>
-            <td width="40%" style="padding:6px 0;"><strong>${key}</strong>${''}</td>
+            <td width="40%" style="padding:6px 0;"><strong style="text-transform:uppercase;">${key}</strong><strong>${key}</strong>${''}</td>
             <td style="padding:6px 0;">: ${value || "N/A"}${''}</td>
         </tr>
       `;
