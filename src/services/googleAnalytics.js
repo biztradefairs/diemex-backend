@@ -12,7 +12,8 @@ const PROPERTY_ID = process.env.GA_PROPERTY_ID;
 // ✅ VISITOR STATS
 async function getVisitorStatsDetailed() {
   try {
-    const [response] = await client.runReport({
+    // 🔥 7 DAYS DATA
+    const [weeklyResponse] = await client.runReport({
       property: `properties/${PROPERTY_ID}`,
       dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
       dimensions: [{ name: 'date' }],
@@ -20,7 +21,14 @@ async function getVisitorStatsDetailed() {
       orderBys: [{ dimension: { dimensionName: 'date' } }]
     });
 
-    const rows = response.rows || [];
+    // 🔥 MONTH DATA
+    const [monthlyResponse] = await client.runReport({
+      property: `properties/${PROPERTY_ID}`,
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      metrics: [{ name: 'totalUsers' }]
+    });
+
+    const rows = weeklyResponse.rows || [];
 
     let total = 0;
     let today = 0;
@@ -39,11 +47,16 @@ async function getVisitorStatsDetailed() {
       }
     });
 
+    // 🔥 MONTH VALUE
+    const monthTotal = parseInt(
+      monthlyResponse.rows?.[0]?.metricValues?.[0]?.value || 0
+    );
+
     return {
       total,
       today,
       week: total,
-      month: total,
+      month: monthTotal,   // ✅ REAL MONTH DATA
       last7Days,
       source: 'google-analytics'
     };
