@@ -1,5 +1,8 @@
 const { BetaAnalyticsDataClient } = require('@google-analytics/data');
 
+
+console.log("🔥 GOOGLE ANALYTICS FILE LOADED");
+
 const client = new BetaAnalyticsDataClient({
   credentials: {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,

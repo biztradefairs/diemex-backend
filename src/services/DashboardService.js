@@ -1,7 +1,7 @@
 // services/DashboardService.js
 const { Op } = require('sequelize');
 const modelFactory = require('../models');
-const { getVisitorStatsDetailed } = require('./googleAnalytics');
+const { getVisitorStatsDetailed } = require('../services/googleAnalytics');
 
 class DashboardService {
   constructor() {
