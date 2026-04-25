@@ -11,16 +11,20 @@ const PROPERTY_ID = process.env.GA_PROPERTY_ID;
 
 async function getVisitorStatsDetailed() {
   try {
-    const [response] = await client.runReport({
-      property: `properties/${PROPERTY_ID}`,
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
-      metrics: [{ name: 'activeUsers' }],
-    });
+const [response] = await client.runReport({
+  property: `properties/${PROPERTY_ID}`,
+  dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+  metrics: [
+    { name: 'totalUsers' }  // 🔥 CHANGE THIS
+  ],
+});
 
     console.log("🔥 GA RAW:", JSON.stringify(response, null, 2));
 
     // ✅ FIXED: No dimension, so only total value
     const total = parseInt(response.rows?.[0]?.metricValues?.[0]?.value || 0);
+
+console.log("🔥 TOTAL USERS:", total);
 
     return {
       total,
