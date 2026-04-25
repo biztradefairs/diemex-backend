@@ -72,6 +72,66 @@ class DashboardController {
     }
   }
 
+  async  getVisitorStatsDetailed() {
+  try {
+    const [response] = await client.runReport({
+      property: `properties/${PROPERTY_ID}`,
+      dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'date' }],
+      metrics: [{ name: 'activeUsers' }],
+    });
+
+    console.log("🔥 GA RAW RESPONSE:", JSON.stringify(response, null, 2));
+
+    const rows = response.rows || [];
+
+    // 👇 ADD THIS
+    console.log("🔥 GA ROWS:", rows);
+
+    if (!rows.length) {
+      console.log("⚠️ NO DATA FROM GA");
+    }
+
+    let total = 0;
+    let today = 0;
+    let last7Days = [];
+
+    rows.forEach((row, index) => {
+      const date = row.dimensionValues[0].value;
+      const count = parseInt(row.metricValues[0].value);
+
+      total += count;
+      last7Days.push({ date, count });
+
+      if (index === rows.length - 1) {
+        today = count;
+      }
+    });
+
+    return {
+      total,
+      today,
+      week: total,
+      month: total,
+      last7Days,
+      source: rows.length ? 'google-analytics' : 'empty'
+    };
+
+  } catch (error) {
+    console.error("❌ GA ERROR:", error);
+
+    return {
+      total: 0,
+      today: 0,
+      week: 0,
+      month: 0,
+      last7Days: [],
+      source: 'error'
+    };
+  }
+}
+  
+
   async getVisitorStats(req, res) {
     try {
       const models = await dashboardService.getModels();
