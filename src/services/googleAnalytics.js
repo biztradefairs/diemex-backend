@@ -1,8 +1,5 @@
 const { BetaAnalyticsDataClient } = require('@google-analytics/data');
 
-
-console.log("🔥 GOOGLE ANALYTICS FILE LOADED");
-
 const client = new BetaAnalyticsDataClient({
   credentials: {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -12,37 +9,47 @@ const client = new BetaAnalyticsDataClient({
 
 const PROPERTY_ID = process.env.GA_PROPERTY_ID;
 
+// ✅ VISITOR STATS
 async function getVisitorStatsDetailed() {
-  console.log("🔥 FUNCTION HIT");
   try {
-    console.log("🔥 FUNCTION HIT");
-const [response] = await client.runReport({
-  property: `properties/${PROPERTY_ID}`,
-  dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
-  metrics: [
-    { name: 'totalUsers' }  // 🔥 CHANGE THIS
-  ],
-});
-console.log("🔥 FUNCTION HIT");
+    const [response] = await client.runReport({
+      property: `properties/${PROPERTY_ID}`,
+      dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'date' }],
+      metrics: [{ name: 'totalUsers' }],
+      orderBys: [{ dimension: { dimensionName: 'date' } }]
+    });
 
-    console.log("🔥 GA RAW:", JSON.stringify(response, null, 2));
+    const rows = response.rows || [];
 
-    // ✅ FIXED: No dimension, so only total value
-    const total = parseInt(response.rows?.[0]?.metricValues?.[0]?.value || 0);
+    let total = 0;
+    let today = 0;
+    let last7Days = [];
 
-console.log("🔥 TOTAL USERS:", total);
+    rows.forEach((row, index) => {
+      const date = row.dimensionValues[0].value;
+      const count = parseInt(row.metricValues[0].value);
+
+      total += count;
+
+      last7Days.push({ date, count });
+
+      if (index === rows.length - 1) {
+        today = count;
+      }
+    });
 
     return {
       total,
-      today: total,   // temporary
+      today,
       week: total,
       month: total,
-      last7Days: [],
+      last7Days,
       source: 'google-analytics'
     };
 
   } catch (error) {
-    console.error("❌ GA ERROR:", error);
+    console.error("❌ GA ERROR:", error.message);
 
     return {
       total: 0,
@@ -55,4 +62,29 @@ console.log("🔥 TOTAL USERS:", total);
   }
 }
 
-module.exports = { getVisitorStatsDetailed };
+// ✅ PAGE STATS
+async function getPageStats() {
+  try {
+    const [response] = await client.runReport({
+      property: `properties/${PROPERTY_ID}`,
+      dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'pagePath' }],
+      metrics: [{ name: 'screenPageViews' }],
+      orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }]
+    });
+
+    return (response.rows || []).map(row => ({
+      page: row.dimensionValues[0].value,
+      views: parseInt(row.metricValues[0].value)
+    }));
+
+  } catch (error) {
+    console.error("❌ PAGE ERROR:", error.message);
+    return [];
+  }
+}
+
+module.exports = {
+  getVisitorStatsDetailed,
+  getPageStats
+};
