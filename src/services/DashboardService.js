@@ -1,7 +1,7 @@
 // services/DashboardService.js
 const { Op } = require('sequelize');
 const modelFactory = require('../models');
-const { getVisitorStatsDetailed } = require('../services/googleAnalytics');
+const { getVisitorStatsDetailed, getPageStats } = require('../services/googleAnalytics');
 
 class DashboardService {
   constructor() {
@@ -181,7 +181,10 @@ class DashboardService {
 
 async getVisitorStats(models) {
   try {
+    console.log("🔥 CALLING GA SERVICE");
+
     const stats = await getVisitorStatsDetailed();
+    const pages = await getPageStats();   // 👈 NEW
 
     return {
       total: stats.total,
@@ -189,7 +192,7 @@ async getVisitorStats(models) {
       week: stats.week,
       month: stats.month,
       last7Days: stats.last7Days,
-      topCompanies: stats.topCompanies,
+      pages,                              // 👈 NEW
       source: 'google-analytics'
     };
 
@@ -202,7 +205,7 @@ async getVisitorStats(models) {
       week: 0,
       month: 0,
       last7Days: [],
-      topCompanies: [],
+      pages: [],                          // 👈 NEW
       source: 'error'
     };
   }

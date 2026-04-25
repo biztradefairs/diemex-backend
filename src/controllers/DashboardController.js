@@ -71,26 +71,43 @@ class DashboardController {
       });
     }
   }
+async getPageStats() {
+  try {
+    const [response] = await client.runReport({
+      property: `properties/${PROPERTY_ID}`,
+      dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'pagePath' }],
+      metrics: [{ name: 'screenPageViews' }],
+      orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }]
+    });
 
-  async  getVisitorStatsDetailed() {
+    const pages = (response.rows || []).map(row => ({
+      page: row.dimensionValues[0].value,
+      views: parseInt(row.metricValues[0].value)
+    }));
+
+    return pages;
+
+  } catch (error) {
+    console.error("❌ PAGE STATS ERROR:", error);
+    return [];
+  }
+}
+async getVisitorStatsDetailed() {
+  console.log("🔥 FUNCTION HIT");
+
   try {
     const [response] = await client.runReport({
       property: `properties/${PROPERTY_ID}`,
       dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
       dimensions: [{ name: 'date' }],
-      metrics: [{ name: 'activeUsers' }],
+      metrics: [{ name: 'totalUsers' }],
+      orderBys: [{ dimension: { dimensionName: 'date' } }]
     });
 
-    console.log("🔥 GA RAW RESPONSE:", JSON.stringify(response, null, 2));
+    console.log("🔥 GA RAW:", JSON.stringify(response, null, 2));
 
     const rows = response.rows || [];
-
-    // 👇 ADD THIS
-    console.log("🔥 GA ROWS:", rows);
-
-    if (!rows.length) {
-      console.log("⚠️ NO DATA FROM GA");
-    }
 
     let total = 0;
     let today = 0;
@@ -101,7 +118,11 @@ class DashboardController {
       const count = parseInt(row.metricValues[0].value);
 
       total += count;
-      last7Days.push({ date, count });
+
+      last7Days.push({
+        date,
+        count
+      });
 
       if (index === rows.length - 1) {
         today = count;
@@ -114,7 +135,7 @@ class DashboardController {
       week: total,
       month: total,
       last7Days,
-      source: rows.length ? 'google-analytics' : 'empty'
+      source: 'google-analytics'
     };
 
   } catch (error) {
