@@ -10,7 +10,9 @@ const client = new BetaAnalyticsDataClient({
 const PROPERTY_ID = process.env.GA_PROPERTY_ID;
 
 async function getVisitorStatsDetailed() {
+  console.log("🔥 FUNCTION HIT");
   try {
+    console.log("🔥 FUNCTION HIT");
 const [response] = await client.runReport({
   property: `properties/${PROPERTY_ID}`,
   dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
@@ -18,6 +20,7 @@ const [response] = await client.runReport({
     { name: 'totalUsers' }  // 🔥 CHANGE THIS
   ],
 });
+console.log("🔥 FUNCTION HIT");
 
     console.log("🔥 GA RAW:", JSON.stringify(response, null, 2));
 
