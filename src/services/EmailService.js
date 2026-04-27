@@ -3,44 +3,55 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
-    this.initialized = false;
-    this.fallbackTransporter = null;
+    this.sendgridInitialized = false;
+    this.smtpTransporter = null;
     this.init();
   }
 
   init() {
-    // Initialize SendGrid
-    if (process.env.SENDGRID_API_KEY) {
+    // Initialize Gmail SMTP (Primary - More reliable)
+    if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        this.smtpTransporter = nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: parseInt(process.env.EMAIL_PORT) || 587,
+          secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+        
+        // Verify SMTP connection
+        this.smtpTransporter.verify((error, success) => {
+          if (error) {
+            console.error("❌ Gmail SMTP connection failed:", error.message);
+          } else {
+            console.log("✅ Gmail SMTP service configured successfully");
+            console.log(`📧 From email: ${process.env.EMAIL_FROM || process.env.EMAIL_USER}`);
+          }
+        });
+      } catch (error) {
+        console.error("❌ Failed to initialize Gmail SMTP:", error.message);
+      }
+    } else {
+      console.warn("⚠️ Gmail SMTP credentials not configured");
+    }
+
+    // Initialize SendGrid as fallback
+    if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'SG.') {
       try {
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-        this.initialized = true;
-        console.log("✅ Email Service initialized with SendGrid");
-        console.log(`📧 From email: ${process.env.SENDGRID_FROM}`);
+        this.sendgridInitialized = true;
+        console.log("✅ SendGrid initialized as fallback");
       } catch (error) {
         console.error("❌ Failed to initialize SendGrid:", error.message);
       }
     } else {
-      console.warn("⚠️ SENDGRID_API_KEY not found in environment variables");
-    }
-
-    // Setup fallback email service (using SMTP)
-    if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-      try {
-        this.fallbackTransporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT) || 587,
-          secure: process.env.SMTP_SECURE === 'true',
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          },
-        });
-        console.log("✅ Fallback SMTP service configured");
-      } catch (error) {
-        console.error("❌ Failed to initialize SMTP:", error.message);
-      }
-    } else {
-      console.warn("⚠️ SMTP credentials not configured for fallback");
+      console.warn("⚠️ SendGrid API key not configured");
     }
   }
 
@@ -54,23 +65,29 @@ class EmailService {
       };
     }
 
-    // Try SendGrid first
-    if (this.initialized) {
+    // Try Gmail SMTP first (Primary)
+    if (this.smtpTransporter) {
       try {
-        const result = await this.sendWithSendGrid(to, subject, html);
-        if (result.success) return result;
+        const result = await this.sendWithGmailSMTP(to, subject, html);
+        if (result.success) {
+          console.log(`✅ Email sent via Gmail SMTP to ${to}`);
+          return result;
+        }
       } catch (error) {
-        console.error("❌ SendGrid failed, trying fallback:", error.message);
+        console.error("❌ Gmail SMTP failed:", error.message);
       }
     }
 
-    // Try fallback SMTP
-    if (this.fallbackTransporter) {
+    // Try SendGrid as fallback
+    if (this.sendgridInitialized) {
       try {
-        const result = await this.sendWithSMTP(to, subject, html);
-        if (result.success) return result;
+        const result = await this.sendWithSendGrid(to, subject, html);
+        if (result.success) {
+          console.log(`✅ Email sent via SendGrid to ${to}`);
+          return result;
+        }
       } catch (error) {
-        console.error("❌ SMTP fallback failed:", error.message);
+        console.error("❌ SendGrid failed:", error.message);
       }
     }
 
@@ -88,6 +105,37 @@ class EmailService {
     };
   }
 
+  async sendWithGmailSMTP(to, subject, html) {
+    const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    
+    if (!fromEmail) {
+      throw new Error("No sender email configured");
+    }
+
+    // Clean the from email (remove quotes if present)
+    const cleanFromEmail = fromEmail.replace(/["']/g, '');
+
+    const mailOptions = {
+      from: cleanFromEmail,
+      to,
+      subject,
+      html,
+    };
+
+    console.log(`📧 Attempting to send email via Gmail SMTP:`);
+    console.log(`   To: ${to}`);
+    console.log(`   From: ${cleanFromEmail}`);
+    console.log(`   Subject: ${subject}`);
+
+    const info = await this.smtpTransporter.sendMail(mailOptions);
+    
+    return {
+      success: true,
+      provider: 'gmail-smtp',
+      messageId: info.messageId,
+    };
+  }
+
   async sendWithSendGrid(to, subject, html) {
     if (!process.env.SENDGRID_FROM) {
       throw new Error("SENDGRID_FROM not configured");
@@ -100,46 +148,17 @@ class EmailService {
       html,
     };
 
-    console.log(`📧 Attempting to send email via SendGrid:`);
+    console.log(`📧 Attempting to send email via SendGrid (fallback):`);
     console.log(`   To: ${to}`);
     console.log(`   From: ${process.env.SENDGRID_FROM}`);
     console.log(`   Subject: ${subject}`);
-    console.log(`   HTML Length: ${html.length} characters`);
 
     const response = await sgMail.send(msg);
-
-    console.log(`✅ Email sent successfully via SendGrid to ${to}`);
-    console.log(`📧 Message ID: ${response[0]?.headers?.['x-message-id'] || 'Unknown'}`);
 
     return {
       success: true,
       provider: 'sendgrid',
       messageId: response[0]?.headers?.['x-message-id'],
-    };
-  }
-
-  async sendWithSMTP(to, subject, html) {
-    const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SENDGRID_FROM,
-      to,
-      subject,
-      html,
-    };
-
-    console.log(`📧 Attempting to send email via SMTP:`);
-    console.log(`   To: ${to}`);
-    console.log(`   From: ${mailOptions.from}`);
-    console.log(`   Subject: ${subject}`);
-
-    const info = await this.fallbackTransporter.sendMail(mailOptions);
-    
-    console.log(`✅ Email sent successfully via SMTP to ${to}`);
-    console.log(`📧 Message ID: ${info.messageId}`);
-
-    return {
-      success: true,
-      provider: 'smtp',
-      messageId: info.messageId,
     };
   }
 
@@ -153,23 +172,23 @@ class EmailService {
       };
     }
 
-    // Try SendGrid first
-    if (this.initialized) {
+    // Try Gmail SMTP first (Primary)
+    if (this.smtpTransporter) {
+      try {
+        const result = await this.sendWithGmailSMTPAttachment(to, subject, html, attachment);
+        if (result.success) return result;
+      } catch (error) {
+        console.error("❌ Gmail SMTP attachment failed:", error.message);
+      }
+    }
+
+    // Try SendGrid as fallback
+    if (this.sendgridInitialized) {
       try {
         const result = await this.sendWithSendGridAttachment(to, subject, html, attachment);
         if (result.success) return result;
       } catch (error) {
-        console.error("❌ SendGrid attachment failed, trying fallback:", error.message);
-      }
-    }
-
-    // Try fallback SMTP
-    if (this.fallbackTransporter) {
-      try {
-        const result = await this.sendWithSMTPAttachment(to, subject, html, attachment);
-        if (result.success) return result;
-      } catch (error) {
-        console.error("❌ SMTP attachment fallback failed:", error.message);
+        console.error("❌ SendGrid attachment failed:", error.message);
       }
     }
 
@@ -184,6 +203,36 @@ class EmailService {
       success: false, 
       mock: true,
       message: "Email services unavailable" 
+    };
+  }
+
+  async sendWithGmailSMTPAttachment(to, subject, html, attachment) {
+    const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+    const cleanFromEmail = fromEmail.replace(/["']/g, '');
+    
+    const mailOptions = {
+      from: cleanFromEmail,
+      to,
+      subject,
+      html,
+      attachments: [{
+        filename: attachment.filename,
+        content: attachment.content,
+        cid: attachment.cid
+      }]
+    };
+
+    console.log(`📧 Attempting to send email with attachment via Gmail SMTP:`);
+    console.log(`   To: ${to}`);
+    console.log(`   From: ${cleanFromEmail}`);
+    console.log(`   Attachment: ${attachment.filename}`);
+
+    const info = await this.smtpTransporter.sendMail(mailOptions);
+    
+    return {
+      success: true,
+      provider: 'gmail-smtp',
+      messageId: info.messageId,
     };
   }
 
@@ -206,53 +255,16 @@ class EmailService {
       }]
     };
 
-    console.log(`📧 Attempting to send email with attachment via SendGrid:`);
+    console.log(`📧 Attempting to send email with attachment via SendGrid (fallback):`);
     console.log(`   To: ${to}`);
-    console.log(`   From: ${process.env.SENDGRID_FROM}`);
-    console.log(`   Subject: ${subject}`);
     console.log(`   Attachment: ${attachment.filename}`);
-    console.log(`   CID: ${attachment.cid}`);
 
     const response = await sgMail.send(msg);
-
-    console.log(`✅ Email with attachment sent via SendGrid to ${to}`);
-    console.log(`📧 Message ID: ${response[0]?.headers?.['x-message-id'] || 'Unknown'}`);
 
     return {
       success: true,
       provider: 'sendgrid',
       messageId: response[0]?.headers?.['x-message-id'],
-    };
-  }
-
-  async sendWithSMTPAttachment(to, subject, html, attachment) {
-    const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SENDGRID_FROM,
-      to,
-      subject,
-      html,
-      attachments: [{
-        filename: attachment.filename,
-        content: attachment.content,
-        cid: attachment.cid
-      }]
-    };
-
-    console.log(`📧 Attempting to send email with attachment via SMTP:`);
-    console.log(`   To: ${to}`);
-    console.log(`   From: ${mailOptions.from}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   Attachment: ${attachment.filename}`);
-
-    const info = await this.fallbackTransporter.sendMail(mailOptions);
-    
-    console.log(`✅ Email with attachment sent via SMTP to ${to}`);
-    console.log(`📧 Message ID: ${info.messageId}`);
-
-    return {
-      success: true,
-      provider: 'smtp',
-      messageId: info.messageId,
     };
   }
 
@@ -362,7 +374,7 @@ class EmailService {
                   </td>
               </tr>
             </table>
-            </td>
+            <tr>
           </tr>
         </table>
       </body>
@@ -658,29 +670,43 @@ class EmailService {
   
   // Test method to verify configuration
   async testConnection() {
-    if (!process.env.SENDGRID_API_KEY && !process.env.SMTP_HOST) {
-      throw new Error("No email service configured (SendGrid or SMTP)");
-    }
-
-    let services = [];
+    console.log("\n🔧 Testing Email Service Configuration...");
+    console.log("=====================================");
     
-    if (this.initialized) {
+    let services = [];
+    let success = false;
+    
+    // Test Gmail SMTP
+    if (this.smtpTransporter) {
+      try {
+        await this.smtpTransporter.verify();
+        services.push("Gmail SMTP");
+        console.log("✅ Gmail SMTP configuration OK");
+        console.log(`   📧 From: ${process.env.EMAIL_FROM || process.env.EMAIL_USER}`);
+        console.log(`   📧 User: ${process.env.EMAIL_USER}`);
+        success = true;
+      } catch (error) {
+        console.log("❌ Gmail SMTP verification failed:", error.message);
+      }
+    } else {
+      console.log("❌ Gmail SMTP not configured");
+    }
+    
+    // Test SendGrid
+    if (this.sendgridInitialized) {
       services.push("SendGrid");
       console.log("✅ SendGrid configuration OK");
-      console.log(`📧 From: ${process.env.SENDGRID_FROM}`);
-      console.log(`🔑 API Key: ${process.env.SENDGRID_API_KEY.substring(0, 10)}...`);
+      console.log(`   📧 From: ${process.env.SENDGRID_FROM}`);
+    } else {
+      console.log("❌ SendGrid not configured");
     }
     
-    if (this.fallbackTransporter) {
-      services.push("SMTP");
-      console.log("✅ SMTP configuration OK");
-      console.log(`📧 From: ${process.env.SMTP_FROM || process.env.SENDGRID_FROM}`);
-    }
-    
-    console.log(`📧 Available email services: ${services.join(', ')}`);
+    console.log("=====================================");
+    console.log(`📧 Available email services: ${services.join(', ') || 'None'}`);
+    console.log(`🎯 Status: ${success ? '✅ Ready to send emails' : '❌ No email services available'}`);
     
     return {
-      success: true,
+      success: success || this.sendgridInitialized,
       availableServices: services
     };
   }
