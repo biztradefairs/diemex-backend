@@ -33,15 +33,17 @@ function generateInwardTemplate({
   includeSpace = false
 }) {
 
-  // 🔥 Generate dynamic fields - FIXED: Removed "None" concatenation
+  // 🔥 Generate dynamic fields - FIXED: Removed duplicate key rendering
   const fields = Object.entries(data)
     .filter(([key]) => !['captchaToken', 'submittedAt'].includes(key))
     .map(([key, value]) => {
       if (Array.isArray(value)) value = value.join(", ");
+      // Format the key to be more readable (capitalized with spaces)
+      const formattedKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
       return `
         <tr>
-            <td width="40%" style="padding:6px 0;"><strong style="text-transform:uppercase;">${key}</strong><strong>${key}</strong>${''}</td>
-            <td style="padding:6px 0;">: ${value || "N/A"}${''}</td>
+            <td width="40%" style="padding:6px 0;"><strong>${formattedKey}</strong></td>
+            <td style="padding:6px 0;">: ${value || "N/A"}</td>
         </tr>
       `;
     })
@@ -67,7 +69,7 @@ function generateInwardTemplate({
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
-              </td>
+               </td>
             </tr>
 
             <!-- STRIP -->
@@ -79,7 +81,7 @@ function generateInwardTemplate({
             <tr>
               <td style="background:${titleColor}; color:#fff; text-align:center; padding:15px; font-size:20px; font-weight:bold;">
                 ${title}
-              </td>
+               </td>
             </tr>
 
             <!-- CONTENT -->
@@ -87,8 +89,8 @@ function generateInwardTemplate({
               <td style="padding:30px;">
                 <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px; color:#333;">
                   ${fields}
-                </table>
-              </td>
+                 </table>
+               </td>
             </tr>
 
             <!-- FOOTER -->
@@ -103,7 +105,7 @@ function generateInwardTemplate({
                         src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png"
                         style="max-width:120px; display:block;"
                       />
-                    </td>
+                     </td>
 
                     <!-- RIGHT TEXT -->
                     <td align="right" style="color:#fff; font-size:12px; line-height:1.5;">
@@ -111,17 +113,17 @@ function generateInwardTemplate({
                       Auto Cluster Exhibition Centre, Pune<br/>
                       maX Business Media Pvt Ltd<br/>
                       Bengaluru, India
-                    </td>
+                     </td>
 
                   </tr>
-                </table>
-              </td>
+                 </table>
+               </td>
             </tr>
 
-          </table>
-        </td>
-      </tr>
-    </table>
+           </table>
+         </td>
+       </tr>
+     </table>
 
   </body>
   </html>
