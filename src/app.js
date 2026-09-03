@@ -36,6 +36,7 @@ const housekeepingRoutes = require('./routes/housekeepingRoutes');
 const securityDepositRoutes = require('./routes/securityDepositRoutes');
 const brochureRoutes = require('./routes/brochureRoutes'); // Add this
 const visitorRoutes = require('./routes/visitorRoutes');
+const passRoutes = require('./routes/passRoutes');
 const contactRoutes = require("./routes/contact");
 const floorPlanRoutes = require('./routes/floorPlanRoutes');
 const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
@@ -160,6 +161,15 @@ class AppServer {
           } catch (syncError) {
             console.warn('⚠️ Database sync warning:', syncError.message);
             console.log('ℹ️ Continuing without full sync...');
+            try {
+              const readyModels = await modelFactory.init();
+              if (readyModels.VisitorPass) {
+                await readyModels.VisitorPass.sync();
+                console.log('✅ VisitorPass table ready');
+              }
+            } catch (passSyncError) {
+              console.warn('⚠️ VisitorPass sync failed:', passSyncError.message);
+            }
           }
         }
       }
@@ -676,6 +686,7 @@ setupRoutes() {
   this.app.use('/api/admin/security-deposit', securityDepositRoutes);
   this.app.use('/api/brochures', brochureRoutes);
   this.app.use('/api/visitors', visitorRoutes);
+  this.app.use('/api/passes', passRoutes);
   this.app.use("/api/contact", contactRoutes);
   this.app.use('/api/floor-plan', floorPlanRoutes);
   this.app.use('/api/exhibitor-credentials', exhibitorCredentialsRoutes);

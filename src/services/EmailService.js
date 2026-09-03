@@ -1,33 +1,45 @@
 const { Resend } = require("resend");
+const sgMail = require("@sendgrid/mail");
 
 class EmailService {
   constructor() {
     this.initialized = false;
+    this.provider = null;
     this.resend = null;
+    this.from = null;
     this.init();
   }
 
   init() {
-    if (!process.env.RESEND_API_KEY) {
-      console.error("❌ RESEND_API_KEY is missing in environment variables");
-      return;
+    if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
+      try {
+        this.resend = new Resend(process.env.RESEND_API_KEY);
+        this.from = process.env.RESEND_FROM;
+        this.provider = "resend";
+        this.initialized = true;
+        console.log("✅ Email Service initialized with Resend");
+        console.log(`📧 From email: ${this.from}`);
+        return;
+      } catch (error) {
+        console.error("❌ Failed to initialize Resend:", error.message);
+      }
     }
 
-    if (!process.env.RESEND_FROM) {
-      console.error("❌ RESEND_FROM is missing in environment variables");
-      return;
+    if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM) {
+      try {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        this.from = process.env.SENDGRID_FROM;
+        this.provider = "sendgrid";
+        this.initialized = true;
+        console.log("✅ Email Service initialized with SendGrid");
+        console.log(`📧 From email: ${this.from}`);
+        return;
+      } catch (error) {
+        console.error("❌ Failed to initialize SendGrid:", error.message);
+      }
     }
 
-    try {
-      this.resend = new Resend(process.env.RESEND_API_KEY);
-
-      this.initialized = true;
-
-      console.log("✅ Email Service initialized with Resend");
-      console.log(`📧 From email: ${process.env.RESEND_FROM}`);
-    } catch (error) {
-      console.error("❌ Failed to initialize Resend:", error.message);
-    }
+    console.error("❌ Email service is not configured. Set RESEND_API_KEY/RESEND_FROM or SENDGRID_API_KEY/SENDGRID_FROM");
   }
 
   async sendEmail(to, subject, html) {
@@ -36,18 +48,32 @@ class EmailService {
 
       return {
         success: false,
-        error: "Resend not initialized",
+        error: "Email service not initialized",
       };
     }
 
     try {
-      console.log(`📧 Attempting to send email:`);
+      console.log(`📧 Attempting to send email via ${this.provider}:`);
       console.log(`   To: ${to}`);
-      console.log(`   From: ${process.env.RESEND_FROM}`);
+      console.log(`   From: ${this.from}`);
       console.log(`   Subject: ${subject}`);
 
+      if (this.provider === "sendgrid") {
+        const response = await sgMail.send({
+          to,
+          from: this.from,
+          subject,
+          html,
+        });
+
+        return {
+          success: true,
+          messageId: response?.[0]?.headers?.["x-message-id"],
+        };
+      }
+
       const response = await this.resend.emails.send({
-        from: process.env.RESEND_FROM,
+        from: this.from,
         to,
         subject,
         html,
@@ -60,7 +86,7 @@ class EmailService {
         messageId: response.data?.id,
       };
     } catch (error) {
-      console.error("❌ Resend Error:", error);
+      console.error("❌ Email send error:", error.response?.body || error.message);
 
       return {
         success: false,
@@ -75,13 +101,38 @@ class EmailService {
 
       return {
         success: false,
-        error: "Resend not initialized",
+        error: "Email service not initialized",
       };
     }
 
     try {
+      if (this.provider === "sendgrid") {
+        const content = Buffer.isBuffer(attachment.content)
+          ? attachment.content.toString("base64")
+          : attachment.content;
+
+        await sgMail.send({
+          to,
+          from: this.from,
+          subject,
+          html,
+          attachments: [
+            {
+              content,
+              filename: attachment.filename,
+              type: attachment.contentType || "application/octet-stream",
+              disposition: attachment.cid ? "inline" : "attachment",
+              contentId: attachment.cid,
+            },
+          ],
+        });
+
+        console.log(`✅ Email with attachment sent successfully to ${to}`);
+        return { success: true };
+      }
+
       const response = await this.resend.emails.send({
-        from: process.env.RESEND_FROM,
+        from: this.from,
         to,
         subject,
         html,
@@ -101,7 +152,7 @@ class EmailService {
         messageId: response.data?.id,
       };
     } catch (error) {
-      console.error("❌ Resend Attachment Error:", error);
+      console.error("❌ Email attachment error:", error.response?.body || error.message);
 
       return {
         success: false,

@@ -123,6 +123,16 @@ const modelFactories = {
   return factory(database.getConnection('mysql'));
 },
 
+  VisitorPass: () => {
+    const factory = require('./mysql/VisitorPass');
+    return factory(database.getConnection('mysql'));
+  },
+
+  ContactSubmission: () => {
+    const factory = require('./mysql/ContactSubmission');
+    return factory(database.getConnection('mysql'));
+  },
+
   // ================= MONGO MODELS =================
 
   MongoUser: () => require('./mongodb/User'),

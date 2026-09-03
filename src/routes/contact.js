@@ -274,12 +274,78 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, message: "Form type missing" });
     }
 
-    // Log received data for debugging
+    if (!data.email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Email address is required" 
+      });
+    }
+
+    // Return immediately so the thank-you page can appear at once.
+    res.status(202).json({
+      success: true,
+      message: "Form received. Confirmation email will be sent shortly."
+    });
+
+    processContactSubmission(formType, data).catch((error) => {
+      console.error("❌ Background contact processing failed:", error);
+    });
+  } catch (error) {
+    console.error("❌ Contact API Error:", error);
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        success: false, 
+        message: "Server error", 
+        error: error.message 
+      });
+    }
+  }
+});
+
+let contactTableReady = false;
+
+async function saveContactSubmission(formType, data, emailStatus = "pending") {
+  try {
+    const modelFactory = require("../models");
+    const models = await modelFactory.init();
+    const ContactSubmission = models.ContactSubmission;
+    if (!ContactSubmission) return;
+
+    if (!contactTableReady) {
+      await ContactSubmission.sync();
+      contactTableReady = true;
+    }
+
+    const name =
+      data.contactPerson ||
+      data.name ||
+      [data.firstName, data.lastName].filter(Boolean).join(" ").trim() ||
+      null;
+
+    await ContactSubmission.create({
+      formType,
+      email: data.email,
+      name,
+      phone: data.phone || data.mobile || null,
+      company: data.companyName || data.company || null,
+      payload: data,
+      emailStatus
+    });
+    console.log(`✅ Contact submission stored (${formType}) for ${data.email}`);
+  } catch (dbError) {
+    console.error("Contact submission DB error:", dbError.message);
+  }
+}
+
+async function processContactSubmission(formType, data) {
+  try {
     console.log(`📝 Received ${formType} form submission:`, {
       email: data.email,
       firstName: data.firstName,
       formType
     });
+
+    await saveContactSubmission(formType, data, "pending");
 
     let subject = "";
     let html = "";
@@ -1105,10 +1171,8 @@ router.post("/", async (req, res) => {
 
     // Validate email before sending
     if (!data.email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Email address is required" 
-      });
+      console.error("Email address missing during background processing");
+      return;
     }
 
     // Send email to user with their submitted details
@@ -1214,26 +1278,14 @@ router.post("/", async (req, res) => {
       // Don't fail the request if admin notification fails
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      message: "Form submitted successfully. Please check your email for confirmation.",
-      visitorCode: visitorCode || null
-    });
-
   } catch (error) {
     console.error("❌ Contact API Error:", error);
     console.error("Error details:", {
       message: error.message,
       stack: error.stack
     });
-    
-    return res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: error.message 
-    });
   }
-});
+}
 
 // Add a test endpoint
 router.get("/test", (req, res) => {
