@@ -1,25 +1,31 @@
 const { Resend } = require("resend");
 const sgMail = require("@sendgrid/mail");
+const nodemailer = require("nodemailer");
 
 class EmailService {
   constructor() {
     this.initialized = false;
     this.provider = null;
     this.resend = null;
+    this.smtp = null;
+    this.sendgridReady = false;
     this.from = null;
     this.init();
+  }
+
+  cleanFrom(value, fallback) {
+    const raw = String(value || fallback || "").trim().replace(/^['"]|['"]$/g, "");
+    return raw || fallback;
   }
 
   init() {
     if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
       try {
         this.resend = new Resend(process.env.RESEND_API_KEY);
-        this.from = process.env.RESEND_FROM;
-        this.provider = "resend";
+        this.from = this.cleanFrom(process.env.RESEND_FROM);
+        this.provider = this.provider || "resend";
         this.initialized = true;
-        console.log("✅ Email Service initialized with Resend");
-        console.log(`📧 From email: ${this.from}`);
-        return;
+        console.log("✅ Email Service: Resend ready");
       } catch (error) {
         console.error("❌ Failed to initialize Resend:", error.message);
       }
@@ -28,137 +34,163 @@ class EmailService {
     if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM) {
       try {
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-        this.from = process.env.SENDGRID_FROM;
-        this.provider = "sendgrid";
+        this.sendgridReady = true;
+        this.from = this.from || this.cleanFrom(process.env.SENDGRID_FROM);
+        this.provider = this.provider || "sendgrid";
         this.initialized = true;
-        console.log("✅ Email Service initialized with SendGrid");
-        console.log(`📧 From email: ${this.from}`);
-        return;
+        console.log("✅ Email Service: SendGrid configured");
       } catch (error) {
         console.error("❌ Failed to initialize SendGrid:", error.message);
       }
     }
 
-    console.error("❌ Email service is not configured. Set RESEND_API_KEY/RESEND_FROM or SENDGRID_API_KEY/SENDGRID_FROM");
+    if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        this.smtp = nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: Number(process.env.EMAIL_PORT || 587),
+          secure: String(process.env.EMAIL_PORT) === "465",
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: String(process.env.EMAIL_PASS).replace(/^['"]|['"]$/g, ""),
+          },
+        });
+        this.smtpFrom = this.cleanFrom(process.env.EMAIL_FROM, process.env.EMAIL_USER);
+        this.from = this.from || this.smtpFrom;
+        this.provider = this.provider || "smtp";
+        this.initialized = true;
+        console.log("✅ Email Service: SMTP ready");
+        console.log(`📧 SMTP from: ${this.smtpFrom}`);
+      } catch (error) {
+        console.error("❌ Failed to initialize SMTP:", error.message);
+      }
+    }
+
+    if (!this.initialized) {
+      console.error("❌ Email service is not configured. Set Resend, SendGrid, or SMTP credentials.");
+    }
+  }
+
+  async sendViaResend(to, subject, html, attachments) {
+    const payload = { from: this.cleanFrom(process.env.RESEND_FROM, this.from), to, subject, html };
+    if (attachments) payload.attachments = attachments;
+    const response = await this.resend.emails.send(payload);
+    return { success: true, messageId: response.data?.id, provider: "resend" };
+  }
+
+  async sendViaSendGrid(to, subject, html, attachments) {
+    const message = {
+      to,
+      from: this.cleanFrom(process.env.SENDGRID_FROM, this.from),
+      subject,
+      html,
+    };
+    if (attachments) message.attachments = attachments;
+    const response = await sgMail.send(message);
+    return {
+      success: true,
+      messageId: response?.[0]?.headers?.["x-message-id"],
+      provider: "sendgrid",
+    };
+  }
+
+  async sendViaSmtp(to, subject, html, attachments) {
+    const info = await this.smtp.sendMail({
+      from: this.smtpFrom,
+      to,
+      subject,
+      html,
+      attachments,
+    });
+    return { success: true, messageId: info.messageId, provider: "smtp" };
   }
 
   async sendEmail(to, subject, html) {
     if (!this.initialized) {
       console.error("❌ Email service not initialized");
-
-      return {
-        success: false,
-        error: "Email service not initialized",
-      };
+      return { success: false, error: "Email service not initialized" };
     }
 
-    try {
-      console.log(`📧 Attempting to send email via ${this.provider}:`);
-      console.log(`   To: ${to}`);
-      console.log(`   From: ${this.from}`);
-      console.log(`   Subject: ${subject}`);
+    const attempts = [];
+    const errors = [];
 
-      if (this.provider === "sendgrid") {
-        const response = await sgMail.send({
-          to,
-          from: this.from,
-          subject,
-          html,
-        });
+    if (this.resend) attempts.push(["resend", () => this.sendViaResend(to, subject, html)]);
+    if (this.sendgridReady) attempts.push(["sendgrid", () => this.sendViaSendGrid(to, subject, html)]);
+    if (this.smtp) attempts.push(["smtp", () => this.sendViaSmtp(to, subject, html)]);
 
-        return {
-          success: true,
-          messageId: response?.[0]?.headers?.["x-message-id"],
-        };
+    for (const [name, send] of attempts) {
+      try {
+        console.log(`📧 Attempting to send email via ${name}:`);
+        console.log(`   To: ${to}`);
+        console.log(`   Subject: ${subject}`);
+        const result = await send();
+        console.log(`✅ Email sent successfully to ${to} via ${name}`);
+        return result;
+      } catch (error) {
+        const detail = error.response?.body || error.message;
+        console.error(`❌ Email send error (${name}):`, detail);
+        errors.push(`${name}: ${error.message}`);
       }
-
-      const response = await this.resend.emails.send({
-        from: this.from,
-        to,
-        subject,
-        html,
-      });
-
-      console.log(`✅ Email sent successfully to ${to}`);
-
-      return {
-        success: true,
-        messageId: response.data?.id,
-      };
-    } catch (error) {
-      console.error("❌ Email send error:", error.response?.body || error.message);
-
-      return {
-        success: false,
-        error: error.message,
-      };
     }
+
+    return {
+      success: false,
+      error: errors.join(" | ") || "All email providers failed",
+    };
   }
 
   async sendEmailWithAttachment({ to, subject, html, attachment }) {
     if (!this.initialized) {
       console.error("❌ Email service not initialized");
-
-      return {
-        success: false,
-        error: "Email service not initialized",
-      };
+      return { success: false, error: "Email service not initialized" };
     }
 
-    try {
-      if (this.provider === "sendgrid") {
-        const content = Buffer.isBuffer(attachment.content)
-          ? attachment.content.toString("base64")
-          : attachment.content;
+    const sendgridAttachment = attachment
+      ? [{
+          content: Buffer.isBuffer(attachment.content)
+            ? attachment.content.toString("base64")
+            : attachment.content,
+          filename: attachment.filename,
+          type: attachment.contentType || "application/octet-stream",
+          disposition: attachment.cid ? "inline" : "attachment",
+          contentId: attachment.cid,
+        }]
+      : undefined;
 
-        await sgMail.send({
-          to,
-          from: this.from,
-          subject,
-          html,
-          attachments: [
-            {
-              content,
-              filename: attachment.filename,
-              type: attachment.contentType || "application/octet-stream",
-              disposition: attachment.cid ? "inline" : "attachment",
-              contentId: attachment.cid,
-            },
-          ],
-        });
+    const resendAttachment = attachment
+      ? [{ filename: attachment.filename, content: attachment.content }]
+      : undefined;
 
-        console.log(`✅ Email with attachment sent successfully to ${to}`);
-        return { success: true };
+    const smtpAttachment = attachment
+      ? [{
+          filename: attachment.filename,
+          content: attachment.content,
+          cid: attachment.cid,
+          contentType: attachment.contentType,
+        }]
+      : undefined;
+
+    const attempts = [];
+    if (this.resend) attempts.push(["resend", () => this.sendViaResend(to, subject, html, resendAttachment)]);
+    if (this.sendgridReady) attempts.push(["sendgrid", () => this.sendViaSendGrid(to, subject, html, sendgridAttachment)]);
+    if (this.smtp) attempts.push(["smtp", () => this.sendViaSmtp(to, subject, html, smtpAttachment)]);
+
+    const errors = [];
+    for (const [name, send] of attempts) {
+      try {
+        const result = await send();
+        console.log(`✅ Email with attachment sent successfully to ${to} via ${name}`);
+        return result;
+      } catch (error) {
+        console.error(`❌ Email attachment error (${name}):`, error.response?.body || error.message);
+        errors.push(`${name}: ${error.message}`);
       }
-
-      const response = await this.resend.emails.send({
-        from: this.from,
-        to,
-        subject,
-        html,
-
-        attachments: [
-          {
-            filename: attachment.filename,
-            content: attachment.content,
-          },
-        ],
-      });
-
-      console.log(`✅ Email with attachment sent successfully to ${to}`);
-
-      return {
-        success: true,
-        messageId: response.data?.id,
-      };
-    } catch (error) {
-      console.error("❌ Email attachment error:", error.response?.body || error.message);
-
-      return {
-        success: false,
-        error: error.message,
-      };
     }
+
+    return {
+      success: false,
+      error: errors.join(" | ") || "All email providers failed",
+    };
   }
 
   /**

@@ -83,10 +83,13 @@ class ExhibitorController {
       console.log('🔑 Original password stored in metadata');
       console.log('🏪 Stall details with price:', stallDetails);
       
-      // Send welcome email
+      // Send welcome email in the background (does not block create)
       const emailService = require('../services/EmailService');
       emailService.sendExhibitorWelcome(exhibitor, originalPassword)
-        .then(() => console.log('✅ Welcome email sent'))
+        .then((result) => {
+          if (result?.success) console.log('✅ Welcome email sent via', result.provider);
+          else console.warn('⚠️ Welcome email failed:', result?.error);
+        })
         .catch(err => console.warn('⚠️ Email failed:', err.message));
       
       // Return response
