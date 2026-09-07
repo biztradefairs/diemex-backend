@@ -115,10 +115,19 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     
     const { amount, invoiceId, requirementsId, customerDetails } = req.body;
 
-    if (!amount || !invoiceId) {
+    if (!invoiceId) {
       return res.status(400).json({ 
         success: false, 
         error: 'Amount and invoiceId are required' 
+      });
+    }
+
+    const orderAmount = Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
+
+    if (!Number.isFinite(orderAmount) || orderAmount < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payment amount. Amount must be at least ₹1.00'
       });
     }
 
@@ -137,14 +146,14 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     
     const orderData = {
       order_id: orderId,
-      order_amount: Number(amount),
+      order_amount: orderAmount,
       order_currency: 'INR',
       order_note: `Payment for Invoice: ${invoiceId}`,
       customer_details: {
-        customer_id: customerDetails?.customerId || req.user?.id || 'guest_' + Date.now(),
-        customer_name: customerDetails?.customerName || req.user?.name || 'Customer',
-        customer_email: customerDetails?.customerEmail || req.user?.email || 'customer@example.com',
-        customer_phone: customerDetails?.customerPhone || req.user?.phone || '9999999999'
+        customer_id: String(customerDetails?.customerId || customerDetails?.id || req.user?.id || 'guest_' + Date.now()),
+        customer_name: customerDetails?.customerName || customerDetails?.name || req.user?.name || 'Customer',
+        customer_email: customerDetails?.customerEmail || customerDetails?.email || req.user?.email || 'customer@example.com',
+        customer_phone: String(customerDetails?.customerPhone || customerDetails?.phone || req.user?.phone || '9999999999').replace(/\D/g, '').slice(-10) || '9999999999'
       },
       order_meta: {
         return_url: returnUrl,
@@ -153,7 +162,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     };
 
     console.log(`💰 Using Cashfree ${CASHFREE_MODE} mode`);
-    console.log(`📦 Order amount: ${amount}`);
+    console.log(`📦 Order amount: ${orderAmount}`);
     
     const response = await axios.post(CASHFREE_ORDER_URL, orderData, {
       headers: {
@@ -196,7 +205,7 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     `, {
       replacements: [
         crypto.randomUUID(), orderId, invoiceId, requirementsId, req.user?.id || 'guest',
-        amount, 'PENDING', now, now
+        orderAmount, 'PENDING', now, now
       ]
     });
 
