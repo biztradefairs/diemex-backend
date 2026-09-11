@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
 
+console.log('📦 extraRequirementsRoutes loaded (includes /admin/by-exhibitor and /admin/exhibitor/:id)');
+
 // Helper function to extract items from requirement data
 const extractRequirementItems = (data) => {
   const items = [];
@@ -146,6 +148,138 @@ const extractRequirementItems = (data) => {
   return items;
 };
 
+function parseMaybeJson(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function roundMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+async function loadRelatedFinance(sequelize) {
+  let invoices = [];
+  let orders = [];
+  try {
+    const [rows] = await sequelize.query('SELECT * FROM invoices');
+    invoices = rows || [];
+  } catch (error) {
+    console.warn('Could not load invoices for extra requirements:', error.message);
+  }
+  try {
+    const [rows] = await sequelize.query('SELECT * FROM cashfree_orders');
+    orders = rows || [];
+  } catch (error) {
+    console.warn('Could not load cashfree orders for extra requirements:', error.message);
+  }
+  return { invoices, orders };
+}
+
+function findPaymentForRequirement(requirementId, exhibitorId, invoices, orders) {
+  const matchingOrder = (orders || []).find(
+    (order) => order.requirement_id === requirementId || order.requirementId === requirementId
+  );
+
+  let invoice = null;
+  if (matchingOrder?.invoice_id) {
+    invoice = (invoices || []).find((row) => row.id === matchingOrder.invoice_id);
+  }
+
+  if (!invoice) {
+    invoice = (invoices || []).find((row) => {
+      const metadata = parseMaybeJson(row.metadata);
+      return metadata?.requirementsId === requirementId;
+    });
+  }
+
+  if (!invoice) return null;
+
+  const relatedOrders = (orders || []).filter((order) => order.invoice_id === invoice.id);
+  const successfulOrder = relatedOrders.find((order) => {
+    const status = String(order.order_status || '').toUpperCase();
+    return status === 'PAID' || status === 'SUCCESS' || status === 'COMPLETED';
+  });
+  const invoiceStatus = String(invoice.status || '').toLowerCase();
+  const metadata = parseMaybeJson(invoice.metadata);
+  const isPaid = invoiceStatus === 'paid' || Boolean(successfulOrder);
+
+  return {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    amount: roundMoney(invoice.amount || successfulOrder?.amount || matchingOrder?.amount || 0),
+    status: isPaid ? 'paid' : invoiceStatus || 'pending',
+    paymentMethod:
+      successfulOrder || matchingOrder
+        ? 'Online (Cashfree)'
+        : metadata?.paymentInfo?.paymentMode || 'Invoice',
+    paymentId: successfulOrder?.payment_id || relatedOrders[0]?.payment_id || null,
+    orderId: successfulOrder?.order_id || relatedOrders[0]?.order_id || matchingOrder?.order_id || null,
+    paidAt: invoice.paidDate || invoice.paid_at || null,
+    dueDate: invoice.dueDate,
+    issueDate: invoice.issueDate,
+  };
+}
+
+async function getExhibitorRow(sequelize, exhibitorId) {
+  if (!exhibitorId) return {};
+  try {
+    const [rows] = await sequelize.query(`SELECT * FROM exhibitors WHERE id = ? LIMIT 1`, {
+      replacements: [exhibitorId],
+    });
+    return rows?.[0] || {};
+  } catch {
+    return {};
+  }
+}
+
+function formatRequirementRecord(reqRecord, exhibitor, finance) {
+  const parsedData = parseMaybeJson(reqRecord.data);
+  const generalInfo = parsedData.generalInfo || {};
+  const boothDetails = parsedData.boothDetails || {};
+  const items = extractRequirementItems(parsedData);
+  const totals = parsedData.totals || {};
+  const itemsTotal = roundMoney(items.reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0));
+  const payment = findPaymentForRequirement(
+    reqRecord.id,
+    reqRecord.exhibitorId,
+    finance.invoices,
+    finance.orders
+  );
+
+  return {
+    id: reqRecord.id,
+    requirementId: reqRecord.id,
+    exhibitorId: reqRecord.exhibitorId,
+    stallNumber: boothDetails.boothNo || exhibitor.booth || exhibitor.boothNumber || exhibitor.stallNumber,
+    companyName: generalInfo.companyName || exhibitor.company || exhibitor.name || 'Unknown',
+    contactPerson:
+      boothDetails.contactPerson ||
+      `${generalInfo.firstName || ''} ${generalInfo.lastName || ''}`.trim() ||
+      exhibitor.name ||
+      'Unknown',
+    email: generalInfo.email || exhibitor.email || 'unknown@email.com',
+    phone: generalInfo.mobile || exhibitor.phone || 'N/A',
+    status: reqRecord.status,
+    submittedAt: reqRecord.createdAt || reqRecord.created_at,
+    updatedAt: reqRecord.updatedAt || reqRecord.updated_at,
+    items,
+    totals: {
+      servicesTotal: roundMoney(totals.servicesTotal || itemsTotal),
+      gst: roundMoney(totals.gst || 0),
+      deposit: roundMoney(totals.deposit || 0),
+      total: roundMoney(totals.total || payment?.amount || itemsTotal),
+    },
+    payment,
+  };
+}
+
 // =============================================
 // ADMIN ROUTES
 // =============================================
@@ -282,6 +416,138 @@ router.get('/admin/all', authenticate, authorize(['admin']), async (req, res) =>
       error: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  }
+});
+
+router.get('/admin/by-exhibitor', authenticate, authorize(['admin']), async (req, res) => {
+  try {
+    const sequelize = require('../config/database').getConnection('mysql');
+    if (!sequelize) throw new Error('Database connection not available');
+
+    const [requirements] = await sequelize.query(`
+      SELECT * FROM requirements
+      WHERE type = 'exhibitor'
+      ORDER BY createdAt DESC
+    `);
+
+    const finance = await loadRelatedFinance(sequelize);
+    const grouped = {};
+    const exhibitorCache = {};
+
+    for (const reqRecord of requirements || []) {
+      if (reqRecord.exhibitorId && !exhibitorCache[reqRecord.exhibitorId]) {
+        exhibitorCache[reqRecord.exhibitorId] = await getExhibitorRow(sequelize, reqRecord.exhibitorId);
+      }
+      const exhibitor = exhibitorCache[reqRecord.exhibitorId] || {};
+      const formatted = formatRequirementRecord(reqRecord, exhibitor, finance);
+      const key = reqRecord.exhibitorId || formatted.email;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          exhibitorId: reqRecord.exhibitorId,
+          companyName: formatted.companyName,
+          contactPerson: formatted.contactPerson,
+          email: formatted.email,
+          phone: formatted.phone,
+          stallNumber: formatted.stallNumber,
+          requestCount: 0,
+          paidCount: 0,
+          pendingCount: 0,
+          totalAmount: 0,
+          paidAmount: 0,
+          pendingAmount: 0,
+          latestSubmittedAt: formatted.submittedAt,
+        };
+      }
+
+      const amount = formatted.payment?.amount || formatted.totals.total || 0;
+      const isPaid = formatted.payment?.status === 'paid';
+      grouped[key].requestCount += 1;
+      grouped[key].totalAmount = roundMoney(grouped[key].totalAmount + amount);
+      if (isPaid) {
+        grouped[key].paidCount += 1;
+        grouped[key].paidAmount = roundMoney(grouped[key].paidAmount + amount);
+      } else {
+        grouped[key].pendingCount += 1;
+        grouped[key].pendingAmount = roundMoney(grouped[key].pendingAmount + amount);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: Object.values(grouped),
+    });
+  } catch (error) {
+    console.error('Error fetching exhibitor extra requirements summary:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/admin/exhibitor/:exhibitorId', authenticate, authorize(['admin']), async (req, res) => {
+  try {
+    const { exhibitorId } = req.params;
+    const sequelize = require('../config/database').getConnection('mysql');
+    if (!sequelize) throw new Error('Database connection not available');
+
+    const exhibitor = await getExhibitorRow(sequelize, exhibitorId);
+    const finance = await loadRelatedFinance(sequelize);
+
+    const [requirements] = await sequelize.query(`
+      SELECT * FROM requirements
+      WHERE type = 'exhibitor' AND exhibitorId = ?
+      ORDER BY createdAt DESC
+    `, {
+      replacements: [exhibitorId],
+    });
+
+    const requests = (requirements || []).map((reqRecord) =>
+      formatRequirementRecord(reqRecord, exhibitor, finance)
+    );
+
+    const summary = requests.reduce(
+      (acc, request) => {
+        const amount = request.payment?.amount || request.totals.total || 0;
+        acc.requestCount += 1;
+        acc.itemCount += (request.items || []).length;
+        acc.totalAmount = roundMoney(acc.totalAmount + amount);
+        if (request.payment?.status === 'paid') {
+          acc.paidCount += 1;
+          acc.paidAmount = roundMoney(acc.paidAmount + amount);
+        } else {
+          acc.pendingCount += 1;
+          acc.pendingAmount = roundMoney(acc.pendingAmount + amount);
+        }
+        return acc;
+      },
+      {
+        requestCount: 0,
+        itemCount: 0,
+        paidCount: 0,
+        pendingCount: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        pendingAmount: 0,
+      }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        exhibitor: {
+          id: exhibitor.id || exhibitorId,
+          name: exhibitor.name || requests[0]?.contactPerson || '',
+          company: exhibitor.company || requests[0]?.companyName || '',
+          email: exhibitor.email || requests[0]?.email || '',
+          phone: exhibitor.phone || requests[0]?.phone || '',
+          booth: exhibitor.booth || exhibitor.boothNumber || requests[0]?.stallNumber || '',
+        },
+        summary,
+        requests,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching exhibitor extra requirements:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
