@@ -42,6 +42,7 @@ const floorPlanRoutes = require('./routes/floorPlanRoutes');
 const exhibitorCredentialsRoutes = require('./routes/exhibitor-credentials');
 const invoiceGenerateRoutes = require('./routes/invoiceGenerateRoutes');
 const extraRequirementsRoutes = require('./routes/extraRequirementsRoutes');
+const exhibitorTeamRoutes = require('./routes/exhibitorTeamRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const cashfreeRoutes = require('./routes/cashfreeRoutes');
@@ -692,6 +693,7 @@ setupRoutes() {
   this.app.use('/api/exhibitor-credentials', exhibitorCredentialsRoutes);
   this.app.use('/api/invoices', invoiceGenerateRoutes);
   this.app.use('/api/extra-requirements', extraRequirementsRoutes);
+  this.app.use('/api/exhibitor-team', exhibitorTeamRoutes);
   this.app.use('/api/dashboard', dashboardRoutes);
   this.app.use('/api/payments', paymentRoutes);
   this.app.use('/api/cashfree', cashfreeRoutes);

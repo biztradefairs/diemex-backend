@@ -133,6 +133,16 @@ const modelFactories = {
     return factory(database.getConnection('mysql'));
   },
 
+  ExhibitorTeam: () => {
+    const factory = require('./mysql/ExhibitorTeam');
+    return factory(database.getConnection('mysql'));
+  },
+
+  ExhibitorTeamMember: () => {
+    const factory = require('./mysql/ExhibitorTeamMember');
+    return factory(database.getConnection('mysql'));
+  },
+
   // ================= MONGO MODELS =================
 
   MongoUser: () => require('./mongodb/User'),
