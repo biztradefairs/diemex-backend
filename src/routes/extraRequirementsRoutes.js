@@ -85,7 +85,7 @@ const extractRequirementItems = (data) => {
     items.push({
       id: `compressed_air_${Date.now()}_${Math.random()}`,
       type: 'Compressed Air',
-      quantity: data.compressedAir.qty || 0,
+      quantity: data.compressedAir.qty || 1,
       description: 'Compressed Air Connection',
       specifications: `CFM: ${data.compressedAir.cfmRange || 'Standard'}, Power: ${data.compressedAir.powerKW} kW`,
       unitPrice: data.compressedAir.costPerConnection,
