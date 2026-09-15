@@ -15,7 +15,7 @@ const extractRequirementItems = (data) => {
       items.push({
         id: item.id || `furniture_${Date.now()}_${Math.random()}`,
         type: 'Furniture',
-        quantity: item.quantity || 1,
+        quantity: item.quantity || 0,
         description: item.description || `Furniture: ${item.code}`,
         specifications: `Code: ${item.code}, Cost: ₹${item.cost}`,
         unitPrice: item.cost,
@@ -85,7 +85,7 @@ const extractRequirementItems = (data) => {
     items.push({
       id: `compressed_air_${Date.now()}_${Math.random()}`,
       type: 'Compressed Air',
-      quantity: data.compressedAir.qty || 1,
+      quantity: data.compressedAir.qty || 0,
       description: 'Compressed Air Connection',
       specifications: `CFM: ${data.compressedAir.cfmRange || 'Standard'}, Power: ${data.compressedAir.powerKW} kW`,
       unitPrice: data.compressedAir.costPerConnection,
