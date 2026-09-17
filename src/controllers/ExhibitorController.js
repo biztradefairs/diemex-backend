@@ -50,7 +50,8 @@ class ExhibitorController {
       // Prepare stall details with all fields including price
       const stallDetails = {
         size: data.boothSize || data.stallDetails?.size || '3m x 3m',
-        type: data.boothType || data.stallDetails?.type || 'standard',
+        type: data.boothType || data.stallDetails?.type || '',
+        openSides: data.boothOpenSides || data.stallDetails?.openSides || '',
         dimensions: data.boothDimensions || data.stallDetails?.dimensions || '',
         notes: data.boothNotes || data.stallDetails?.notes || '',
         price: data.boothPrice || data.stallDetails?.price || data.price || ''
@@ -100,6 +101,7 @@ class ExhibitorController {
       // Add stall details to response
       response.boothSize = stallDetails.size;
       response.boothType = stallDetails.type;
+      response.boothOpenSides = stallDetails.openSides;
       response.boothDimensions = stallDetails.dimensions;
       response.boothNotes = stallDetails.notes;
       response.boothPrice = stallDetails.price;
@@ -171,7 +173,8 @@ class ExhibitorController {
         
         // Get stall details with all fields including price
         let boothSize = '';
-        let boothType = 'standard';
+        let boothType = '';
+        let boothOpenSides = '';
         let boothDimensions = '';
         let boothNotes = '';
         let boothPrice = '';
@@ -182,7 +185,8 @@ class ExhibitorController {
               ? JSON.parse(data.stallDetails) 
               : data.stallDetails;
             boothSize = stallDetails.size || '';
-            boothType = stallDetails.type || 'standard';
+            boothType = stallDetails.type || '';
+            boothOpenSides = stallDetails.openSides || '';
             boothDimensions = stallDetails.dimensions || '';
             boothNotes = stallDetails.notes || '';
             boothPrice = stallDetails.price || '';
@@ -205,6 +209,7 @@ class ExhibitorController {
           boothNumber: data.boothNumber,
           boothSize: boothSize,
           boothType: boothType,
+          boothOpenSides: boothOpenSides,
           boothDimensions: boothDimensions,
           boothNotes: boothNotes,
           boothPrice: boothPrice,
@@ -348,7 +353,8 @@ class ExhibitorController {
       
       // Add individual fields for easier access
       data.boothSize = stallDetails?.size || '';
-      data.boothType = stallDetails?.type || 'standard';
+      data.boothType = stallDetails?.type || '';
+      data.boothOpenSides = stallDetails?.openSides || '';
       data.boothDimensions = stallDetails?.dimensions || '';
       data.boothNotes = stallDetails?.notes || '';
       data.boothPrice = stallDetails?.price || '';
@@ -393,8 +399,8 @@ class ExhibitorController {
       }
 
       // Handle stall details update - PRESERVE ALL FIELDS including price
-      if (updateData.stallDetails || updateData.boothSize || updateData.boothType || 
-          updateData.boothDimensions || updateData.boothNotes || updateData.boothPrice) {
+      if (updateData.stallDetails || updateData.boothSize || updateData.boothType ||
+          updateData.boothOpenSides || updateData.boothDimensions || updateData.boothNotes || updateData.boothPrice) {
         
         // Get existing stall details or create new
         let stallDetails = exhibitor.stallDetails || {};
@@ -412,7 +418,8 @@ class ExhibitorController {
         stallDetails = {
           ...stallDetails,
           size: updateData.boothSize || updateData.stallDetails?.size || stallDetails.size || '',
-          type: updateData.boothType || updateData.stallDetails?.type || stallDetails.type || 'standard',
+          type: updateData.boothType || updateData.stallDetails?.type || stallDetails.type || '',
+          openSides: updateData.boothOpenSides || updateData.stallDetails?.openSides || stallDetails.openSides || '',
           dimensions: updateData.boothDimensions || updateData.stallDetails?.dimensions || stallDetails.dimensions || '',
           notes: updateData.boothNotes || updateData.stallDetails?.notes || stallDetails.notes || '',
           price: updateData.boothPrice || updateData.stallDetails?.price || stallDetails.price || ''

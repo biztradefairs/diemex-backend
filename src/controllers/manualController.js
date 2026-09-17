@@ -497,11 +497,13 @@ class ManualController {
   async getAllPDFs(req, res) {
     try {
       const result = await manualService.getAllManuals({});
-      const pdfs = result.data || [];
+      const pdfs = (result.data || [])
+        .filter((pdf) => pdf && pdf.file_path)
+        .map((pdf) => ({ ...pdf, type: 'pdf' }));
       
       res.json({
         success: true,
-        data: pdfs.map(pdf => ({ ...pdf, type: 'pdf' })),
+        data: pdfs,
         count: pdfs.length
       });
     } catch (error) {
@@ -558,28 +560,7 @@ class ManualController {
   }
 
   async downloadPDF(req, res) {
-    try {
-      const { id } = req.params;
-      const result = await manualService.downloadManual(id);
-      
-      if (result.fileUrl) {
-        return res.redirect(result.fileUrl);
-      }
-
-      res.json({
-        success: true,
-        data: {
-          downloadUrl: result.downloadUrl,
-          fileName: result.fileName
-        }
-      });
-    } catch (error) {
-      console.error('Error in downloadPDF:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: error.message || 'Failed to download PDF'
-      });
-    }
+    return this.downloadManual(req, res);
   }
 
   // ==================== EXISTING METHODS ====================
@@ -593,11 +574,14 @@ class ManualController {
         });
       }
 
-      const result = await manualService.createManual(req.body, req.file);
+      const result = await manualService.createManual({
+        ...req.body,
+        status: req.body.status || 'published'
+      }, req.file);
       
       res.status(201).json({
         success: true,
-        data: { ...result.data, type: 'pdf' },
+        data: { ...(result.data || {}), type: 'pdf' },
         message: 'Manual created successfully'
       });
     } catch (error) {
@@ -653,7 +637,7 @@ class ManualController {
       const formattedSections = sections.map((section) => formatSection(section));
 
       // Format PDFs
-      const formattedPDFs = pdfs.map(pdf => ({
+      const formattedPDFs = pdfs.map((pdf) => ({
         ...pdf,
         type: 'pdf'
       }));
@@ -755,17 +739,18 @@ class ManualController {
   async downloadManual(req, res) {
     try {
       const { id } = req.params;
-      const result = await manualService.downloadManual(id);
-      
-      return res.json({
-        success: true,
-        data: {
-          downloadUrl: result.downloadUrl,
-          fileName: result.fileName,
-          fileUrl: result.fileUrl,
-          mimeType: result.mimeType
-        }
-      });
+      const file = await manualService.streamManualFile(id);
+      const asciiName = file.fileName.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
+      const encodedName = encodeURIComponent(file.fileName);
+
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-File-Name', encodedName);
+      return res.send(file.buffer);
     } catch (error) {
       console.error('Error in downloadManual:', error);
       res.status(500).json({ 

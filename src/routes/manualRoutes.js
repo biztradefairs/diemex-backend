@@ -1,5 +1,6 @@
 // src/routes/manualRoutes.js
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const multer = require('multer');
 const manualController = require('../controllers/manualController');
@@ -22,10 +23,13 @@ const upload = multer({
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/octet-stream'
     ];
+    const allowedExt = ['.pdf', '.doc', '.docx', '.txt', '.xls', '.xlsx', '.ppt', '.pptx'];
+    const ext = path.extname(file.originalname || '').toLowerCase();
 
-    if (allowedTypes.includes(file.mimetype)) {
+    if (allowedTypes.includes(file.mimetype) || allowedExt.includes(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Invalid file type. Only PDF, DOC, DOCX, TXT, Excel, and PowerPoint files are allowed.'));

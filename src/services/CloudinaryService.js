@@ -39,7 +39,9 @@ class CloudinaryService {
 
       return {
         url: result.secure_url,
+        secure_url: result.secure_url,
         publicId: result.public_id,
+        public_id: result.public_id,
         format: result.format,
         bytes: result.bytes
       };
@@ -48,6 +50,10 @@ class CloudinaryService {
       console.error('❌ Cloudinary upload error:', error.message);
       throw new Error(`Upload failed: ${error.message}`);
     }
+  }
+
+  async uploadImage(fileBuffer, options = {}) {
+    return this.uploadFile(fileBuffer, options);
   }
 
   // ================================
@@ -71,6 +77,14 @@ class CloudinaryService {
     throw new Error(`Delete failed: ${error.message}`);
   }
 }
+
+  async deleteImage(publicId) {
+    try {
+      return await this.deleteFile(publicId, 'raw');
+    } catch (error) {
+      return this.deleteFile(publicId, 'image');
+    }
+  }
 
   // ================================
   // Test Connection
