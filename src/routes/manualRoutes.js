@@ -43,6 +43,14 @@ router.get('/admin/all', manualController.getAllManualsForAdmin);
 // Get statistics for admin exhibition page
 router.get('/admin/statistics', manualController.getAdminStatistics);
 
+router.get('/important-dates', manualController.getImportantDates);
+router.put(
+  '/admin/important-dates',
+  authenticate,
+  authorize(['admin']),
+  manualController.saveImportantDates
+);
+
 // ======================================================
 // TEXT SECTIONS ROUTES (for exhibitor manual content)
 // ======================================================

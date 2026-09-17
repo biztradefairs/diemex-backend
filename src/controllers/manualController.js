@@ -1,60 +1,13 @@
 // src/controllers/manualController.js
 const manualService = require('../services/manualService');
-const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 const path = require('path');
 const fs = require('fs');
-
-// In-memory storage for text sections
-let textSections = [
-  {
-    id: '1',
-    title: 'Event Overview',
-    content: 'Welcome to the Annual Tech Expo 2024. This event brings together industry leaders, innovators, and technology enthusiasts from around the world.',
-    category: 'general',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    title: 'Setup Schedule',
-    content: 'Exhibitor setup: January 28, 2024 (8:00 AM - 6:00 PM)\nEvent days: January 29-31, 2024 (9:00 AM - 5:00 PM)\nBreakdown: February 1, 2024 (8:00 AM - 6:00 PM)',
-    category: 'setup',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    title: 'Rules & Regulations',
-    content: '1. All displays must be within allocated stall boundaries\n2. Fire regulations must be strictly followed\n3. No amplified sound without prior approval\n4. All materials must be fire-retardant\n5. No blocking of aisles or emergency exits',
-    category: 'rules',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '4',
-    title: 'Contact Information',
-    content: 'Event Coordinator: Sarah Johnson\nPhone: +1 (555) 123-4567\nEmail: sarah@techexpo2024.com\nEmergency Contact: Security Desk - Extension 911',
-    category: 'contact',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '5',
-    title: 'Electrical Requirements',
-    content: 'Standard stalls include 2 power outlets (110V). Additional power requirements must be requested at least 2 weeks before the event.',
-    category: 'setup',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '6',
-    title: 'Shipping & Logistics',
-    content: 'All shipments must arrive between January 25-27, 2024. Use the provided shipping labels and include your stall number on all packages.',
-    category: 'general',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+const {
+  getModels,
+  ensureManualContentTables,
+  formatSection
+} = require('../utils/manualContentDb');
 
 class ManualController {
   // ==================== TEXT SECTIONS METHODS ====================
@@ -62,19 +15,26 @@ class ManualController {
   // Get all text sections
   async getAllSections(req, res) {
     try {
-      let sections = textSections;
-      
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const where = {};
+
       if (req.query.category && req.query.category !== 'all') {
-        sections = textSections.filter(s => s.category === req.query.category);
+        where.category = String(req.query.category).toLowerCase();
       }
 
       if (req.query.search) {
-        const searchTerm = req.query.search.toLowerCase();
-        sections = sections.filter(s => 
-          s.title.toLowerCase().includes(searchTerm) || 
-          s.content.toLowerCase().includes(searchTerm)
-        );
+        const searchTerm = `%${req.query.search}%`;
+        where[Op.or] = [
+          { title: { [Op.like]: searchTerm } },
+          { content: { [Op.like]: searchTerm } }
+        ];
       }
+
+      const sections = await ManualSection.findAll({
+        where,
+        order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']]
+      });
 
       res.json({
         success: true,
@@ -96,7 +56,9 @@ class ManualController {
     try {
       const { id } = req.params;
       
-      const section = textSections.find(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const section = await ManualSection.findByPk(id);
       
       if (!section) {
         return res.status(404).json({
@@ -137,18 +99,18 @@ class ManualController {
         });
       }
 
-      const newSection = {
-        id: uuidv4(),
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const count = await ManualSection.count();
+      const newSection = await ManualSection.create({
         title: title.trim(),
         content: content.trim(),
-        category: category || 'general',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      textSections.push(newSection);
+        category: (category || 'general').toLowerCase(),
+        status: 'published',
+        sortOrder: count
+      });
       
-      console.log('✅ Created new section:', newSection);
+      console.log('✅ Created new section:', newSection.id);
 
       res.status(201).json({
         success: true,
@@ -170,26 +132,26 @@ class ManualController {
       const { id } = req.params;
       const { title, content, category } = req.body;
 
-      const sectionIndex = textSections.findIndex(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const section = await ManualSection.findByPk(id);
       
-      if (sectionIndex === -1) {
+      if (!section) {
         return res.status(404).json({
           success: false,
           message: 'Section not found'
         });
       }
 
-      textSections[sectionIndex] = {
-        ...textSections[sectionIndex],
-        title: title || textSections[sectionIndex].title,
-        content: content || textSections[sectionIndex].content,
-        category: category || textSections[sectionIndex].category,
-        updatedAt: new Date().toISOString()
-      };
+      await section.update({
+        title: title || section.title,
+        content: content || section.content,
+        category: category ? String(category).toLowerCase() : section.category
+      });
 
       res.json({
         success: true,
-        data: textSections[sectionIndex],
+        data: section,
         message: 'Section updated successfully'
       });
     } catch (error) {
@@ -205,17 +167,16 @@ class ManualController {
   async deleteSection(req, res) {
     try {
       const { id } = req.params;
-
-      const sectionIndex = textSections.findIndex(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const deleted = await ManualSection.destroy({ where: { id } });
       
-      if (sectionIndex === -1) {
+      if (!deleted) {
         return res.status(404).json({
           success: false,
           message: 'Section not found'
         });
       }
-
-      textSections.splice(sectionIndex, 1);
 
       res.json({
         success: true,
@@ -242,13 +203,14 @@ class ManualController {
         });
       }
 
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
       const results = [];
       const errors = [];
       
       for (const id of ids) {
-        const index = textSections.findIndex(s => s.id === id);
-        if (index !== -1) {
-          textSections.splice(index, 1);
+        const deleted = await ManualSection.destroy({ where: { id } });
+        if (deleted) {
           results.push(id);
         } else {
           errors.push({ id, error: 'Section not found' });
@@ -288,29 +250,15 @@ class ManualController {
         });
       }
 
-      // First, try to find in text sections
-      const section = textSections.find(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const section = await ManualSection.findByPk(id);
       
       if (section) {
         console.log('✅ Found in text sections:', section.title);
         
-        // Format section to match the frontend Manual interface
-        const formattedSection = {
-          id: section.id,
-          title: section.title,
-          description: section.content,
-          category: section.category.charAt(0).toUpperCase() + section.category.slice(1),
-          version: '1.0',
-          file_name: null,
-          file_size: null,
-          file_path: null,
-          mime_type: 'text/plain',
-          last_updated: section.updatedAt || section.createdAt,
-          updated_by: 'Admin',
-          downloads: 0,
-          status: 'published',
-          type: 'section'
-        };
+        const formattedSection = formatSection(section);
+        formattedSection.description = section.content;
         
         return res.json({
           success: true,
@@ -373,40 +321,22 @@ class ManualController {
         });
       }
 
-      // First, check if it's a text section
-      const sectionIndex = textSections.findIndex(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const section = await ManualSection.findByPk(id);
       
-      if (sectionIndex !== -1) {
-        // Update text section
+      if (section) {
         console.log('Updating text section');
         
-        textSections[sectionIndex] = {
-          ...textSections[sectionIndex],
-          title: title || textSections[sectionIndex].title,
-          content: description || textSections[sectionIndex].content,
-          category: category ? category.toLowerCase() : textSections[sectionIndex].category,
-          updatedAt: new Date().toISOString()
-        };
+        await section.update({
+          title: title || section.title,
+          content: description || section.content,
+          category: category ? String(category).toLowerCase() : section.category
+        });
         
-        const updatedSection = textSections[sectionIndex];
-        
-        // Format response
-        const formattedSection = {
-          id: updatedSection.id,
-          title: updatedSection.title,
-          description: updatedSection.content,
-          category: updatedSection.category.charAt(0).toUpperCase() + updatedSection.category.slice(1),
-          version: '1.0',
-          file_name: null,
-          file_size: null,
-          file_path: null,
-          mime_type: 'text/plain',
-          last_updated: updatedSection.updatedAt,
-          updated_by: updated_by || 'Admin',
-          downloads: 0,
-          status: 'published',
-          type: 'section'
-        };
+        const formattedSection = formatSection(section);
+        formattedSection.description = section.content;
+        formattedSection.updated_by = updated_by || 'Admin';
         
         return res.json({
           success: true,
@@ -478,12 +408,11 @@ class ManualController {
         });
       }
 
-      // Check if it's a text section
-      const sectionIndex = textSections.findIndex(s => s.id === id);
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
+      const deleted = await ManualSection.destroy({ where: { id } });
       
-      if (sectionIndex !== -1) {
-        // Delete text section
-        textSections.splice(sectionIndex, 1);
+      if (deleted) {
         console.log('✅ Text section deleted');
         
         return res.json({
@@ -712,29 +641,16 @@ class ManualController {
 
   async getAllManualsForAdmin(req, res) {
     try {
-      // Get PDFs from manualService
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
       const pdfsResult = await manualService.getAllManuals({});
       const pdfs = pdfsResult.data || [];
-      
-      // Get text sections
-      const sections = textSections || [];
+      const sections = await ManualSection.findAll({
+        order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']]
+      });
       
       // Format text sections
-      const formattedSections = sections.map(section => ({
-        id: section.id,
-        title: section.title,
-        description: section.content.substring(0, 100) + (section.content.length > 100 ? '...' : ''),
-        category: section.category.charAt(0).toUpperCase() + section.category.slice(1),
-        version: '1.0',
-        file_name: null,
-        file_size: '0 KB',
-        mime_type: 'text/plain',
-        last_updated: section.updatedAt || section.createdAt || new Date().toISOString(),
-        updated_by: 'Admin',
-        downloads: 0,
-        status: 'published',
-        type: 'section'
-      }));
+      const formattedSections = sections.map((section) => formatSection(section));
 
       // Format PDFs
       const formattedPDFs = pdfs.map(pdf => ({
@@ -783,9 +699,11 @@ class ManualController {
 
   async getAdminStatistics(req, res) {
     try {
+      await ensureManualContentTables();
+      const { ManualSection } = getModels();
       const pdfsResult = await manualService.getAllManuals({});
       const pdfs = pdfsResult.data || [];
-      const sections = textSections || [];
+      const sections = await ManualSection.findAll();
       
       const totalManuals = pdfs.length + sections.length;
       const publishedManuals = pdfs.filter(p => p.status === 'published').length + sections.length;
@@ -1061,6 +979,65 @@ class ManualController {
       res.status(500).json({ 
         success: false, 
         message: error.message || 'Failed to fetch download count'
+      });
+    }
+  }
+
+  async getImportantDates(req, res) {
+    try {
+      await ensureManualContentTables();
+      const { ManualImportantDate } = getModels();
+      const dates = await ManualImportantDate.findAll({
+        order: [['sortOrder', 'ASC'], ['createdAt', 'ASC']]
+      });
+
+      res.json({
+        success: true,
+        data: dates
+      });
+    } catch (error) {
+      console.error('Error in getImportantDates:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to fetch important dates',
+        data: []
+      });
+    }
+  }
+
+  async saveImportantDates(req, res) {
+    try {
+      await ensureManualContentTables();
+      const { ManualImportantDate } = getModels();
+      const incoming = Array.isArray(req.body?.dates) ? req.body.dates : [];
+      const dates = incoming
+        .map((item, index) => ({
+          label: String(item?.label || '').trim(),
+          dateLabel: String(item?.dateLabel || '').trim(),
+          sortOrder: index
+        }))
+        .filter((item) => item.label && item.dateLabel);
+
+      if (!dates.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Add at least one important date'
+        });
+      }
+
+      await ManualImportantDate.destroy({ where: {} });
+      const saved = await ManualImportantDate.bulkCreate(dates);
+
+      res.json({
+        success: true,
+        message: 'Important dates saved',
+        data: saved
+      });
+    } catch (error) {
+      console.error('Error in saveImportantDates:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to save important dates'
       });
     }
   }
