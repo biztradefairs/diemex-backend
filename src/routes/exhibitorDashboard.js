@@ -173,7 +173,8 @@ router.get('/profile', async (req, res) => {
 
         // Booth fields
         boothSize: stallDetails.size || metadata.boothSize || metadata.booth_size || '',
-        boothType: stallDetails.type || metadata.boothType || metadata.booth_type || 'standard',
+        boothType: stallDetails.type || metadata.boothType || metadata.booth_type || '',
+        boothOpenSides: stallDetails.openSides || metadata.boothOpenSides || metadata.booth_open_sides || '',
         boothDimensions: stallDetails.dimensions || metadata.boothDimensions || metadata.booth_dimensions || '',
         boothNotes: stallDetails.notes || metadata.boothNotes || metadata.booth_notes || '',
         boothStatus: metadata.boothStatus || metadata.booth_status || stallDetails.status || 'pending',
