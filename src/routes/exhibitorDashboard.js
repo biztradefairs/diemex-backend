@@ -867,13 +867,61 @@ router.get('/booth', async (req, res) => {
         type: stallDetails.type || 'standard',
         dimensions: stallDetails.dimensions || '',
         notes: stallDetails.notes || '',
-        price: stallDetails.price || '',
+        price: stallDetails.price || stallDetails.finalAmount || '',
         status: stallDetails.status || 'pending'
       }
     });
 
   } catch (error) {
     console.error('❌ BOOTH ERROR:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET stall payment + remainders
+router.get('/payment', async (req, res) => {
+  try {
+    const modelFactory = require('../models');
+    const Exhibitor = modelFactory.getModel('Exhibitor');
+    const { buildStallPayment } = require('../utils/stallPayment');
+
+    const exhibitor = await Exhibitor.findByPk(req.user.id);
+
+    if (!exhibitor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Exhibitor not found'
+      });
+    }
+
+    let stallDetails = {};
+    if (exhibitor.stallDetails) {
+      if (typeof exhibitor.stallDetails === 'string') {
+        try {
+          stallDetails = JSON.parse(exhibitor.stallDetails);
+        } catch (err) {
+          stallDetails = {};
+        }
+      } else {
+        stallDetails = exhibitor.stallDetails;
+      }
+    }
+
+    const payment = buildStallPayment(stallDetails, stallDetails);
+
+    res.json({
+      success: true,
+      data: {
+        boothNumber: exhibitor.boothNumber || '',
+        company: exhibitor.company || '',
+        ...payment,
+      }
+    });
+  } catch (error) {
+    console.error('❌ PAYMENT ERROR:', error);
     res.status(500).json({
       success: false,
       error: error.message
