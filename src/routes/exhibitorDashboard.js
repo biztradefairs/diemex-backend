@@ -9,7 +9,34 @@ const brochureRoutes = require('./exhibitorBrochures');
 const stallRoutes = require('./exhibitorStall');
 
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const upload = multer();
+const applicationFormController = require('../controllers/ApplicationFormController');
+
+const applicationFormDir = path.join(process.cwd(), 'uploads', 'application-forms');
+if (!fs.existsSync(applicationFormDir)) {
+  fs.mkdirSync(applicationFormDir, { recursive: true });
+}
+
+const signedFormUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, applicationFormDir),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.pdf';
+      cb(null, `${req.user.id}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /pdf|msword|officedocument\.wordprocessingml|doc|docx/;
+    if (allowed.test(file.mimetype) || allowed.test(path.extname(file.originalname || '').toLowerCase())) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF or Word documents are allowed'));
+    }
+  },
+});
 
 // All routes require exhibitor authentication
 router.use(authenticateExhibitor);
@@ -880,6 +907,14 @@ router.get('/booth', async (req, res) => {
     });
   }
 });
+
+router.get('/application-form', applicationFormController.getExhibitorForm);
+router.get('/application-form/pdf', applicationFormController.downloadExhibitorPdf);
+router.post(
+  '/application-form/upload',
+  signedFormUpload.single('file'),
+  applicationFormController.uploadSignedForm
+);
 
 // GET stall payment + remainders
 router.get('/payment', async (req, res) => {

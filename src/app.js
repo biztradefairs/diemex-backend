@@ -210,7 +210,8 @@ const uploadDirs = [
   { name: 'brochures', path: path.join(uploadBase, 'brochures') },
   { name: 'manuals', path: path.join(uploadBase, 'manuals') },
   { name: 'images', path: path.join(uploadBase, 'images') },
-  { name: 'floor-plans', path: path.join(uploadBase, 'floor-plans') }
+  { name: 'floor-plans', path: path.join(uploadBase, 'floor-plans') },
+  { name: 'application-forms', path: path.join(uploadBase, 'application-forms') },
 ];
 
     // Create directories if they don't exist

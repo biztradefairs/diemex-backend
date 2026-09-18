@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const exhibitorController = require('../controllers/ExhibitorController');
+const applicationFormController = require('../controllers/ApplicationFormController');
 const modelFactory = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
 
@@ -133,6 +134,11 @@ router.get('/:id', exhibitorController.getExhibitor);
 // ------------------------------
 // PROTECTED ROUTES (ADMIN ONLY)
 // ------------------------------
+
+router.get('/:id/application-form', authenticate, authorize(['admin']), applicationFormController.getAdminForm);
+router.put('/:id/application-form', authenticate, authorize(['admin']), applicationFormController.saveAdminForm);
+router.post('/:id/application-form/send', authenticate, authorize(['admin']), applicationFormController.sendAdminForm);
+router.get('/:id/application-form/pdf', authenticate, authorize(['admin']), applicationFormController.downloadAdminPdf);
 
 router.post('/', authenticate, authorize(['admin']), exhibitorController.createExhibitor);
 router.put('/:id', authenticate, authorize(['admin']), exhibitorController.updateExhibitor);
