@@ -916,12 +916,107 @@ router.post(
   applicationFormController.uploadSignedForm
 );
 
+router.post('/select-stall', async (req, res) => {
+  try {
+    const stallId = String(req.body.stallId || '')
+    const stallType = req.body.stallType === 'shell-space' ? 'shell-space' : 'raw-space'
+    if (!stallId) {
+      return res.status(400).json({ success: false, error: 'Please select a stall' })
+    }
+
+    const modelFactory = require('../models')
+    const Exhibitor = modelFactory.getModel('Exhibitor')
+    const { buildStallPayment, round2, schedulePaymentPhases } = require('../utils/stallPayment')
+    const { readLayout, writeLayout } = require('../utils/stallLayoutStore')
+
+    const exhibitor = await Exhibitor.findByPk(req.user.id)
+    if (!exhibitor) {
+      return res.status(404).json({ success: false, error: 'Exhibitor not found' })
+    }
+
+    const layout = readLayout()
+    const stall = (layout.stalls || []).find((item) => item.id === stallId)
+    if (!stall) {
+      return res.status(404).json({ success: false, error: 'Stall not found' })
+    }
+
+    if (stall.status === 'booked' && stall.bookedBy && stall.bookedBy !== exhibitor.id) {
+      return res.status(400).json({ success: false, error: 'This stall is already booked' })
+    }
+
+    const area = round2((Number(stall.widthM) || 0) * (Number(stall.heightM) || 0))
+    const rate = stallType === 'shell-space' ? 11000 : 10000
+    const stallCost = Number(stall.price) > 0 ? round2(stall.price) : round2(area * rate)
+
+    layout.stalls = (layout.stalls || []).map((item) => {
+      if (item.bookedBy === exhibitor.id && item.id !== stall.id) {
+        return { ...item, status: 'available', bookedBy: '', companyName: '' }
+      }
+      if (item.id === stall.id) {
+        return {
+          ...item,
+          status: 'booked',
+          bookedBy: exhibitor.id,
+          companyName: exhibitor.company || '',
+        }
+      }
+      return item
+    })
+    writeLayout(layout)
+
+    let stallDetails = exhibitor.stallDetails || {}
+    if (typeof stallDetails === 'string') {
+      try {
+        stallDetails = JSON.parse(stallDetails)
+      } catch {
+        stallDetails = {}
+      }
+    }
+
+    const discount = round2(stall.discount ?? stallDetails.discount ?? 0)
+    const gstPercent = round2(stall.gstPercent ?? stallDetails.gstPercent ?? 18)
+    const paymentBase = buildStallPayment(
+      { stallCost, gstPercent, discount },
+      stallDetails
+    )
+    const alreadyPaid = (stallDetails.paymentPhases || []).some((phase) => phase.status === 'paid')
+    const payment = alreadyPaid ? paymentBase : schedulePaymentPhases(paymentBase)
+
+    const nextDetails = {
+      ...stallDetails,
+      ...payment,
+      type: stallType,
+      size: `${stall.widthM}m x ${stall.heightM}m`,
+      stallId: stall.id,
+      price: payment.finalAmount,
+    }
+
+    exhibitor.boothNumber = stall.stallNo
+    exhibitor.stallDetails = nextDetails
+    exhibitor.changed('stallDetails', true)
+    await exhibitor.save()
+
+    res.json({
+      success: true,
+      data: {
+        boothNumber: stall.stallNo,
+        boothType: stallType,
+        size: nextDetails.size,
+        ...payment,
+      },
+    })
+  } catch (error) {
+    console.error('SELECT STALL ERROR:', error)
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
 // GET stall payment + remainders
 router.get('/payment', async (req, res) => {
   try {
     const modelFactory = require('../models');
     const Exhibitor = modelFactory.getModel('Exhibitor');
-    const { buildStallPayment } = require('../utils/stallPayment');
+    const { buildStallPayment, schedulePaymentPhases } = require('../utils/stallPayment');
 
     const exhibitor = await Exhibitor.findByPk(req.user.id);
 
@@ -945,13 +1040,25 @@ router.get('/payment', async (req, res) => {
       }
     }
 
-    const payment = buildStallPayment(stallDetails, stallDetails);
+    let payment = buildStallPayment(stallDetails, stallDetails);
+    const unpaidWithoutDates = (payment.paymentPhases || []).every(
+      (phase) => !phase.dueDate && phase.status !== 'paid'
+    );
+    if (unpaidWithoutDates && payment.finalAmount > 0) {
+      payment = schedulePaymentPhases(payment);
+      exhibitor.stallDetails = { ...stallDetails, ...payment };
+      exhibitor.changed('stallDetails', true);
+      await exhibitor.save();
+    }
 
     res.json({
       success: true,
       data: {
         boothNumber: exhibitor.boothNumber || '',
         company: exhibitor.company || '',
+        boothType: stallDetails.type || '',
+        size: stallDetails.size || '',
+        lastStallPayment: stallDetails.lastStallPayment || null,
         ...payment,
       }
     });
@@ -961,6 +1068,53 @@ router.get('/payment', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+router.post('/confirm-stall-payment', async (req, res) => {
+  try {
+    const { recordStallPhasePayment, phaseFromRequirementId, buildStallPayment } = require('../utils/stallPayment');
+    const sequelize = require('../config/database').getConnection('mysql');
+    const { orderId, phase, paymentId } = req.body || {};
+
+    let phaseNumber = Number(phase) || 0;
+    const meta = {
+      orderId: orderId || '',
+      paymentId: paymentId || '',
+      paidAt: new Date().toISOString(),
+    };
+
+    if (orderId) {
+      const [orders] = await sequelize.query(
+        'SELECT * FROM cashfree_orders WHERE order_id = ? AND exhibitor_id = ?',
+        { replacements: [orderId, req.user.id] }
+      );
+      if (!orders.length) {
+        return res.status(404).json({ success: false, error: 'Payment order not found' });
+      }
+      const order = orders[0];
+      phaseNumber = phaseNumber || phaseFromRequirementId(order.requirement_id);
+      meta.orderId = order.order_id;
+      meta.paymentId = paymentId || order.payment_id || '';
+    }
+
+    if (!phaseNumber) {
+      return res.status(400).json({ success: false, error: 'Missing stall payment phase' });
+    }
+
+    const stallDetails = await recordStallPhasePayment(req.user.id, phaseNumber, meta);
+    const payment = buildStallPayment(stallDetails || {}, stallDetails || {});
+
+    res.json({
+      success: true,
+      data: {
+        ...payment,
+        lastStallPayment: stallDetails?.lastStallPayment || null,
+      },
+    });
+  } catch (error) {
+    console.error('CONFIRM STALL PAYMENT ERROR:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -39,6 +39,9 @@ function buildStallPayment(source = {}, existing = {}) {
       amount: amounts[index],
       dueDate: prev.dueDate || '',
       status: normalizePhaseStatus(prev.status),
+      paidAt: prev.paidAt || '',
+      orderId: prev.orderId || '',
+      paymentId: prev.paymentId || '',
     }
   })
 
@@ -53,4 +56,109 @@ function buildStallPayment(source = {}, existing = {}) {
   }
 }
 
-module.exports = { round2, buildStallPayment }
+function addDays(value, days) {
+  const date = new Date(value)
+  date.setDate(date.getDate() + days)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function schedulePaymentPhases(payment, fromDate = new Date()) {
+  const start = new Date(fromDate)
+  return {
+    ...payment,
+    paymentPhases: (payment.paymentPhases || []).map((phase, index) => ({
+      ...phase,
+      dueDate: index === 0 ? addDays(start, 0) : index === 1 ? addDays(start, 15) : addDays(start, 30),
+    })),
+  }
+}
+
+function markPhasePaid(existing, phaseNumber, meta = {}) {
+  const payment = buildStallPayment(existing, existing)
+  const paidAt = meta.paidAt || new Date().toISOString()
+  const paidPhaseNo = Number(phaseNumber)
+  const already = payment.paymentPhases.find((phase) => Number(phase.phase) === paidPhaseNo)
+  if (already && already.status === 'paid') {
+    return payment
+  }
+
+  return {
+    ...payment,
+    paymentPhases: payment.paymentPhases.map((phase) => {
+      const phaseNo = Number(phase.phase)
+      if (phaseNo === paidPhaseNo) {
+        return {
+          ...phase,
+          status: 'paid',
+          paidAt,
+          dueDate: phase.dueDate || addDays(paidAt, 0),
+          orderId: meta.orderId || phase.orderId || '',
+          paymentId: meta.paymentId || phase.paymentId || '',
+        }
+      }
+      if (phase.status === 'paid') return phase
+      if (paidPhaseNo === 1 && phaseNo === 2) {
+        return { ...phase, dueDate: addDays(paidAt, 15) }
+      }
+      if (paidPhaseNo === 1 && phaseNo === 3) {
+        return { ...phase, dueDate: addDays(paidAt, 30) }
+      }
+      if (paidPhaseNo === 2 && phaseNo === 3) {
+        return { ...phase, dueDate: addDays(paidAt, 15) }
+      }
+      return phase
+    }),
+  }
+}
+
+async function recordStallPhasePayment(exhibitorId, phaseNumber, meta = {}) {
+  if (!exhibitorId) return null
+  const modelFactory = require('../models')
+  const Exhibitor = modelFactory.getModel('Exhibitor')
+  const exhibitor = await Exhibitor.findByPk(exhibitorId)
+  if (!exhibitor) return null
+
+  let stallDetails = exhibitor.stallDetails || {}
+  if (typeof stallDetails === 'string') {
+    try {
+      stallDetails = JSON.parse(stallDetails)
+    } catch {
+      stallDetails = {}
+    }
+  }
+
+  const nextPayment = markPhasePaid(stallDetails, phaseNumber, meta)
+  const paidPhase = nextPayment.paymentPhases.find((phase) => Number(phase.phase) === Number(phaseNumber))
+  exhibitor.stallDetails = {
+    ...stallDetails,
+    ...nextPayment,
+    lastStallPayment: {
+      phase: Number(phaseNumber),
+      orderId: meta.orderId || '',
+      paymentId: meta.paymentId || '',
+      paidAt: meta.paidAt || new Date().toISOString(),
+      amount: paidPhase?.amount || 0,
+    },
+  }
+  exhibitor.changed('stallDetails', true)
+  await exhibitor.save()
+  return exhibitor.stallDetails
+}
+
+function phaseFromRequirementId(requirementId) {
+  const match = String(requirementId || '').match(/^stall-phase-(\d+)$/)
+  return match ? Number(match[1]) : 0
+}
+
+module.exports = {
+  round2,
+  buildStallPayment,
+  schedulePaymentPhases,
+  markPhasePaid,
+  addDays,
+  recordStallPhasePayment,
+  phaseFromRequirementId,
+}

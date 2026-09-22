@@ -85,17 +85,31 @@ router.post('/webhook', async (req, res) => {
       if (payment_status === 'SUCCESS') {
         console.log(`🎉 Payment SUCCESS for ${order_id}`);
 
-        await sequelize.query(`
-          UPDATE invoices 
-          SET status = 'paid',
-              paidDate = ?,
-              updated_at = ?
-          WHERE id = ?
-        `, {
-          replacements: [now, now, order.invoice_id]
-        });
+        const { recordStallPhasePayment, phaseFromRequirementId } = require('../utils/stallPayment');
+        const stallPhase = phaseFromRequirementId(order.requirement_id);
+        const invoiceId = String(order.invoice_id || '');
 
-        console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
+        if (invoiceId && !invoiceId.startsWith('stall-') && !stallPhase) {
+          await sequelize.query(`
+            UPDATE invoices 
+            SET status = 'paid',
+                paidDate = ?,
+                updated_at = ?
+            WHERE id = ?
+          `, {
+            replacements: [now, now, order.invoice_id]
+          });
+          console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
+        }
+
+        if (stallPhase) {
+          await recordStallPhasePayment(order.exhibitor_id, stallPhase, {
+            orderId: order_id,
+            paymentId: payment_id,
+            paidAt: now.toISOString(),
+          });
+          console.log(`✅ Stall phase ${stallPhase} marked paid for exhibitor ${order.exhibitor_id}`);
+        }
       }
     }
 
@@ -142,7 +156,9 @@ router.post('/create-order', authenticateAny, async (req, res) => {
     const orderId = `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
     
     const webhookUrl = `${process.env.BACKEND_URL || 'https://diemex-backend.onrender.com'}/api/cashfree/webhook`;
-    const returnUrl = `${process.env.FRONTEND_URL || 'https://www.diemex.in'}/dashboard/invoice/${invoiceId}?payment_status=success&order_id=${orderId}`;
+    const frontend = process.env.FRONTEND_URL || 'https://www.diemex.in';
+    const returnUrl = req.body.returnUrl
+      || `${frontend}/dashboard/invoice/${invoiceId}?payment_status=success&order_id=${orderId}`;
     
     const orderData = {
       order_id: orderId,
@@ -292,20 +308,31 @@ router.get('/verify-payment/:orderId', authenticateAny, async (req, res) => {
       });
     }
 
-    // ✅ 4. UPDATE INVOICE TO PAID (THIS IS THE MAIN FIX)
+    // ✅ 4. UPDATE INVOICE TO PAID (skip stall-only orders)
     const now = new Date();
+    const invoiceId = String(order.invoice_id || '');
+    if (invoiceId && !invoiceId.startsWith('stall-')) {
+      await sequelize.query(`
+        UPDATE invoices
+        SET status = 'paid',
+            paidDate = ?,
+            updated_at = ?
+        WHERE id = ?
+      `, {
+        replacements: [now, now, order.invoice_id]
+      });
+      console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
+    }
 
-    await sequelize.query(`
-      UPDATE invoices
-      SET status = 'paid',
-          paidDate = ?,
-          updated_at = ?
-      WHERE id = ?
-    `, {
-      replacements: [now, now, order.invoice_id]
-    });
-
-    console.log(`✅ Invoice ${order.invoice_id} marked as PAID`);
+    const { recordStallPhasePayment, phaseFromRequirementId } = require('../utils/stallPayment');
+    const stallPhase = phaseFromRequirementId(order.requirement_id);
+    if (stallPhase) {
+      await recordStallPhasePayment(order.exhibitor_id, stallPhase, {
+        orderId,
+        paymentId: successfulPayment.cf_payment_id,
+        paidAt: now.toISOString(),
+      });
+    }
 
     return res.json({
       success: true,
