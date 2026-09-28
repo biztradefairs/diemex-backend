@@ -509,8 +509,8 @@ router.get('/layout', async (req, res) => {
     const eventData = event || {
       name: 'DIEMEX 2026',
       venue: 'Auto Cluster Exhibition Center',
-      exhibitionDay: '8th October, 2026',
-      dismantleDay: '10th October, 2026'
+      exhibitionDay: '24th March, 2027',
+      dismantleDay: '26th March, 2027'
     };
 
     // Response

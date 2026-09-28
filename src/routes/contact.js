@@ -109,7 +109,7 @@ function generateInwardTemplate({
 
                     <!-- RIGHT TEXT -->
                     <td align="right" style="color:#fff; font-size:12px; line-height:1.5;">
-                      <strong>8-10 Oct 2026</strong><br/>
+                      <strong>24-26 Mar 2027</strong><br/>
                       Auto Cluster Exhibition Centre, Pune<br/>
                       maX Business Media Pvt Ltd<br/>
                       Bengaluru, India
@@ -358,7 +358,7 @@ async function processContactSubmission(formType, data) {
       visitorCode = `diemex-${Date.now()}`;
       
       // Create a unique QR code content
-      const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 8-10 Oct 2026`;
+      const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 24-26 Mar 2027`;
       
       // Generate buffer for email attachments
       qrCodeBuffer = await generateQRCodeBuffer(qrContent);
@@ -483,7 +483,7 @@ async function processContactSubmission(formType, data) {
                     <!-- FOOTER -->
                       <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
-                        <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+                        <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
                         </td>
                       </tr>
 
@@ -607,7 +607,7 @@ async function processContactSubmission(formType, data) {
                     <!-- FOOTER -->
                       <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
-                        <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+                        <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
                         </td>
                       </tr>
 
@@ -746,7 +746,7 @@ async function processContactSubmission(formType, data) {
                     <!-- FOOTER -->
                       <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
-                        <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+                        <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
                         </td>
                       </tr>
 
@@ -893,7 +893,7 @@ async function processContactSubmission(formType, data) {
                     <!-- FOOTER -->
                       <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
-                        <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+                        <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
                         </td>
                       </tr>
 
@@ -1015,7 +1015,7 @@ async function processContactSubmission(formType, data) {
                     <!-- FOOTER -->
                       <tr>
                       <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center;">
-                        <strong>8-10 Oct 2026</strong> • Auto Cluster Exhibition Centre, Pune, India
+                        <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
                         </td>
                       \)
 

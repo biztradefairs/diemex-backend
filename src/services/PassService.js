@@ -16,7 +16,7 @@ const sendLog = new Map();
 
 const EVENT = {
   name: 'DIEMEX 2026',
-  dates: '8–10 Oct 2026',
+  dates: '24–26 Mar 2027',
   venue: 'Auto Cluster Exhibition Centre, Pune'
 };
 
