@@ -158,7 +158,13 @@ class EmailService {
       : undefined;
 
     const resendAttachment = attachment
-      ? [{ filename: attachment.filename, content: attachment.content }]
+      ? [{
+          filename: attachment.filename,
+          content: Buffer.isBuffer(attachment.content)
+            ? attachment.content.toString("base64")
+            : attachment.content,
+          content_id: attachment.cid,
+        }]
       : undefined;
 
     const smtpAttachment = attachment

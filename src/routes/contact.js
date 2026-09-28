@@ -28,12 +28,92 @@ function publicBackendUrl() {
   return (process.env.BACKEND_URL || "https://diemex-backend.onrender.com").replace(/\/$/, "");
 }
 
-function badgeImageUrl(visitorCode, name, type) {
-  const params = new URLSearchParams({
-    name: name || "",
-    type: type || "visitor",
+function passPageUrl(visitorCode) {
+  return `${publicBackendUrl()}/api/contact/pass/${encodeURIComponent(visitorCode)}`;
+}
+
+function badgeImageUrl(visitorCode) {
+  return `${publicBackendUrl()}/api/contact/visitor/${encodeURIComponent(visitorCode)}/badge`;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function findRegistrationByCode(code) {
+  const modelFactory = require("../models");
+  const models = await modelFactory.init();
+  const ContactSubmission = models.ContactSubmission;
+  if (!ContactSubmission) return null;
+
+  const sequelize = ContactSubmission.sequelize;
+  const row = await ContactSubmission.findOne({
+    where: sequelize.where(
+      sequelize.fn(
+        "JSON_UNQUOTE",
+        sequelize.fn("JSON_EXTRACT", sequelize.col("payload"), "$.visitorCode")
+      ),
+      code
+    ),
+    order: [["createdAt", "DESC"]],
   });
-  return `${publicBackendUrl()}/api/contact/visitor/${encodeURIComponent(visitorCode)}/badge?${params.toString()}`;
+  if (!row) return null;
+
+  const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : (row.payload || {});
+  return { formType: row.formType, payload };
+}
+
+function renderPassPage({ code, formType, payload }) {
+  const data = payload || {};
+  const name = [data.firstName, data.lastName].filter(Boolean).join(" ").trim() || data.name || "Visitor";
+  const kind = formType === "delegate-registration" ? "Delegate" : "Visitor";
+  const rows = [
+    ["Name", name],
+    ["Email", data.email],
+    ["Phone", data.mobile || data.phone],
+    ["Company", data.company || data.companyName],
+    ["Designation", data.designation],
+    ["City", data.city],
+    ["State", data.state],
+    ["Country", data.country],
+    ["Visitor code", code],
+    ["Pass type", kind],
+    ["Event", "DIEMEX 2027"],
+    ["Dates", "24–26 March 2027"],
+    ["Venue", "Auto Cluster Exhibition Centre, Pune, India"],
+  ].filter(([, value]) => value);
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(name)} · DIEMEX Pass</title>
+</head>
+<body style="margin:0; background:#eef3f8; font-family:Arial, sans-serif; color:#12324d;">
+  <div style="max-width:520px; margin:24px auto; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 8px 24px rgba(15,47,92,.12);">
+    <div style="background:#0F2F5C; color:#fff; padding:28px 24px; text-align:center;">
+      <div style="font-size:13px; letter-spacing:.14em; text-transform:uppercase;">DIEMEX 2027</div>
+      <h1 style="margin:10px 0 0; font-size:26px;">${escapeHtml(kind)} Pass</h1>
+    </div>
+    <div style="padding:24px;">
+      <p style="margin:0 0 16px; font-size:18px; font-weight:bold;">${escapeHtml(name)}</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="font-size:15px;">
+        ${rows.map(([label, value]) => `
+          <tr>
+            <td style="padding:8px 0; color:#5b7086; width:38%;">${escapeHtml(label)}</td>
+            <td style="padding:8px 0; font-weight:bold;">${escapeHtml(value)}</td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
 function generateInwardTemplate({
@@ -142,6 +222,21 @@ function generateInwardTemplate({
   `;
 }
 
+router.get("/pass/:code", async (req, res) => {
+  try {
+    const code = String(req.params.code || "").trim();
+    const registration = await findRegistrationByCode(code);
+    if (!registration) {
+      return res.status(404).send("Visitor pass not found");
+    }
+    res.set("Content-Type", "text/html; charset=utf-8");
+    return res.send(renderPassPage({ code, ...registration }));
+  } catch (error) {
+    console.error("Pass page error:", error);
+    return res.status(500).send("Could not load visitor details");
+  }
+});
+
 router.get("/visitor/:code/badge", async (req, res) => {
   try {
     const code = String(req.params.code || "").trim();
@@ -149,9 +244,9 @@ router.get("/visitor/:code/badge", async (req, res) => {
       return res.status(400).send("Visitor code is required");
     }
 
-    const kind = req.query.type === "delegate" ? "Delegate" : "Visitor";
-    const name = String(req.query.name || "").trim();
-    const qrContent = `DIEMEX 2026\n${kind}\nName: ${name}\nCode: ${code}\nDate: 24-26 Mar 2027`;
+    const registration = await findRegistrationByCode(code);
+    const kind = registration?.formType === "delegate-registration" ? "Delegate" : "Visitor";
+    const qrContent = passPageUrl(code);
     const buffer = await generateQRCodeBuffer(qrContent);
 
     if (!buffer) {
@@ -388,34 +483,26 @@ async function processContactSubmission(formType, data) {
       formType
     });
 
-    await saveContactSubmission(formType, data, "pending");
-
     let subject = "";
     let html = "";
     let visitorCode = null;
     let qrCodeBuffer = null;
     let badgeUrl = "";
     let badgeDownloadUrl = "";
-    
-    // Generate QR code for visitor and delegate registrations
+
     if (formType === "visitor-registration" || formType === "delegate-registration") {
-      // Create a unique visitor code
       visitorCode = `diemex-${Date.now()}`;
-      
-      // Create a unique QR code content
-      const qrContent = `DIEMEX 2026\n${formType === "visitor-registration" ? "Visitor" : "Delegate"}\nName: ${data.firstName || ''} ${data.lastName || ''}\nEmail: ${data.email || ''}\nCode: ${visitorCode}\nDate: 24-26 Mar 2027`;
-      
-      // Generate buffer for email attachments
+      data.visitorCode = visitorCode;
+      const qrContent = passPageUrl(visitorCode);
       qrCodeBuffer = await generateQRCodeBuffer(qrContent);
-      const passName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
-      badgeUrl = badgeImageUrl(
-        visitorCode,
-        passName,
-        formType === "delegate-registration" ? "delegate" : "visitor"
-      );
-      badgeDownloadUrl = `${badgeUrl}&download=1`;
+      badgeUrl = badgeImageUrl(visitorCode);
+      badgeDownloadUrl = `${badgeUrl}?download=1`;
+    }
+
+    await saveContactSubmission(formType, data, "pending");
+
+    if (formType === "visitor-registration" || formType === "delegate-registration") {
       
-      // Save to database if Visitor model exists
       try {
         const Visitor = require("../models/Visitor");
         await Visitor.create({
@@ -746,10 +833,11 @@ async function processContactSubmission(formType, data) {
                         <!-- QR CODE BADGE -->
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            <img src="${badgeUrl}" alt="Visitor QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            <img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
+                            <p style="margin:8px 0 0; font-size:12px; color:#0F2F5C;">Scan this code to view the visitor details.</p>
                           </div>
                         </div>
 
@@ -1030,7 +1118,7 @@ async function processContactSubmission(formType, data) {
 
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            <img src="${badgeUrl}" alt="Delegate QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
+                            <img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
