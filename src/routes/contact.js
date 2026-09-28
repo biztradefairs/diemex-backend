@@ -24,6 +24,18 @@ async function generateQRCodeBuffer(data) {
   }
 }
 
+function publicBackendUrl() {
+  return (process.env.BACKEND_URL || "https://diemex-backend.onrender.com").replace(/\/$/, "");
+}
+
+function badgeImageUrl(visitorCode, name, type) {
+  const params = new URLSearchParams({
+    name: name || "",
+    type: type || "visitor",
+  });
+  return `${publicBackendUrl()}/api/contact/visitor/${encodeURIComponent(visitorCode)}/badge?${params.toString()}`;
+}
+
 function generateInwardTemplate({
   title,
   lightBg,
@@ -129,6 +141,37 @@ function generateInwardTemplate({
   </html>
   `;
 }
+
+router.get("/visitor/:code/badge", async (req, res) => {
+  try {
+    const code = String(req.params.code || "").trim();
+    if (!code) {
+      return res.status(400).send("Visitor code is required");
+    }
+
+    const kind = req.query.type === "delegate" ? "Delegate" : "Visitor";
+    const name = String(req.query.name || "").trim();
+    const qrContent = `DIEMEX 2026\n${kind}\nName: ${name}\nCode: ${code}\nDate: 24-26 Mar 2027`;
+    const buffer = await generateQRCodeBuffer(qrContent);
+
+    if (!buffer) {
+      return res.status(500).send("Could not generate badge");
+    }
+
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=86400");
+    if (req.query.download === "1") {
+      res.set(
+        "Content-Disposition",
+        `attachment; filename="diemex-2026-${kind.toLowerCase()}-badge.png"`
+      );
+    }
+    return res.send(buffer);
+  } catch (error) {
+    console.error("Badge image error:", error);
+    return res.status(500).send("Could not generate badge");
+  }
+});
 
 router.get("/visitor/:code", async (req, res) => {
   try {
@@ -351,6 +394,8 @@ async function processContactSubmission(formType, data) {
     let html = "";
     let visitorCode = null;
     let qrCodeBuffer = null;
+    let badgeUrl = "";
+    let badgeDownloadUrl = "";
     
     // Generate QR code for visitor and delegate registrations
     if (formType === "visitor-registration" || formType === "delegate-registration") {
@@ -362,6 +407,13 @@ async function processContactSubmission(formType, data) {
       
       // Generate buffer for email attachments
       qrCodeBuffer = await generateQRCodeBuffer(qrContent);
+      const passName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
+      badgeUrl = badgeImageUrl(
+        visitorCode,
+        passName,
+        formType === "delegate-registration" ? "delegate" : "visitor"
+      );
+      badgeDownloadUrl = `${badgeUrl}&download=1`;
       
       // Save to database if Visitor model exists
       try {
@@ -694,7 +746,7 @@ async function processContactSubmission(formType, data) {
                         <!-- QR CODE BADGE -->
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            ${qrCodeBuffer ? `<img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />` : '<p>QR Code will be available at the registration desk</p>'}
+                            <img src="${badgeUrl}" alt="Visitor QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
@@ -703,8 +755,7 @@ async function processContactSubmission(formType, data) {
 
                         <!-- BUTTON - Download link -->
                         <div style="margin:30px 0;">
-                          <a href="data:image/png;base64,${qrCodeBuffer ? qrCodeBuffer.toString('base64') : ''}" 
-                             download="diemex-2026-visitor-badge.png"
+                          <a href="${badgeDownloadUrl}"
                              style="
                                background:#0F2F5C;
                                color:#ffffff;
@@ -979,15 +1030,14 @@ async function processContactSubmission(formType, data) {
 
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                            ${qrCodeBuffer ? `<img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" style="width:200px; height:200px; display:block; margin:0 auto;" />` : '<p>QR Code will be available at the registration desk</p>'}
+                            <img src="${badgeUrl}" alt="Delegate QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
                             <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
                           </div>
                         </div>
 
-                        <a href="data:image/png;base64,${qrCodeBuffer ? qrCodeBuffer.toString('base64') : ''}"
-                           download="diemex-2026-delegate-badge.png"
+                        <a href="${badgeDownloadUrl}"
                            style="background:#0F2F5C; color:#fff; padding:15px 35px;
                                   text-decoration:none; border-radius:30px; display:inline-block;
                                   cursor:pointer;">
