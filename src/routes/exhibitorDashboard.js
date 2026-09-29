@@ -507,7 +507,7 @@ router.get('/layout', async (req, res) => {
 
     // Fallback event data if not found
     const eventData = event || {
-      name: 'DIEMEX 2026',
+      name: 'DIEMEX 2027',
       venue: 'Auto Cluster Exhibition Center',
       exhibitionDay: '24th March, 2027',
       dismantleDay: '26th March, 2027'

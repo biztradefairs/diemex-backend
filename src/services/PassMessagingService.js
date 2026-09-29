@@ -44,10 +44,10 @@ class PassMessagingService {
 
   async sendPass({ phone, channel, name, registrationNumber, passUrl }) {
     const smsMessage =
-      `DIEMEX 2026: Hi ${name}, your visitor pass ${registrationNumber} is ready. Show this QR at entry: ${passUrl}`;
+      `DIEMEX 2027: Hi ${name}, your visitor pass ${registrationNumber} is ready. Show this QR at entry: ${passUrl}`;
 
     const whatsappMessage =
-      `DIEMEX 2026 — Your Visitor Pass\n\nHi ${name},\n\nYour digital visitor badge is ready.\nRegistration: ${registrationNumber}\n\nShow this QR at entry:\n${passUrl}\n\n24–26 Mar 2027\nAuto Cluster Exhibition Centre, Pune`;
+      `DIEMEX 2027 — Your Visitor Pass\n\nHi ${name},\n\nYour digital visitor badge is ready.\nRegistration: ${registrationNumber}\n\nShow this QR at entry:\n${passUrl}\n\n24–26 Mar 2027\nAuto Cluster Exhibition Centre, Pune`;
 
     const message = channel === 'whatsapp' ? whatsappMessage : smsMessage;
     const result = await this.sendMessage({ phone, channel, message, kind: 'pass' });

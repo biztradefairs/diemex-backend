@@ -15,7 +15,7 @@ const verifyStore = new Map();
 const sendLog = new Map();
 
 const EVENT = {
-  name: 'DIEMEX 2026',
+  name: 'DIEMEX 2027',
   dates: '24–26 Mar 2027',
   venue: 'Auto Cluster Exhibition Centre, Pune'
 };

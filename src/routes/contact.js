@@ -6,7 +6,7 @@ const QRCode = require('qrcode');
 // Helper function to generate QR code as buffer
 async function generateQRCodeBuffer(data) {
   try {
-    const qrData = data || "DIEMEX 2026";
+    const qrData = data || "DIEMEX 2027";
     const buffer = await QRCode.toBuffer(qrData, {
       errorCorrectionLevel: 'H',
       margin: 2,
@@ -159,6 +159,7 @@ function generateInwardTemplate({
               <td style="background:#0F2F5C; padding:40px 30px; text-align:center;">
                 <img 
                   src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png"
+                  src="
                   style="max-width:220px; display:block; margin:0 auto;"
                 />
                </td>
@@ -258,7 +259,7 @@ router.get("/visitor/:code/badge", async (req, res) => {
     if (req.query.download === "1") {
       res.set(
         "Content-Disposition",
-        `attachment; filename="diemex-2026-${kind.toLowerCase()}-badge.png"`
+        `attachment; filename="diemex-2027-${kind.toLowerCase()}-badge.png"`
       );
     }
     return res.send(buffer);
@@ -526,7 +527,7 @@ async function processContactSubmission(formType, data) {
     // Safely access data with fallbacks to prevent undefined errors
     switch (formType) {
       case "event-brochure":
-        subject = "Your Event Brochure - DIEMEX 2026";
+        subject = "Your Event Brochure - DIEMEX 2027";
         html = `
           <!DOCTYPE html>
           <html>
@@ -575,7 +576,7 @@ async function processContactSubmission(formType, data) {
                         </p>
 
                         <p style="text-align:left; font-size:16px;">
-                          Thank you for requesting <strong>DIEMEX 2026</strong> Brochure.
+                          Thank you for requesting <strong>DIEMEX 2027</strong> Brochure.
                         </p>
 
                         <!-- IMAGE -->
@@ -613,7 +614,7 @@ async function processContactSubmission(formType, data) {
 
                         <p style="text-align:left; margin-top:20px;">
                           Best regards,<br/>
-                          <strong>DIEMEX 2026 Team</strong>
+                          <strong>DIEMEX 2027 Team</strong>
                         </p>
 
                         </td>
@@ -650,7 +651,7 @@ async function processContactSubmission(formType, data) {
         break;
         
       case "post-show-report":
-        subject = "Your Post Show Report - DIEMEX 2026";
+        subject = "Your Post Show Report - DIEMEX 2027";
         html = `
           <!DOCTYPE html>
           <html>
@@ -699,7 +700,7 @@ async function processContactSubmission(formType, data) {
                         </p>
 
                         <p style="text-align:left; font-size:16px;">
-                          Thank you for requesting <strong>DIEMEX 2026</strong> Post Show Report.
+                          Thank you for requesting <strong>DIEMEX 2027</strong> Post Show Report.
                         </p>
 
                         <!-- IMAGE -->
@@ -713,7 +714,7 @@ async function processContactSubmission(formType, data) {
 
                         <!-- BUTTON -->
                         <div style="margin:30px 0;">
-                          <a href="https://drive.google.com/your-post-show-report-link"
+                          <a href="https://res.cloudinary.com/deo4vpw8f/image/upload/v1790665792/Brochure_Diemex2027_rpwdda.pdf"
                              style="
                                background:#0F2F5C;
                                color:#ffffff;
@@ -737,7 +738,7 @@ async function processContactSubmission(formType, data) {
 
                         <p style="text-align:left; margin-top:20px;">
                           Best regards,<br/>
-                          <strong>DIEMEX 2026 Team</strong>
+                          <strong>DIEMEX 2027 Team</strong>
                         </p>
 
                         </td>
@@ -774,7 +775,7 @@ async function processContactSubmission(formType, data) {
         break;
         
       case "visitor-registration":
-        subject = "Visitor Registration Confirmed - DIEMEX 2026";
+        subject = "Visitor Registration Confirmed - DIEMEX 2027";
         html = `
           <!DOCTYPE html>
           <html>
@@ -826,7 +827,7 @@ async function processContactSubmission(formType, data) {
                         </p>
 
                         <p style="text-align:left; font-size:16px;">
-                          Thank you for registering to attend <strong>DIEMEX 2026</strong>.<br/>
+                          Thank you for registering to attend <strong>DIEMEX 2027</strong>.<br/>
                           Below are your registration details and visitor badge.
                         </p>
 
@@ -834,7 +835,7 @@ async function processContactSubmission(formType, data) {
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
                             <img src="cid:qrcode_${visitorCode}" alt="Visitor QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
-                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Visitor Pass</p>
+                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2027 Visitor Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
                             <p style="margin:8px 0 0; font-size:12px; color:#0F2F5C;">Scan this code to view the visitor details.</p>
@@ -876,7 +877,7 @@ async function processContactSubmission(formType, data) {
 
                         <p style="text-align:left; margin-top:20px;">
                           Best regards,<br/>
-                          <strong>DIEMEX 2026 Team</strong>
+                          <strong>DIEMEX 2027 Team</strong>
                         </p>
 
                         </td>
@@ -913,7 +914,7 @@ async function processContactSubmission(formType, data) {
         break;
         
       case "exhibitor-enquiry":
-        subject = "Your Exhibitor Enquiry - DIEMEX 2026";
+        subject = "Your Exhibitor Enquiry - DIEMEX 2027";
         html = `
           <!DOCTYPE html>
           <html>
@@ -963,7 +964,7 @@ async function processContactSubmission(formType, data) {
 
                         <p style="font-size:16px;">
                           Thank you for your enquiry about exhibiting at 
-                          <strong>DIEMEX 2026 International Die, Mould & Precision Machinery Expo</strong>.
+                          <strong>DIEMEX 2027 International Die, Mould & Precision Machinery Expo</strong>.
                         </p>
 
                         <p style="font-size:16px;">
@@ -1018,12 +1019,12 @@ async function processContactSubmission(formType, data) {
 
                         <p style="font-size:15px;">
                           We look forward to the opportunity to collaborate with you at 
-                          <strong>DIEMEX 2026!</strong>
+                          <strong>DIEMEX 2027!</strong>
                         </p>
 
                         <p style="margin-top:20px;">
                           Best regards,<br/>
-                          <strong>DIEMEX 2026 Team</strong>
+                          <strong>DIEMEX 2027 Team</strong>
                         </p>
 
                         </td>
@@ -1060,7 +1061,7 @@ async function processContactSubmission(formType, data) {
         break;
         
       case "delegate-registration":
-        subject = "Delegate Registration Confirmed - DIEMEX 2026";
+        subject = "Delegate Registration Confirmed - DIEMEX 2027";
         html = `
           <!DOCTYPE html>
           <html>
@@ -1112,14 +1113,14 @@ async function processContactSubmission(formType, data) {
 
                         <p style="text-align:left;">
                           Thank you for registering to attend 
-                          <strong>DIEMEX 2026 Conference</strong>.<br/>
+                          <strong>DIEMEX 2027 Conference</strong>.<br/>
                           Below are your registration details and delegate badge.
                         </p>
 
                         <div style="margin:30px 0; text-align:center;">
                           <div style="background:#fff; padding:20px; border-radius:12px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
                             <img src="cid:qrcode_${visitorCode}" alt="Delegate QR Code" width="200" height="200" style="width:200px; height:200px; display:block; margin:0 auto;" />
-                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2026 Delegate Pass</p>
+                            <p style="margin-top:15px; font-size:14px; font-weight:bold; color:#0F2F5C;">DIEMEX 2027 Delegate Pass</p>
                             <p style="margin:5px 0; font-size:12px; color:#666;">${data.firstName || ''} ${data.lastName || ''}</p>
                             <p style="margin:5px 0; font-size:12px; color:#666; font-weight:bold;">Code: ${visitorCode}</p>
                           </div>
@@ -1144,7 +1145,7 @@ async function processContactSubmission(formType, data) {
 
                         <p style="text-align:left; margin-top:20px;">
                           Best regards,<br/>
-                          <strong>DIEMEX 2026 Team</strong>
+                          <strong>DIEMEX 2027 Team</strong>
                         </p>
 
                         </td>
@@ -1407,7 +1408,7 @@ async function processContactSubmission(formType, data) {
       
       await emailService.sendEmail(
         adminEmail,
-        `New ${formType} Submission - DIEMEX 2026`,
+        `New ${formType} Submission - DIEMEX 2027`,
         adminHtml
       );
       console.log(`✅ Admin notification sent to ${adminEmail}`);
