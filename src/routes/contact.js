@@ -590,7 +590,7 @@ async function processContactSubmission(formType, data) {
 
                         <!-- BUTTON -->
                         <div style="margin:30px 0;">
-                          <a href="https://drive.google.com/your-brochure-link"
+                          <a href="https://res.cloudinary.com/deo4vpw8f/image/upload/fl_attachment:DIEMEX-2027-Brochure/v1790665792/Brochure_Diemex2027_rpwdda.pdf"
                              style="
                                background:#0F2F5C;
                                color:#ffffff;
