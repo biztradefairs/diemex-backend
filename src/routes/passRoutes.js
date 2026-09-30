@@ -6,17 +6,19 @@ const router = express.Router();
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
+  if (errors.isEmpty()) return false;
+  if (!res.headersSent) {
+    res.status(400).json({
       success: false,
       error: errors.array()[0]?.msg || 'Invalid request',
       errors: errors.array()
     });
   }
-  return null;
+  return true;
 }
 
 function handleError(res, error) {
+  if (res.headersSent) return;
   const status = error.status || 500;
   return res.status(status).json({
     success: false,
@@ -30,7 +32,7 @@ router.post(
   [
     body('countryCode').notEmpty().withMessage('Country code is required'),
     body('mobile').notEmpty().withMessage('Mobile number is required'),
-    body('channel').isIn(['sms', 'whatsapp']).withMessage('Choose SMS or WhatsApp')
+    body('channel').isIn(['sms', 'whatsapp', 'email']).withMessage('Choose SMS, WhatsApp, or Email')
   ],
   async (req, res) => {
     if (handleValidation(req, res)) return;
@@ -38,7 +40,8 @@ router.post(
       const result = await passService.sendOtp({
         countryCode: req.body.countryCode,
         nationalNumber: req.body.mobile,
-        channel: req.body.channel
+        channel: req.body.channel,
+        email: req.body.email
       });
       res.json(result);
     } catch (error) {
@@ -52,7 +55,7 @@ router.post(
   [
     body('countryCode').notEmpty().withMessage('Country code is required'),
     body('mobile').notEmpty().withMessage('Mobile number is required'),
-    body('channel').isIn(['sms', 'whatsapp']).withMessage('Choose SMS or WhatsApp')
+    body('channel').isIn(['sms', 'whatsapp', 'email']).withMessage('Choose SMS, WhatsApp, or Email')
   ],
   async (req, res) => {
     if (handleValidation(req, res)) return;
@@ -60,9 +63,11 @@ router.post(
       const result = await passService.sendOtp({
         countryCode: req.body.countryCode,
         nationalNumber: req.body.mobile,
-        channel: req.body.channel
+        channel: req.body.channel,
+        email: req.body.email
       });
-      res.json({ ...result, message: `New OTP sent via ${req.body.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}` });
+      const labels = { whatsapp: 'WhatsApp', email: 'Email', sms: 'SMS' };
+      res.json({ ...result, message: `New OTP sent via ${labels[req.body.channel] || 'SMS'}` });
     } catch (error) {
       handleError(res, error);
     }
@@ -119,6 +124,32 @@ router.post(
         verificationToken: req.body.verificationToken,
         publicCode: req.body.publicCode,
         channel: req.body.channel
+      });
+      res.json(result);
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+);
+
+router.get('/scanner/summary', async (req, res) => {
+  try {
+    const result = await passService.scannerSummary();
+    res.json(result);
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+router.post(
+  '/scan',
+  [body('code').notEmpty().withMessage('Pass code is required')],
+  async (req, res) => {
+    if (handleValidation(req, res)) return;
+    try {
+      const result = await passService.recordScan({
+        code: req.body.code,
+        scannerId: req.body.scannerId
       });
       res.json(result);
     } catch (error) {

@@ -3,12 +3,14 @@ const QRCode = require('qrcode');
 const { Op } = require('sequelize');
 const modelFactory = require('../models');
 const messaging = require('./PassMessagingService');
+const emailService = require('./EmailService');
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_RESEND_MS = 45 * 1000;
 const VERIFY_TTL_MS = 30 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const MAX_OTP_PER_HOUR = 6;
+const SCAN_COOLDOWN_MS = 15 * 1000;
 
 const otpStore = new Map();
 const verifyStore = new Map();
@@ -83,8 +85,42 @@ function passViewUrl(publicCode) {
   return `${frontendBase()}/passes/view/${publicCode}`;
 }
 
-function includeDevOtp() {
-  return process.env.NODE_ENV !== 'production';
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function channelLabel(channel) {
+  if (channel === 'whatsapp') return 'WhatsApp';
+  if (channel === 'email') return 'Email';
+  return 'SMS';
+}
+
+function startOfEventDay(date = new Date()) {
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+  return new Date(`${day}T00:00:00+05:30`);
+}
+
+function extractPassCode(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+
+  const codeLine = text.split(/\r?\n/).find((line) => /code\s*:/i.test(line));
+  if (codeLine) return codeLine.replace(/code\s*:/i, '').trim();
+
+  const viewMatch = text.match(/\/passes\/view\/([a-zA-Z0-9-]+)/);
+  if (viewMatch) return viewMatch[1];
+
+  try {
+    const parsed = JSON.parse(text);
+    return parsed.code || parsed.registrationNumber || parsed.publicCode || text;
+  } catch {
+    return text;
+  }
 }
 
 async function generateQrDataUrl(payload) {
@@ -111,12 +147,14 @@ function buildQrPayload(pass) {
 }
 
 let VisitorPassModel = null;
+let ScanModel = null;
 let passTableReady = false;
 
 async function getModel() {
-  if (!VisitorPassModel) {
+  if (!VisitorPassModel || !ScanModel) {
     const models = await modelFactory.init();
     VisitorPassModel = models.VisitorPass;
+    ScanModel = models.VisitorPassScan;
   }
   if (!VisitorPassModel) {
     const error = new Error('Visitor pass storage is not available');
@@ -124,10 +162,21 @@ async function getModel() {
     throw error;
   }
   if (!passTableReady) {
-    await VisitorPassModel.sync();
+    await VisitorPassModel.sync({ alter: process.env.NODE_ENV === 'development' });
+    if (ScanModel) await ScanModel.sync();
     passTableReady = true;
   }
   return VisitorPassModel;
+}
+
+async function getScanModel() {
+  await getModel();
+  if (!ScanModel) {
+    const error = new Error('Scan storage is not available');
+    error.status = 500;
+    throw error;
+  }
+  return ScanModel;
 }
 
 function canSendOtp(phone) {
@@ -149,7 +198,7 @@ function canSendOtp(phone) {
   return { ok: true };
 }
 
-async function sendOtp({ countryCode, nationalNumber, channel }) {
+async function sendOtp({ countryCode, nationalNumber, channel, email }) {
   const normalized = normalizePhone(countryCode, nationalNumber);
   if (!isValidMobile(normalized.countryCode, normalized.nationalNumber)) {
     const error = new Error('Enter a valid mobile number');
@@ -157,14 +206,21 @@ async function sendOtp({ countryCode, nationalNumber, channel }) {
     throw error;
   }
 
-  if (!['sms', 'whatsapp'].includes(channel)) {
-    const error = new Error('Choose SMS or WhatsApp');
+  if (!['sms', 'whatsapp', 'email'].includes(channel)) {
+    const error = new Error('Choose SMS, WhatsApp, or Email');
     error.status = 400;
     throw error;
   }
 
-  if (process.env.NODE_ENV === 'production' && !messaging.isConfigured(channel)) {
-    const error = new Error(`${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} delivery is not configured yet.`);
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (channel === 'email' && !isValidEmail(cleanEmail)) {
+    const error = new Error('Enter a valid email address');
+    error.status = 400;
+    throw error;
+  }
+
+  if (process.env.NODE_ENV === 'production' && channel !== 'email' && !messaging.isConfigured(channel)) {
+    const error = new Error(`${channelLabel(channel)} delivery is not configured yet.`);
     error.status = 503;
     throw error;
   }
@@ -183,6 +239,7 @@ async function sendOtp({ countryCode, nationalNumber, channel }) {
   otpStore.set(normalized.phone, {
     otp,
     channel,
+    email: cleanEmail || null,
     countryCode: normalized.countryCode,
     nationalNumber: normalized.nationalNumber,
     expiresAt: Date.now() + OTP_TTL_MS,
@@ -195,11 +252,13 @@ async function sendOtp({ countryCode, nationalNumber, channel }) {
   log.push(Date.now());
   sendLog.set(normalized.phone, log);
 
-  const delivery = await messaging.sendOtp({
-    phone: normalized.phone,
-    channel,
-    otp
-  });
+  const delivery = channel === 'email'
+    ? await sendEmailOtp(cleanEmail, otp)
+    : await messaging.sendOtp({
+      phone: normalized.phone,
+      channel,
+      otp
+    });
 
   if (!delivery.success) {
     if (previous.otp) otpStore.set(normalized.phone, previous);
@@ -211,15 +270,14 @@ async function sendOtp({ countryCode, nationalNumber, channel }) {
 
   return {
     success: true,
-    message: `OTP sent via ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`,
+    message: `OTP sent via ${channelLabel(channel)}`,
     channel,
     phone: maskPhone(normalized.phone),
     e164: normalized.phone,
     expiresIn: Math.floor(OTP_TTL_MS / 1000),
     resendIn: Math.floor(OTP_RESEND_MS / 1000),
     provider: delivery.provider,
-    simulated: Boolean(delivery.simulated),
-    ...(includeDevOtp() ? { devOtp: otp } : {})
+    simulated: Boolean(delivery.simulated)
   };
 }
 
@@ -271,6 +329,7 @@ async function verifyOtp({ countryCode, nationalNumber, otp }) {
     countryCode: stored.countryCode,
     nationalNumber: stored.nationalNumber,
     channel: stored.channel,
+    email: stored.email || null,
     expiresAt: Date.now() + VERIFY_TTL_MS,
     existingPassId: existing?.id || null
   });
@@ -339,7 +398,7 @@ async function completeRegistration({ verificationToken, payload }) {
     name,
     company,
     designation: payload.designation || null,
-    email: payload.email || null,
+    email: payload.email || session.email || null,
     area: payload.area || null,
     city: payload.city || null,
     state: payload.state || null,
@@ -408,13 +467,15 @@ async function resendPass({ verificationToken, publicCode, channel }) {
 async function deliverPass(pass, channel) {
   const sendChannel = channel || pass.channel;
   const passUrl = passViewUrl(pass.publicCode);
-  const result = await messaging.sendPass({
-    phone: pass.phone,
-    channel: sendChannel,
-    name: pass.name,
-    registrationNumber: pass.registrationNumber,
-    passUrl
-  });
+  const result = sendChannel === 'email'
+    ? await sendEmailPass(pass, passUrl)
+    : await messaging.sendPass({
+      phone: pass.phone,
+      channel: sendChannel,
+      name: pass.name,
+      registrationNumber: pass.registrationNumber,
+      passUrl
+    });
 
   pass.sentAt = new Date();
   pass.sentVia = sendChannel;
@@ -452,43 +513,179 @@ async function getPassByCode(code) {
   return serializePass(pass);
 }
 
-async function checkIn(code) {
+async function findPassByCode(code) {
   const VisitorPass = await getModel();
-  const pass = await VisitorPass.findOne({
+  const lookup = extractPassCode(code);
+  if (!lookup) return null;
+
+  return VisitorPass.findOne({
     where: {
       [Op.or]: [
-        { publicCode: code },
-        { registrationNumber: code }
+        { publicCode: lookup },
+        { registrationNumber: lookup }
       ]
     }
   });
+}
 
-  if (!pass) {
-    const error = new Error('Visitor pass not found');
+async function recordScan({ code, scannerId }) {
+  const pass = await findPassByCode(code);
+  if (!pass || pass.status === 'cancelled') {
+    const error = new Error('Invalid Pass');
     error.status = 404;
     throw error;
   }
 
-  if (pass.status === 'checked_in') {
+  const Scan = await getScanModel();
+  const deviceId = String(scannerId || '').trim().slice(0, 64) || null;
+  const now = new Date();
+  const recentScan = await Scan.findOne({
+    where: {
+      visitorPassId: pass.id,
+      ...(deviceId ? { scannerId: deviceId } : {}),
+      scannedAt: { [Op.gte]: new Date(now.getTime() - SCAN_COOLDOWN_MS) }
+    },
+    order: [['scannedAt', 'DESC']]
+  });
+
+  if (recentScan) {
     return {
       success: true,
-      alreadyCheckedIn: true,
-      message: 'Visitor already checked in',
-      checkInTime: pass.checkedInAt,
-      pass: await serializePass(pass)
+      duplicate: true,
+      message: 'Pass was just scanned',
+      visitor: scanVisitor(pass),
+      scannedAt: recentScan.scannedAt
     };
   }
 
-  pass.status = 'checked_in';
-  pass.checkedInAt = new Date();
-  await pass.save();
+  const scan = await Scan.create({
+    visitorPassId: pass.id,
+    scannerId: deviceId,
+    scannedAt: now
+  });
+
+  const todayStart = startOfEventDay(now);
+  const [todayVisit, eventVisits] = await Promise.all([
+    Scan.count({
+      where: {
+        visitorPassId: pass.id,
+        scannedAt: { [Op.gte]: todayStart }
+      }
+    }),
+    Scan.count({ where: { visitorPassId: pass.id } })
+  ]);
 
   return {
     success: true,
+    duplicate: false,
+    message: 'Scan recorded',
+    visitor: scanVisitor(pass),
+    scannedAt: scan.scannedAt,
+    todayVisit,
+    eventVisits
+  };
+}
+
+async function scannerSummary() {
+  const Scan = await getScanModel();
+  const VisitorPass = await getModel();
+  const todayStart = startOfEventDay();
+
+  const [todayScans, todayGroups, recent] = await Promise.all([
+    Scan.count({ where: { scannedAt: { [Op.gte]: todayStart } } }),
+    Scan.findAll({
+      attributes: ['visitorPassId'],
+      where: { scannedAt: { [Op.gte]: todayStart } },
+      group: ['visitorPassId']
+    }),
+    Scan.findAll({
+      order: [['scannedAt', 'DESC']],
+      limit: 8
+    })
+  ]);
+
+  const uniqueVisitors = todayGroups.length;
+  const ids = [...new Set(recent.map((row) => row.visitorPassId))];
+  const passes = ids.length
+    ? await VisitorPass.findAll({ where: { id: ids } })
+    : [];
+  const byId = new Map(passes.map((pass) => [pass.id, pass]));
+
+  return {
+    success: true,
+    today: {
+      scans: todayScans,
+      visitors: uniqueVisitors,
+      repeat: Math.max(0, todayScans - uniqueVisitors)
+    },
+    recent: recent.map((row) => {
+      const pass = byId.get(row.visitorPassId);
+      return {
+        id: row.id,
+        name: pass?.name || 'Visitor',
+        company: pass?.company || '',
+        registrationNumber: pass?.registrationNumber || '',
+        scannedAt: row.scannedAt
+      };
+    })
+  };
+}
+
+function scanVisitor(pass) {
+  return {
+    name: pass.name,
+    company: pass.company,
+    registrationNumber: pass.registrationNumber,
+    publicCode: pass.publicCode
+  };
+}
+
+async function sendEmailOtp(email, otp) {
+  const result = await emailService.sendVisitorOTP(email, 'Visitor', otp);
+  if (result?.success) {
+    return { success: true, provider: result.provider || 'email' };
+  }
+
+  return {
+    success: false,
+    provider: 'email',
+    error: result?.error || 'Failed to send OTP email'
+  };
+}
+
+async function sendEmailPass(pass, passUrl) {
+  const to = pass.email;
+  if (!to) {
+    return { success: false, provider: 'email', error: 'No email address on this pass' };
+  }
+
+  const html = `
+    <p>Dear ${pass.name},</p>
+    <p>Your DIEMEX 2027 visitor pass is ready.</p>
+    <p><strong>${pass.registrationNumber}</strong></p>
+    <p>Open this link on your phone and show the QR at the entrance:</p>
+    <p><a href="${passUrl}">${passUrl}</a></p>
+    <p>24–26 Mar 2027 · Auto Cluster Exhibition Centre, Pune</p>
+  `;
+  const result = await emailService.sendEmail(to, 'Your DIEMEX 2027 Visitor Pass', html);
+  if (result?.success) {
+    return { success: true, provider: result.provider || 'email', passUrl };
+  }
+
+  return {
+    success: false,
+    provider: 'email',
+    error: result?.error || 'Failed to send pass email'
+  };
+}
+
+async function checkIn(code) {
+  const result = await recordScan({ code, scannerId: 'legacy-check-in' });
+  return {
+    ...result,
     alreadyCheckedIn: false,
-    message: 'Visitor checked in successfully',
-    checkInTime: pass.checkedInAt,
-    pass: await serializePass(pass)
+    message: result.duplicate ? result.message : 'Scan recorded',
+    pass: result.visitor
   };
 }
 
@@ -537,6 +734,8 @@ module.exports = {
   completeRegistration,
   resendPass,
   getPassByCode,
+  recordScan,
+  scannerSummary,
   checkIn,
   normalizePhone,
   EVENT

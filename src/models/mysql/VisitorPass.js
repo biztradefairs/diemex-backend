@@ -34,7 +34,7 @@ module.exports = (sequelize) => {
       field: 'nationalNumber'
     },
     channel: {
-      type: DataTypes.ENUM('sms', 'whatsapp'),
+      type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'whatsapp'
     },

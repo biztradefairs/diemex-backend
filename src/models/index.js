@@ -128,6 +128,11 @@ const modelFactories = {
     return factory(database.getConnection('mysql'));
   },
 
+  VisitorPassScan: () => {
+    const factory = require('./mysql/VisitorPassScan');
+    return factory(database.getConnection('mysql'));
+  },
+
   ContactSubmission: () => {
     const factory = require('./mysql/ContactSubmission');
     return factory(database.getConnection('mysql'));

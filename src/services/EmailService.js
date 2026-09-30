@@ -52,7 +52,7 @@ class EmailService {
           secure: String(process.env.EMAIL_PORT) === "465",
           auth: {
             user: process.env.EMAIL_USER,
-            pass: String(process.env.EMAIL_PASS).replace(/^['"]|['"]$/g, ""),
+            pass: String(process.env.EMAIL_PASS || "").replace(/^['"]|['"]$/g, "").replace(/\s+/g, ""),
           },
         });
         this.smtpFrom = this.cleanFrom(process.env.EMAIL_FROM, process.env.EMAIL_USER);
@@ -410,31 +410,67 @@ class EmailService {
    * Visitor OTP
    */
   async sendVisitorOTP(email, name, otp) {
-    const subject = "Your Verification Code - DIEMEX Exhibition";
+    const subject = "Your Verification Code - DIEMEX 2027";
+    const greeting = name || "Valued Visitor";
 
     const html = `
-      <h2>Email Verification</h2>
-
-      <p>Dear ${name},</p>
-
-      <p>Your OTP for DIEMEX exhibition registration is:</p>
-
-      <h1
-        style="
-          font-size:36px;
-          letter-spacing:8px;
-          text-align:center;
-          background:#f0f0f0;
-          padding:20px;
-          border-radius:8px;
-        "
-      >
-        ${otp}
-      </h1>
-
-      <p>This code expires in 5 minutes.</p>
-
-      <p>If you didn't request this, please ignore this email.</p>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="background:#D6E9D8; padding:40px 0 0;">
+              <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#0F2F5C; border-radius:6px 6px 0 0; color:#fff;">
+                <tr>
+                  <td align="center" style="padding:30px;">
+                    <img src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774691470/di_logo_kqo9pa.png" style="max-width:220px; display:block; margin:0 auto;" />
+                    <p style="margin:5px 0 0; font-size:14px;">International Die & Mould Exhibition</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff; border-radius:0 0 6px 6px;">
+                <tr>
+                  <td style="padding:40px 30px; color:#333; text-align:center;">
+                    <h2 style="margin-bottom:10px;">Verify Your Email</h2>
+                    <hr style="border:none; border-top:1px solid #ddd; width:80%; margin:10px auto 20px;" />
+                    <p style="text-align:left; font-size:16px;">Dear ${greeting},</p>
+                    <p style="text-align:left; font-size:16px;">
+                      Thank you for registering to attend <strong>DIEMEX 2027</strong>.<br/>
+                      Use this verification code to continue your visitor registration.
+                    </p>
+                    <div style="margin:30px 0; font-size:36px; letter-spacing:8px; font-weight:bold; color:#0F2F5C; padding:16px; background:#f5f5f5; border-radius:8px;">
+                      ${otp}
+                    </div>
+                    <p style="font-size:15px;">This code expires in 10 minutes. Do not share it with anyone.</p>
+                    <p style="font-size:13px; color:#666;">If you did not request this code, you can ignore this email.</p>
+                    <p style="text-align:left; margin-top:20px;">
+                      Best regards,<br/>
+                      <strong>DIEMEX 2027 Team</strong>
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background:#1E5AA6; color:#fff; padding:15px; text-align:center; font-size:14px;">
+                    <strong>24-26 Mar 2027</strong> • Auto Cluster Exhibition Centre, Pune, India
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background:#E6EEF7; padding:20px; font-size:12px; color:#333; text-align:center;">
+                    Organizer: <img src="https://res.cloudinary.com/deo4vpw8f/image/upload/v1774687173/maxxlogo_lulkwh.png" style="max-width:220px; display:block; margin:0 auto;" /><br/>
+                    T9, Swastik Manandi Arcade, Bengaluru, India<br/>
+                    Tel: +91 80 40682257 | pad@maxxmedia.in | www.diemex.in
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
     `;
 
     return this.sendEmail(email, subject, html);

@@ -966,6 +966,10 @@ setupRoutes() {
       });
 
       // Default error status
+      if (res.headersSent) {
+        return next(error);
+      }
+
       const statusCode = error.statusCode || error.status || 500;
 
       // Prepare error response
