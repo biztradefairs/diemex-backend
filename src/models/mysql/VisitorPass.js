@@ -143,8 +143,6 @@ module.exports = (sequelize) => {
     timestamps: true,
     indexes: [
       { fields: ['phone'] },
-      { fields: ['registrationNumber'] },
-      { fields: ['publicCode'] },
       { fields: ['status'] }
     ]
   });

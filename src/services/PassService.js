@@ -162,8 +162,12 @@ async function getModel() {
     throw error;
   }
   if (!passTableReady) {
-    await VisitorPassModel.sync({ alter: process.env.NODE_ENV === 'development' });
-    if (ScanModel) await ScanModel.sync();
+    try {
+      await VisitorPassModel.sync();
+      if (ScanModel) await ScanModel.sync();
+    } catch (error) {
+      console.warn('Visitor pass tables already present:', error.message);
+    }
     passTableReady = true;
   }
   return VisitorPassModel;
