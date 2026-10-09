@@ -19,6 +19,8 @@ const modelFactories = {
     return factory(database.getConnection('mysql'));
   },
 
+  Blog: () => require('./mysql/Blog')(database.getConnection('mysql')),
+
   Article: () => {
     const factory = require('./mysql/Article');
     return factory(database.getConnection('mysql'));
@@ -200,6 +202,8 @@ async function init() {
         }
       }
     }
+
+    await require('../utils/ensureBlogTable')(models.Blog);
 
     // ================= ASSOCIATIONS =================
     console.log('🔗 Setting up associations...');

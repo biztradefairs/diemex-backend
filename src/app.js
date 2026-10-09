@@ -17,6 +17,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const exhibitorRoutes = require('./routes/exhibitors');
 const articleRoutes = require('./routes/articles');
+const blogRoutes = require('./routes/blogs');
 const exhibitorAuthRoutes = require('./routes/exhibitorAuth');
 const boothRoutes = require('./routes/booths');
 const exhibitorDashboardRoutes = require('./routes/exhibitorDashboard');
@@ -148,7 +149,7 @@ class AppServer {
       const modelFactory = require('./models');
 
       // Initialize models
-      const models = modelFactory.init();
+      const models = await modelFactory.init();
       console.log(`✅ Models initialized: ${Object.keys(models).length} models loaded`);
 
       // Sync models with database (development only)
@@ -672,6 +673,7 @@ setupRoutes() {
   this.app.use('/api/users', userRoutes);
   this.app.use('/api/exhibitors', exhibitorRoutes);
   this.app.use('/api/articles', articleRoutes);
+  this.app.use('/api/blogs', blogRoutes);
   this.app.use('/api/booths', boothRoutes);
   this.app.use('/api/exhibitorDashboard', exhibitorDashboardRoutes);
   // this.app.use('/api/floor-plan', boothRoutes);

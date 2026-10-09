@@ -42,7 +42,8 @@
     "lint:fix": "eslint src --fix",
     "migrate:up": "node src/database/migrations/up.js",
     "migrate:down": "node src/database/migrations/down.js",
-    "seed": "node src/database/seeders/seed.js"
+    "seed": "node src/database/seeders/seed.js",
+    "migrate:blogs": "node scripts/create-blogs-table.js"
   },
   "dependencies": {
     "@google-analytics/data": "^5.2.1",
