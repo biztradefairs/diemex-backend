@@ -79,7 +79,7 @@ router.post(
   [
     body('countryCode').notEmpty().withMessage('Country code is required'),
     body('mobile').notEmpty().withMessage('Mobile number is required'),
-    body('otp').isLength({ min: 4, max: 4 }).withMessage('Enter the 4-digit OTP').isNumeric()
+    body('otp').isLength({ min: 4, max: 10 }).withMessage('Enter the verification code').isNumeric()
   ],
   async (req, res) => {
     if (handleValidation(req, res)) return;

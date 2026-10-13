@@ -36,13 +36,9 @@ class PassMessagingService {
    * @returns {'twilio' | 'msg91' | 'dev'} Active SMS provider key
    */
   getSmsProvider() {
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
-      return 'twilio';
-    }
-    if (process.env.MSG91_AUTH_KEY) {
-      return 'msg91';
-    }
-    return 'dev';
+    if (this.twilioClient() && (this.verifyReady() || this.smsFrom())) return 'twilio';
+    if (process.env.MSG91_AUTH_KEY) return 'msg91';
+    return null;
   }
 
   /**
@@ -56,13 +52,9 @@ class PassMessagingService {
    * @returns {'twilio' | 'meta' | 'dev'} Active WhatsApp provider key
    */
   getWhatsAppProvider() {
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM) {
-      return 'twilio';
-    }
-    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
-      return 'meta';
-    }
-    return 'dev';
+    if (this.twilioClient() && (this.verifyReady() || this.whatsAppFrom())) return 'twilio';
+    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) return 'meta';
+    return null;
   }
 
   /**
@@ -111,11 +103,68 @@ class PassMessagingService {
    * @returns {Promise<Object>} Transport delivery outcome
    */
   async sendOtp({ phone, channel, otp }) {
+    if (this.verifyReady()) {
+      return this.startVerification({ phone, channel });
+    }
+
     const message = channel === 'whatsapp'
       ? `Your DIEMEX verification code is *${otp}*. It expires in 10 minutes. Do not share this code.`
       : `DIEMEX: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`;
 
-    return this.sendMessage({ phone, channel, message, kind: 'otp' });
+    const result = await this.sendMessage({ phone, channel, message, kind: 'otp' });
+    return { ...result, digits: 4, managed: false };
+  }
+
+  async startVerification({ phone, channel }) {
+    const client = this.twilioClient();
+    if (!client) {
+      return { success: false, provider: 'twilio-verify', error: this.missingTwilioMessage(channel) };
+    }
+
+    try {
+      const verification = await client.verify.v2
+        .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+        .verifications.create({
+          to: phone,
+          channel: channel === 'whatsapp' ? 'whatsapp' : 'sms'
+        });
+
+      console.log(`[PassMessaging] Twilio Verify ${channel} → ${phone} (${verification.status})`);
+      return {
+        success: verification.status === 'pending' || verification.status === 'approved',
+        provider: 'twilio-verify',
+        managed: true,
+        digits: this.verifyCodeLength(),
+        status: verification.status
+      };
+    } catch (error) {
+      console.error('[PassMessaging] Twilio Verify failed:', error.message);
+      return {
+        success: false,
+        provider: 'twilio-verify',
+        error: this.describeError(error)
+      };
+    }
+  }
+
+  async checkVerification({ phone, code }) {
+    const client = this.twilioClient();
+    if (!client || !process.env.TWILIO_VERIFY_SERVICE_SID) {
+      return { approved: false, error: 'Twilio Verify is not configured' };
+    }
+
+    try {
+      const check = await client.verify.v2
+        .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+        .verificationChecks.create({
+          to: phone,
+          code: String(code || '').trim()
+        });
+      return { approved: check.status === 'approved', status: check.status };
+    } catch (error) {
+      console.error('[PassMessaging] Twilio Verify check failed:', error.message);
+      return { approved: false, error: this.describeError(error) };
+    }
   }
 
   /**
@@ -230,23 +279,24 @@ class PassMessagingService {
 
     // Live Provider Execution
     try {
+      let sid = null;
       if (channel === 'whatsapp' && provider === 'twilio') {
         await this.sendTwilioWhatsApp(phone, message, mediaUrl);
       } else if (channel === 'whatsapp' && provider === 'meta') {
         await this.sendMetaWhatsApp(phone, message, mediaUrl);
       } else if (provider === 'twilio') {
-        await this.sendTwilioSms(phone, message);
+        sid = await this.sendTwilioSms(phone, message, kind);
       } else if (provider === 'msg91') {
         await this.sendMsg91Sms(phone, message);
       }
 
       return { success: true, provider, mediaUrl };
     } catch (error) {
-      console.error(`[PassMessaging] ${channel} send failed:`, error.response?.data || error.message);
+      console.error(`[PassMessaging] ${channel} send failed:`, error.message || error.response?.data || error);
       return {
         success: false,
         provider,
-        error: error.response?.data?.message || error.message || 'Failed to send message'
+        error: this.describeError(error)
       };
     }
   }
@@ -302,11 +352,33 @@ class PassMessagingService {
       ? process.env.TWILIO_WHATSAPP_FROM
       : `whatsapp:${process.env.TWILIO_WHATSAPP_FROM}`;
 
-    const params = new URLSearchParams({
-      To: `whatsapp:${phone}`,
-      From: from,
-      Body: body
-    });
+    if (contentSid) {
+      const message = await client.messages.create({
+        contentSid,
+        contentVariables: JSON.stringify({ 1: body }),
+        from,
+        to
+      });
+      return message.sid;
+    }
+
+    try {
+      const message = await client.messages.create({ body, from, to });
+      return message.sid;
+    } catch (error) {
+      if (this.isContentSidError(error)) {
+        throw new Error('WhatsApp on this Twilio trial needs the Content SID from the Try out WhatsApp page. Add it as TWILIO_WHATSAPP_CONTENT_SID.');
+      }
+      throw error;
+    }
+  }
+
+  missingTwilioMessage(channel) {
+    if (channel === 'whatsapp') {
+      return 'WhatsApp is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_FROM.';
+    }
+    return 'SMS is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.';
+  }
 
     if (mediaUrl) {
       params.append('MediaUrl', mediaUrl);

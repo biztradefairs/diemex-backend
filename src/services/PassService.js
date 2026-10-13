@@ -471,12 +471,14 @@ async function sendOtp({ countryCode, nationalNumber, channel, email }) {
     throw error;
   }
 
-  const otp = generateOtp();
+  const useTwilioVerify = channel !== 'email' && messaging.verifyReady();
+  const otp = useTwilioVerify ? null : generateOtp();
   const previous = otpStore.get(normalized.phone) || {};
 
   // Store OTP in memory
   otpStore.set(normalized.phone, {
     otp,
+    twilioVerify: useTwilioVerify,
     channel,
     email: cleanEmail || null,
     countryCode: normalized.countryCode,
@@ -517,7 +519,8 @@ async function sendOtp({ countryCode, nationalNumber, channel, email }) {
     expiresIn: Math.floor(OTP_TTL_MS / 1000),
     resendIn: Math.floor(OTP_RESEND_MS / 1000),
     provider: delivery.provider,
-    simulated: Boolean(delivery.simulated)
+    simulated: Boolean(delivery.simulated),
+    digits: delivery.digits || (useTwilioVerify ? messaging.verifyCodeLength() : 4)
   };
 }
 
@@ -565,7 +568,17 @@ async function verifyOtp({ countryCode, nationalNumber, otp }) {
     throw error;
   }
 
-  if (String(stored.otp) !== String(otp).trim()) {
+  if (stored.twilioVerify) {
+    const check = await messaging.checkVerification({
+      phone: normalized.phone,
+      code: otp
+    });
+    if (!check.approved) {
+      const error = new Error(check.error || 'Invalid OTP. Please try again.');
+      error.status = 400;
+      throw error;
+    }
+  } else if (String(stored.otp) !== String(otp).trim()) {
     const error = new Error('Invalid OTP. Please try again.');
     error.status = 400;
     throw error;

@@ -42,7 +42,8 @@
     "lint:fix": "eslint src --fix",
     "migrate:up": "node src/database/migrations/up.js",
     "migrate:down": "node src/database/migrations/down.js",
-    "seed": "node src/database/seeders/seed.js"
+    "seed": "node src/database/seeders/seed.js",
+    "migrate:blogs": "node scripts/create-blogs-table.js"
   },
   "dependencies": {
     "@google-analytics/data": "^5.2.1",
@@ -86,6 +87,7 @@
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
+    "twilio": "^6.1.2",
     "uuid": "^9.0.1",
     "winston": "^3.10.0",
     "winston-daily-rotate-file": "^4.7.1",
