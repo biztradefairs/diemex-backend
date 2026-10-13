@@ -352,25 +352,17 @@ class PassMessagingService {
       ? process.env.TWILIO_WHATSAPP_FROM
       : `whatsapp:${process.env.TWILIO_WHATSAPP_FROM}`;
 
-    if (contentSid) {
-      const message = await client.messages.create({
-        contentSid,
-        contentVariables: JSON.stringify({ 1: body }),
-        from,
-        to
-      });
-      return message.sid;
+    const params = new URLSearchParams({
+      To: `whatsapp:${phone}`,
+      From: from,
+      Body: body
+    });
+
+    if (mediaUrl) {
+      params.append('MediaUrl', mediaUrl);
     }
 
-    try {
-      const message = await client.messages.create({ body, from, to });
-      return message.sid;
-    } catch (error) {
-      if (this.isContentSidError(error)) {
-        throw new Error('WhatsApp on this Twilio trial needs the Content SID from the Try out WhatsApp page. Add it as TWILIO_WHATSAPP_CONTENT_SID.');
-      }
-      throw error;
-    }
+    await axios.post(this.twilioMessagesUrl(), params, { auth: this.twilioAuth() });
   }
 
   missingTwilioMessage(channel) {
@@ -380,11 +372,10 @@ class PassMessagingService {
     return 'SMS is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.';
   }
 
-    if (mediaUrl) {
-      params.append('MediaUrl', mediaUrl);
-    }
-
-    await axios.post(this.twilioMessagesUrl(), params, { auth: this.twilioAuth() });
+  describeError(error) {
+    const twilioMessage = error?.message;
+    const apiMessage = error?.response?.data?.message;
+    return apiMessage || twilioMessage || 'Failed to send message';
   }
 
   /**
