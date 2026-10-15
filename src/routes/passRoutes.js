@@ -1,6 +1,8 @@
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const passService = require('../services/PassService');
+const { authenticate, authorize } = require('../middleware/auth');
+const scannerAccess = [authenticate, authorize(['admin', 'editor'])];
 
 const router = express.Router();
 
@@ -132,7 +134,7 @@ router.post(
   }
 );
 
-router.get('/scanner/summary', async (req, res) => {
+router.get('/scanner/summary', ...scannerAccess, async (req, res) => {
   try {
     const result = await passService.scannerSummary();
     res.json(result);
@@ -143,6 +145,7 @@ router.get('/scanner/summary', async (req, res) => {
 
 router.post(
   '/scan',
+  ...scannerAccess,
   [body('code').notEmpty().withMessage('Pass code is required')],
   async (req, res) => {
     if (handleValidation(req, res)) return;
@@ -173,6 +176,7 @@ router.get(
 
 router.post(
   '/check-in',
+  ...scannerAccess,
   [body('code').notEmpty().withMessage('Pass code is required')],
   async (req, res) => {
     if (handleValidation(req, res)) return;

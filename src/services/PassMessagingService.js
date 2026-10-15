@@ -1,440 +1,252 @@
-/**
- * ============================================================================
- * DIEMEX 2027 — Multi-Channel Visitor Messaging Service (PassMessagingService.js)
- * ============================================================================
- * 
- * ROLE IN ARCHITECTURE:
- * This service is the transport abstraction layer for delivering OTPs,
- * registration confirmations, digital visitor badges, and QR codes across
- * SMS and WhatsApp channels.
- * 
- * CORE CAPABILITIES:
- *  1. Multi-Provider Fallbacks:
- *     - Twilio (SMS & WhatsApp Business API)
- *     - Meta / WhatsApp Cloud API (Direct Facebook Graph API)
- *     - MSG91 (Indian DLT Transactional SMS Gateway)
- *     - Local Dev Simulation (Zero-cost console logging in test environments)
- *  2. WhatsApp Media Attachments:
- *     - Automatically passes public Cloudinary image URLs (`mediaUrl`) to Twilio
- *       and Meta Cloud API for inline QR code/badge image delivery.
- *  3. Click-to-Chat Deep Linking:
- *     - Generates `https://wa.me/` URLs for instant browser/app chat opening.
- * ============================================================================
- */
-
 const axios = require('axios');
+const twilio = require('twilio');
 
+// OTPs use Verify; visitor passes use Programmable Messaging.
 class PassMessagingService {
-  /**
-   * Resolves the active SMS transport provider based on environment configuration.
-   * 
-   * PROVIDER RESOLUTION PRIORITY:
-   *  1. Twilio: If TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER exist.
-   *  2. MSG91: If MSG91_AUTH_KEY is configured (standard for Indian DLT).
-   *  3. Dev: Local development simulator (logs messages to terminal without API cost).
-   * 
-   * @returns {'twilio' | 'msg91' | 'dev'} Active SMS provider key
-   */
-  getSmsProvider() {
-    if (this.twilioClient() && (this.verifyReady() || this.smsFrom())) return 'twilio';
-    if (process.env.MSG91_AUTH_KEY) return 'msg91';
-    return null;
-  }
-
-  /**
-   * Resolves the active WhatsApp transport provider based on environment configuration.
-   * 
-   * PROVIDER RESOLUTION PRIORITY:
-   *  1. Twilio WhatsApp: If TWILIO_WHATSAPP_FROM is defined.
-   *  2. Meta Cloud API: If WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID exist.
-   *  3. Dev: Local simulator (logs to console and generates wa.me links).
-   * 
-   * @returns {'twilio' | 'meta' | 'dev'} Active WhatsApp provider key
-   */
-  getWhatsAppProvider() {
-    if (this.twilioClient() && (this.verifyReady() || this.whatsAppFrom())) return 'twilio';
-    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) return 'meta';
-    return null;
-  }
-
-  /**
-   * Resolves the transport provider for the specified delivery channel.
-   * 
-   * @param {'whatsapp' | 'sms' | 'email'} channel - Target delivery channel
-   * @returns {'twilio' | 'meta' | 'msg91' | 'dev'} Provider name
-   */
-  getProvider(channel) {
-    return channel === 'whatsapp' ? this.getWhatsAppProvider() : this.getSmsProvider();
-  }
-
-  /**
-   * Checks whether live carrier credentials are configured for the channel.
-   * 
-   * @param {'whatsapp' | 'sms'} channel - Target channel
-   * @returns {boolean} True if a live third-party gateway is configured
-   */
-  isConfigured(channel) {
-    return this.getProvider(channel) !== 'dev';
-  }
-
-  /**
-   * Generates a standard WhatsApp click-to-chat deep link URL.
-   * 
-   * WHY IT IS USED:
-   * Allows the frontend to open WhatsApp Web or native mobile app directly with
-   * pre-filled pass verification details and web links.
-   * 
-   * @param {string} e164Phone - E.164 formatted telephone number (e.g. "+919876543210")
-   * @param {string} text - Pre-filled message body
-   * @returns {string} Fully encoded https://wa.me/ URL
-   */
-  buildWhatsAppLink(e164Phone, text) {
-    const digits = String(e164Phone || '').replace(/\D/g, '');
-    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-  }
-
-  /**
-   * Dispatches a 4-digit OTP verification code via the selected channel.
-   * 
-   * @param {Object} params
-   * @param {string} params.phone - Recipient's E.164 phone number
-   * @param {'whatsapp' | 'sms'} params.channel - Transport channel
-   * @param {string} params.otp - 4-digit numeric verification OTP
-   * @returns {Promise<Object>} Transport delivery outcome
-   */
-  async sendOtp({ phone, channel, otp }) {
-    if (this.verifyReady()) {
-      return this.startVerification({ phone, channel });
+  twilioClient() {
+    const sid = String(process.env.TWILIO_ACCOUNT_SID || '').trim();
+    const token = String(process.env.TWILIO_AUTH_TOKEN || '').trim();
+    if (!sid || !token) return null;
+    const key = sid + ':' + token;
+    if (this.clientKey !== key) {
+      this.client = twilio(sid, token);
+      this.clientKey = key;
+      this.verifySettings = null;
     }
+    return this.client;
+  }
 
-    const message = channel === 'whatsapp'
-      ? `Your DIEMEX verification code is *${otp}*. It expires in 10 minutes. Do not share this code.`
-      : `DIEMEX: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`;
+  verifyReady() {
+    return Boolean(this.twilioClient() && process.env.TWILIO_VERIFY_SERVICE_SID?.trim());
+  }
 
-    const result = await this.sendMessage({ phone, channel, message, kind: 'otp' });
+  verifyCodeLength() {
+    const digits = Number(process.env.TWILIO_VERIFY_CODE_LENGTH || 6);
+    return Number.isInteger(digits) && digits >= 4 && digits <= 10 ? digits : 6;
+  }
+
+  smsFrom() {
+    return String(process.env.TWILIO_PHONE_NUMBER || '').trim();
+  }
+
+  whatsAppFrom() {
+    const sender = String(process.env.TWILIO_WHATSAPP_FROM || '').trim();
+    return sender ? (sender.startsWith('whatsapp:') ? sender : 'whatsapp:' + sender) : '';
+  }
+
+  getSmsProvider() {
+    if (this.twilioClient() && this.smsFrom()) return 'twilio';
+    if (process.env.MSG91_AUTH_KEY) return 'msg91';
+    return process.env.NODE_ENV === 'production' ? null : 'dev';
+  }
+
+  getWhatsAppProvider() {
+    if (this.twilioClient() && this.whatsAppFrom()) return 'twilio';
+    if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) return 'meta';
+    return process.env.NODE_ENV === 'production' ? null : 'dev';
+  }
+
+  getProvider(channel) {
+    if (channel === 'whatsapp') return this.getWhatsAppProvider();
+    if (channel === 'sms') return this.getSmsProvider();
+    return null;
+  }
+
+  isConfigured(channel, kind = 'pass') {
+    if (!['sms', 'whatsapp'].includes(channel)) return false;
+    if (kind === 'otp' && this.verifyReady()) return true;
+    const provider = this.getProvider(channel);
+    return Boolean(provider && provider !== 'dev');
+  }
+
+  buildWhatsAppLink(phone, text) {
+    return 'https://wa.me/' + String(phone || '').replace(/\D/g, '') + '?text=' + encodeURIComponent(text);
+  }
+
+  async sendOtp({ phone, channel, otp }) {
+    if (this.verifyReady()) return this.startVerification({ phone, channel });
+    const message = 'DIEMEX: Your verification code is ' + otp + '. Valid for 10 minutes. Do not share.';
+    const result = await this.sendMessage({
+      phone, channel, message, kind: 'otp', templateData: { otp }
+    });
     return { ...result, digits: 4, managed: false };
   }
 
   async startVerification({ phone, channel }) {
-    const client = this.twilioClient();
-    if (!client) {
-      return { success: false, provider: 'twilio-verify', error: this.missingTwilioMessage(channel) };
+    if (!this.verifyReady()) {
+      return { success: false, provider: 'twilio-verify', error: 'Twilio Verify is not configured.' };
     }
-
     try {
-      const verification = await client.verify.v2
-        .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-        .verifications.create({
-          to: phone,
-          channel: channel === 'whatsapp' ? 'whatsapp' : 'sms'
-        });
-
-      console.log(`[PassMessaging] Twilio Verify ${channel} → ${phone} (${verification.status})`);
+      const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID.trim();
+      const service = this.twilioClient().verify.v2.services(serviceSid);
+      // Read the actual service length so the browser renders the right number of inputs.
+      if (!this.verifySettings || this.verifySettings.sid !== serviceSid ||
+          this.verifySettings.expiresAt < Date.now()) {
+        const settings = await service.fetch();
+        this.verifySettings = {
+          sid: serviceSid,
+          digits: settings.codeLength || this.verifyCodeLength(),
+          expiresAt: Date.now() + 5 * 60 * 1000
+        };
+      }
+      const verification = await service.verifications.create({ to: phone, channel });
       return {
-        success: verification.status === 'pending' || verification.status === 'approved',
-        provider: 'twilio-verify',
-        managed: true,
-        digits: this.verifyCodeLength(),
-        status: verification.status
+        success: ['pending', 'approved'].includes(verification.status),
+        provider: 'twilio-verify', managed: true,
+        digits: this.verifySettings.digits, status: verification.status
       };
     } catch (error) {
-      console.error('[PassMessaging] Twilio Verify failed:', error.message);
-      return {
-        success: false,
-        provider: 'twilio-verify',
-        error: this.describeError(error)
-      };
+      return { success: false, provider: 'twilio-verify', error: this.describeError(error) };
     }
   }
 
   async checkVerification({ phone, code }) {
-    const client = this.twilioClient();
-    if (!client || !process.env.TWILIO_VERIFY_SERVICE_SID) {
-      return { approved: false, error: 'Twilio Verify is not configured' };
-    }
-
+    if (!this.verifyReady()) return { approved: false, error: 'Twilio Verify is not configured.' };
     try {
-      const check = await client.verify.v2
-        .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-        .verificationChecks.create({
-          to: phone,
-          code: String(code || '').trim()
-        });
+      const check = await this.twilioClient().verify.v2
+        .services(process.env.TWILIO_VERIFY_SERVICE_SID.trim())
+        .verificationChecks.create({ to: phone, code: String(code || '').trim() });
       return { approved: check.status === 'approved', status: check.status };
     } catch (error) {
-      console.error('[PassMessaging] Twilio Verify check failed:', error.message);
       return { approved: false, error: this.describeError(error) };
     }
   }
 
-  /**
-   * Dispatches the official digital visitor pass confirmation with badge link and media image.
-   * 
-   * WHY IT IS USED:
-   * Formats channel-tailored notification copy (Markdown for WhatsApp, plain text for SMS),
-   * includes registration code, links to the live digital badge, and attaches Cloudinary QR image.
-   * 
-   * @param {Object} params
-   * @param {string} params.phone - Attendee E.164 telephone number
-   * @param {'whatsapp' | 'sms'} params.channel - Selected delivery channel
-   * @param {string} params.name - Attendee full name
-   * @param {string} params.registrationNumber - Unique REG-DMX pass identifier
-   * @param {string} params.passUrl - Web view URL for mobile pass card
-   * @param {string} [params.mediaUrl] - Public HTTPS URL of the QR code/badge image
-   * @returns {Promise<Object>} Transport outcome, WhatsApp chat link, and message text
-   */
   async sendPass({ phone, channel, name, registrationNumber, passUrl, mediaUrl }) {
-    const smsMessage =
-      `DIEMEX 2027: Hi ${name}, your visitor pass ${registrationNumber} is ready. Show this QR at entry: ${passUrl}`;
-
-    const whatsappMessage =
-      `*DIEMEX 2027 — Your Visitor Pass*\n\n` +
-      `Hi *${name}*,\n\n` +
-      `Your digital visitor badge is ready.\n` +
-      `📌 *Registration:* ${registrationNumber}\n\n` +
-      `👉 *Show this QR at entry:*\n${passUrl}\n\n` +
-      `📅 24–26 Mar 2027\n📍 Auto Cluster Exhibition Centre, Pune`;
-
-    const message = channel === 'whatsapp' ? whatsappMessage : smsMessage;
-    const result = await this.sendMessage({ phone, channel, message, mediaUrl, kind: 'pass' });
-
-    return {
-      ...result,
-      whatsappUrl: this.buildWhatsAppLink(phone, whatsappMessage),
-      message,
-      mediaUrl
-    };
+    const message = 'DIEMEX 2027: Hi ' + name + ', your visitor pass ' +
+      registrationNumber + ' is ready. Show this QR at entry: ' + passUrl;
+    const result = await this.sendMessage({
+      phone, channel, message, mediaUrl, kind: 'pass',
+      templateData: {
+        name, registrationNumber, passUrl, mediaUrl,
+        publicCode: passUrl.split('/').filter(Boolean).pop(),
+        eventName: 'DIEMEX 2027', eventDates: '24–26 Mar 2027',
+        venue: 'Auto Cluster Exhibition Centre, Pune'
+      }
+    });
+    return { ...result, message, mediaUrl, whatsappUrl: this.buildWhatsAppLink(phone, message) };
   }
 
-  /**
-   * Directly dispatches the complete digital visitor badge image to WhatsApp.
-   * 
-   * @param {Object} params
-   * @param {string} params.phone - Recipient phone number
-   * @param {string} params.badgeUrl - Public HTTPS image URL of the complete badge
-   * @param {string} params.registrationNumber - Pass registration number
-   * @returns {Promise<Object>} Delivery outcome
-   */
   async sendVisitorBadgeWhatsApp({ phone, badgeUrl, registrationNumber }) {
-    const message =
-      `*DIEMEX 2027 — Official Visitor Badge*\n\n` +
-      `Registration: *${registrationNumber}*\n\n` +
-      `Your digital visitor badge is ready.\n\n` +
-      `📅 24–26 Mar 2027\n📍 Auto Cluster Exhibition Centre, Pune`;
-
     return this.sendMessage({
-      phone,
-      channel: 'whatsapp',
-      message,
-      mediaUrl: badgeUrl,
-      kind: 'pass'
+      phone, channel: 'whatsapp', kind: 'pass', mediaUrl: badgeUrl,
+      message: 'DIEMEX 2027 visitor badge: ' + registrationNumber,
+      templateData: { registrationNumber, mediaUrl: badgeUrl }
     });
   }
 
-  /**
-   * Unified internal routing engine for dispatching outbound messages.
-   * 
-   * WORKFLOW:
-   *  1. Resolves provider (Twilio, Meta, MSG91, or Dev).
-   *  2. Logs formatted payload to console in dev mode or non-production environments.
-   *  3. Executes carrier API call (with media attachment handling when supported).
-   *  4. Traps API errors and formats uniform result object.
-   * 
-   * @param {Object} params
-   * @param {string} params.phone - E.164 target phone number
-   * @param {'whatsapp' | 'sms'} params.channel - Channel identifier
-   * @param {string} params.message - Text body to send
-   * @param {string} [params.mediaUrl] - Optional HTTPS media image URL
-   * @param {'otp' | 'pass'} params.kind - Category of message
-   * @returns {Promise<{success: boolean, provider: string, simulated?: boolean, mediaUrl?: string, error?: string}>}
-   */
-  async sendMessage({ phone, channel, message, mediaUrl, kind }) {
+  async sendMessage({ phone, channel, message, mediaUrl, kind, templateData }) {
     const provider = this.getProvider(channel);
-
-    if (process.env.NODE_ENV !== 'production' || provider === 'dev') {
-      console.log(`[PassMessaging] ${channel.toUpperCase()} ${kind} via ${provider} → ${phone}`);
-      console.log(`[PassMessaging] ${message}`);
-      if (mediaUrl) {
-        console.log(`[PassMessaging] Media URL: ${mediaUrl}`);
-      }
+    if (!provider) {
+      return { success: false, provider: null, error: channel.toUpperCase() + ' delivery is not configured.' };
     }
-
-    // Dev Simulation Mode: returns success without calling paid telecom APIs
     if (provider === 'dev') {
-      if (process.env.NODE_ENV === 'production') {
-        return {
-          success: false,
-          provider,
-          error: `${channel.toUpperCase()} delivery is not configured. Add Twilio, MSG91, or WhatsApp Cloud API credentials.`
-        };
-      }
-
-      return {
-        success: true,
-        provider,
-        simulated: true,
-        mediaUrl
-      };
+      console.log('[PassMessaging] Simulated ' + channel + ' ' + kind + ': ' + message);
+      return { success: true, provider, simulated: true, mediaUrl };
     }
-
-    // Live Provider Execution
     try {
-      let sid = null;
-      if (channel === 'whatsapp' && provider === 'twilio') {
-        await this.sendTwilioWhatsApp(phone, message, mediaUrl);
-      } else if (channel === 'whatsapp' && provider === 'meta') {
-        await this.sendMetaWhatsApp(phone, message, mediaUrl);
+      let response;
+      if (provider === 'twilio' && channel === 'whatsapp') {
+        response = await this.sendTwilioWhatsApp(phone, kind, templateData);
       } else if (provider === 'twilio') {
-        sid = await this.sendTwilioSms(phone, message, kind);
+        response = await this.sendTwilioSms(phone, message);
+      } else if (provider === 'meta') {
+        await this.sendMetaWhatsApp(phone, message, mediaUrl);
       } else if (provider === 'msg91') {
         await this.sendMsg91Sms(phone, message);
       }
-
-      return { success: true, provider, mediaUrl };
-    } catch (error) {
-      console.error(`[PassMessaging] ${channel} send failed:`, error.message || error.response?.data || error);
       return {
-        success: false,
-        provider,
-        error: this.describeError(error)
+        success: true, provider, mediaUrl,
+        messageSid: response?.sid || null, status: response?.status || 'accepted'
       };
+    } catch (error) {
+      return { success: false, provider, error: this.describeError(error) };
     }
   }
 
-  /**
-   * Helper to construct Twilio HTTP Basic Authentication credentials.
-   * 
-   * @returns {{username: string, password: string}}
-   */
   twilioAuth() {
     return {
-      username: process.env.TWILIO_ACCOUNT_SID,
-      password: process.env.TWILIO_AUTH_TOKEN
+      username: process.env.TWILIO_ACCOUNT_SID.trim(),
+      password: process.env.TWILIO_AUTH_TOKEN.trim()
     };
   }
 
-  /**
-   * Helper to construct Twilio Messages endpoint REST URL.
-   * 
-   * @returns {string} Twilio Messages API URL
-   */
   twilioMessagesUrl() {
-    return `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`;
+    return 'https://api.twilio.com/2010-04-01/Accounts/' +
+      process.env.TWILIO_ACCOUNT_SID.trim() + '/Messages.json';
   }
 
-  /**
-   * Sends transactional SMS via Twilio Messages API.
-   * 
-   * @param {string} phone - Recipient E.164 phone
-   * @param {string} body - SMS message text
-   * @returns {Promise<void>}
-   */
   async sendTwilioSms(phone, body) {
-    const params = new URLSearchParams({
-      To: phone,
-      From: process.env.TWILIO_PHONE_NUMBER,
-      Body: body
+    const params = new URLSearchParams({ To: phone, From: this.smsFrom(), Body: body });
+    const result = await axios.post(this.twilioMessagesUrl(), params, {
+      auth: this.twilioAuth(), timeout: 15000
     });
-
-    await axios.post(this.twilioMessagesUrl(), params, { auth: this.twilioAuth() });
+    return result.data;
   }
 
-  /**
-   * Sends WhatsApp message (with optional image attachment) via Twilio WhatsApp API.
-   * 
-   * @param {string} phone - Recipient E.164 phone
-   * @param {string} body - WhatsApp text body
-   * @param {string} [mediaUrl] - Public HTTPS image URL for QR code/badge
-   * @returns {Promise<void>}
-   */
-  async sendTwilioWhatsApp(phone, body, mediaUrl) {
-    const from = process.env.TWILIO_WHATSAPP_FROM.startsWith('whatsapp:')
-      ? process.env.TWILIO_WHATSAPP_FROM
-      : `whatsapp:${process.env.TWILIO_WHATSAPP_FROM}`;
-
-    const params = new URLSearchParams({
-      To: `whatsapp:${phone}`,
-      From: from,
-      Body: body
-    });
-
-    if (mediaUrl) {
-      params.append('MediaUrl', mediaUrl);
+  templateVariables(kind, values = {}) {
+    const raw = kind === 'otp'
+      ? process.env.TWILIO_WHATSAPP_OTP_VARIABLES
+      : process.env.TWILIO_WHATSAPP_PASS_VARIABLES;
+    const mapping = raw ? JSON.parse(raw) :
+      (kind === 'otp' ? { 1: 'otp' } : { 1: 'name', 2: 'registrationNumber', 3: 'passUrl' });
+    if (!mapping || Array.isArray(mapping) || typeof mapping !== 'object') {
+      throw new Error('WhatsApp template variable mapping must be a JSON object.');
     }
-
-    await axios.post(this.twilioMessagesUrl(), params, { auth: this.twilioAuth() });
+    const result = {};
+    for (const [placeholder, field] of Object.entries(mapping)) {
+      if (!Object.prototype.hasOwnProperty.call(values, field) || values[field] == null) {
+        throw new Error('Missing WhatsApp template value: ' + field);
+      }
+      result[placeholder] = String(values[field]);
+    }
+    return result;
   }
 
-  missingTwilioMessage(channel) {
-    if (channel === 'whatsapp') {
-      return 'WhatsApp is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_FROM.';
+  async sendTwilioWhatsApp(phone, kind, values) {
+    const sid = kind === 'otp'
+      ? process.env.TWILIO_WHATSAPP_OTP_CONTENT_SID
+      : (process.env.TWILIO_WHATSAPP_PASS_CONTENT_SID || process.env.TWILIO_WHATSAPP_CONTENT_SID);
+    if (!sid?.trim()) {
+      throw new Error('Configure an approved WhatsApp ' + kind + ' Content SID before sending.');
     }
-    return 'SMS is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.';
+    // Template messages work outside a customer service window. Do not mix Body/MediaUrl with ContentSid.
+    const params = new URLSearchParams({
+      To: 'whatsapp:' + phone, From: this.whatsAppFrom(),
+      ContentSid: sid.trim(),
+      ContentVariables: JSON.stringify(this.templateVariables(kind, values))
+    });
+    const result = await axios.post(this.twilioMessagesUrl(), params, {
+      auth: this.twilioAuth(), timeout: 15000
+    });
+    return result.data;
   }
 
   describeError(error) {
-    const twilioMessage = error?.message;
-    const apiMessage = error?.response?.data?.message;
-    return apiMessage || twilioMessage || 'Failed to send message';
+    return error?.response?.data?.message || error?.message || 'Failed to send message';
   }
 
-  /**
-   * Sends WhatsApp text or media image message via Meta WhatsApp Business Cloud API.
-   * 
-   * @param {string} phone - Target phone number
-   * @param {string} body - Caption or text body
-   * @param {string} [mediaUrl] - Public HTTPS image link
-   * @returns {Promise<void>}
-   */
   async sendMetaWhatsApp(phone, body, mediaUrl) {
-    const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-    const payload = mediaUrl
-      ? {
-          messaging_product: 'whatsapp',
-          to: phone.replace('+', ''),
-          type: 'image',
-          image: {
-            link: mediaUrl,
-            caption: body
-          }
-        }
-      : {
-          messaging_product: 'whatsapp',
-          to: phone.replace('+', ''),
-          type: 'text',
-          text: { body }
-        };
-
+    const payload = {
+      messaging_product: 'whatsapp', to: phone.replace('+', ''),
+      ...(mediaUrl
+        ? { type: 'image', image: { link: mediaUrl, caption: body } }
+        : { type: 'text', text: { body } })
+    };
     await axios.post(
-      url,
+      'https://graph.facebook.com/v21.0/' + process.env.WHATSAPP_PHONE_NUMBER_ID + '/messages',
       payload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      }
+      { headers: { Authorization: 'Bearer ' + process.env.WHATSAPP_TOKEN }, timeout: 15000 }
     );
   }
 
-  /**
-   * Sends transactional SMS via Indian DLT MSG91 HTTP API gateway.
-   * 
-   * @param {string} phone - Target phone number (e.g. "+919876543210")
-   * @param {string} message - DLT registered SMS text template
-   * @returns {Promise<void>}
-   */
   async sendMsg91Sms(phone, message) {
-    const mobiles = phone.replace('+', '');
     await axios.get('https://api.msg91.com/api/sendhttp.php', {
       params: {
-        authkey: process.env.MSG91_AUTH_KEY,
-        mobiles,
-        message,
-        sender: process.env.MSG91_SENDER_ID || 'DIEMEX',
-        route: 4,
-        country: 91
-      }
+        authkey: process.env.MSG91_AUTH_KEY, mobiles: phone.replace('+', ''),
+        message, sender: process.env.MSG91_SENDER_ID || 'DIEMEX', route: 4, country: 91
+      },
+      timeout: 15000
     });
   }
 }
