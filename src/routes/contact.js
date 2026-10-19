@@ -358,16 +358,18 @@ router.post("/", async (req, res) => {
       data.visitorCode = issued.pass.registrationNumber;
       data.passUrl = issued.pass.passUrl;
     }
-    // Persist the registration before acknowledging it; email formatting stays in the background.
-    await saveContactSubmission(formType, data, "pending");
+    // The website shows its thank-you page immediately while this request finishes.
+    const submission = await saveContactSubmission(formType, data, "pending");
+    await processContactSubmission(formType, data).catch(async (error) => {
+      await submission.update({ emailStatus: "failed" });
+      throw error;
+    });
+    await submission.update({ emailStatus: "sent" });
+
     res.status(202).json({
       success: true,
-      message: "Form received. Confirmation email will be sent shortly.",
+      message: "Registration saved. Confirmation email accepted for delivery.",
       ...(issued ? { pass: issued.pass, delivery: issued.delivery } : {})
-    });
-
-    processContactSubmission(formType, data).catch((error) => {
-      console.error("❌ Background contact processing failed:", error);
     });
   } catch (error) {
     console.error("❌ Contact API Error:", error);
@@ -388,7 +390,7 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
     const modelFactory = require("../models");
     const models = await modelFactory.init();
     const ContactSubmission = models.ContactSubmission;
-    if (!ContactSubmission) return;
+    if (!ContactSubmission) throw new Error("Contact submission storage is unavailable");
 
     if (!contactTableReady) {
       await ContactSubmission.sync();
@@ -401,7 +403,7 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
       [data.firstName, data.lastName].filter(Boolean).join(" ").trim() ||
       null;
 
-    await ContactSubmission.create({
+    const submission = await ContactSubmission.create({
       formType,
       email: data.email,
       name,
@@ -411,8 +413,10 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
       emailStatus
     });
     console.log(`✅ Contact submission stored (${formType}) for ${data.email}`);
+    return submission;
   } catch (dbError) {
     console.error("Contact submission DB error:", dbError.message);
+    throw dbError;
   }
 }
 
@@ -1234,10 +1238,11 @@ async function processContactSubmission(formType, data) {
     // Send email to user with their submitted details
     console.log(`📧 Sending email to user: ${data.email}`);
     
+    let emailResult;
     // Prepare email options with attachments for QR code
     if ((formType === "visitor-registration" || formType === "delegate-registration") && qrCodeBuffer) {
       // Use the attachment method from EmailService
-      await emailService.sendEmailWithAttachment({
+      emailResult = await emailService.sendEmailWithAttachment({
         to: data.email,
         subject: subject,
         html: html,
@@ -1249,7 +1254,10 @@ async function processContactSubmission(formType, data) {
         }
       });
     } else {
-      await emailService.sendEmail(data.email, subject, html);
+      emailResult = await emailService.sendEmail(data.email, subject, html);
+    }
+    if (!emailResult?.success) {
+      throw new Error(emailResult?.error || "Confirmation email delivery failed");
     }
     console.log(`✅ User email sent successfully to ${data.email}`);
     
@@ -1340,6 +1348,7 @@ async function processContactSubmission(formType, data) {
       message: error.message,
       stack: error.stack
     });
+    throw error;
   }
 }
 

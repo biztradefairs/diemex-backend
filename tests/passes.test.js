@@ -68,7 +68,14 @@ const mockContactModel = {
   sequelize: { where: (field, value) => ({ value }), fn: () => ({}), col: () => ({}) },
   findOne: jest.fn(async ({ where }) => mockContacts.find((row) =>
     where.formType[Op.in].includes(row.formType) && row.payload.visitorCode === where[Op.and].value) || null),
-  create: jest.fn(async (value) => { mockContacts.push(value); return value; })
+  create: jest.fn(async (value) => {
+    const row = {
+      ...value,
+      update: jest.fn(async (values) => { Object.assign(row, values); return row; })
+    };
+    mockContacts.push(row);
+    return row;
+  })
 };
 jest.mock('../src/models', () => ({
   init: async () => ({ VisitorPass: mockPassModel, VisitorPassScan: mockScanModel, ContactSubmission: mockContactModel }),
@@ -248,4 +255,72 @@ test('invalid verification tokens and resend channels are rejected', async () =>
     formType: 'visitor-registration', email: phone.email, verificationToken: 'invalid'
   })).status).toBe(401);
   expect((await request(app).post('/api/passes/resend-pass').send({ publicCode: 'test', channel: 'fax' })).status).toBe(400);
+});
+
+test('visitor form submissions without OTP store contact details and send the thank-you email', async () => {
+  const result = await request(app).post('/api/contact').send({
+    formType: 'visitor-registration', firstName: 'Test', lastName: 'Visitor',
+    contactPerson: 'Test Visitor', email: 'visitor@example.test',
+    phone: '9876543210', countryCode: '+91', companyName: 'Test Company',
+    jobTitle: 'Engineer', profile: 'Automotive', country: 'India',
+    state: 'Maharashtra', city: 'Pune'
+  });
+  expect(result.status).toBe(202);
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(mockContacts).toHaveLength(1);
+  expect(mockContacts[0]).toMatchObject({
+    formType: 'visitor-registration', emailStatus: 'sent',
+    name: 'Test Visitor', company: 'Test Company'
+  });
+  expect(require('../src/services/EmailService').sendEmailWithAttachment).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: 'visitor@example.test',
+      subject: 'Visitor Registration Confirmed - DIEMEX 2027'
+    })
+  );
+  expect(mockMessaging.sendOtp).not.toHaveBeenCalled();
+});
+
+test('contact storage errors are reported instead of acknowledging an unsaved registration', async () => {
+  mockContactModel.create.mockRejectedValueOnce(new Error('Contact database unavailable'));
+  const result = await request(app).post('/api/contact').send({
+    formType: 'visitor-registration', firstName: 'Test', email: 'visitor@example.test',
+    phone: '9876543210', countryCode: '+91', companyName: 'Test Company'
+  });
+  expect(result.status).toBe(500);
+  expect(result.body.success).toBe(false);
+  expect(require('../src/services/EmailService').sendEmailWithAttachment).not.toHaveBeenCalled();
+});
+
+test('email provider failures are recorded against the saved visitor registration', async () => {
+  require('../src/services/EmailService').sendEmailWithAttachment
+    .mockResolvedValueOnce({ success: false, error: 'Email provider unavailable' });
+  const result = await request(app).post('/api/contact').send({
+    formType: 'visitor-registration', firstName: 'Test', email: 'visitor@example.test',
+    phone: '9876543210', countryCode: '+91', companyName: 'Test Company'
+  });
+  expect(result.status).toBe(500);
+  expect(result.body.success).toBe(false);
+  expect(mockContacts[0].emailStatus).toBe('failed');
+});
+
+test('registration acknowledgement waits for the email provider while the contact remains stored', async () => {
+  let acceptEmail;
+  let acknowledged = false;
+  require('../src/services/EmailService').sendEmailWithAttachment.mockImplementationOnce(
+    () => new Promise((resolve) => { acceptEmail = resolve; })
+  );
+  const pending = request(app).post('/api/contact').send({
+    formType: 'visitor-registration', firstName: 'Test', email: 'visitor@example.test',
+    phone: '9876543210', countryCode: '+91', companyName: 'Test Company'
+  }).then((result) => { acknowledged = true; return result; });
+  for (let attempt = 0; !acceptEmail && attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  expect(acceptEmail).toEqual(expect.any(Function));
+  expect(mockContacts[0].emailStatus).toBe('pending');
+  expect(acknowledged).toBe(false);
+  acceptEmail({ success: true });
+  expect((await pending).status).toBe(202);
+  expect(mockContacts[0].emailStatus).toBe('sent');
 });
