@@ -1,0 +1,65 @@
+# Visitor passes, Twilio and venue scanning
+
+## Backend setup
+
+Use the existing paid Twilio account, registered WhatsApp sender and Verify Service.
+Copy the relevant variable names from visitor-messaging.env.example into the backend deployment environment.
+The example contains no account credentials.
+
+- Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID and TWILIO_WHATSAPP_FROM.
+- Set TWILIO_WHATSAPP_PASS_CONTENT_SID to the HX SID of the approved visitor-pass template.
+  TWILIO_WHATSAPP_CONTENT_SID remains a supported alias.
+- Match TWILIO_WHATSAPP_PASS_VARIABLES to the actual approved placeholders.
+  The default mapping is 1=name, 2=registrationNumber, 3=passUrl.
+  Available fields also include publicCode, mediaUrl, eventName, eventDates and venue.
+  Use publicCode for a template URL button with a fixed /passes/view/ prefix.
+  To include a QR image, configure an approved media template and map its media placeholder to mediaUrl.
+  Cloudinary must be configured for a public QR image URL.
+- Set TWILIO_PHONE_NUMBER only if sending ordinary SMS pass notifications.
+  Verify OTPs use the configured Verify Service and do not require this sender.
+- Set FRONTEND_URL to the public HTTPS website origin.
+- Production rejects missing providers. Development without provider settings reports simulated delivery.
+- Verify code length is read from the Twilio service and cached for five minutes.
+
+Twilio template documentation:
+https://www.twilio.com/docs/content/send-templates-created-with-the-content-template-builder
+
+## Registration and older passes
+
+The existing main visitor form now verifies the selected SMS/WhatsApp number before issuing a digital pass.
+Registration must be saved before the success screen appears. CMS submission and branded email remain supported.
+Existing contact registration clients without an OTP token continue to issue email passes; they cannot trigger
+SMS/WhatsApp delivery through this path.
+
+Both registration paths write visitor_passes. The scanner accepts registration numbers, digital pass URLs,
+multiline Code payloads and old /api/contact/pass/diemex-... email URLs.
+For older passes, the scanner imports a canonical pass only when a matching visitor/delegate registration
+exists in contact_submissions. Repeated scans reuse that pass. No bulk database rewrite is needed.
+Legacy registration records need a valid stored mobile number to be imported.
+
+## Staff access and attendance
+
+Open /scanner over HTTPS and sign in using an active admin or editor account.
+The existing admin login returns staff to /scanner. Viewer and exhibitor accounts cannot record scans.
+Both the current and legacy scanner APIs require staff authentication.
+
+Repeat visits remain allowed. The same browser/pass combination has a 15-second duplicate cooldown.
+Different browsers may record separate visits during that window.
+The database transaction locks the pass row while checking and inserting a scan.
+First entry sets checkedInAt and status=checked_in; later visits append history without resetting first entry.
+Cancelled passes are rejected. No event-date restriction or offline queue is introduced.
+
+OTP and pre-registration verification sessions remain in server memory. A server restart clears them;
+multi-instance deployment requires a shared session store before scaling this part of the application.
+
+## Validation
+
+Run from diemex-backend:
+node node_modules/jest/bin/jest.js --runInBand --no-cache --coverage=false tests/passMessaging.test.js tests/passes.test.js
+
+Run from dimex:
+node node_modules/typescript/bin/tsc --noEmit --incremental false
+
+The regression suite mocks Twilio, email, Cloudinary and database models.
+Before production use, verify a real OTP, the approved WhatsApp pass template, an HTTPS mobile camera scan,
+a saved attendance row, a repeat visit and rejection of a cancelled pass against the deployment database.

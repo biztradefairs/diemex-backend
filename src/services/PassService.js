@@ -273,19 +273,19 @@ function startOfEventDay(date = new Date()) {
 function extractPassCode(raw) {
   const text = String(raw || '').trim();
   if (!text) return '';
-
-  const codeLine = text.split(/\r?\n/).find((line) => /code\s*:/i.test(line));
-  if (codeLine) return codeLine.replace(/code\s*:/i, '').trim();
-
-  const viewMatch = text.match(/\/passes\/view\/([a-zA-Z0-9-]+)/);
-  if (viewMatch) return viewMatch[1];
-
   try {
     const parsed = JSON.parse(text);
-    return parsed.code || parsed.registrationNumber || parsed.publicCode || text;
+    if (parsed && typeof parsed === 'object') {
+      const value = parsed.code || parsed.registrationNumber || parsed.publicCode;
+      return typeof value === 'string' ? extractPassCode(value) : '';
+    }
   } catch {
-    return text;
+    // Generated badges also contain plain text or a public pass URL.
   }
+  const codeLine = text.split(/\r?\n/).find((line) => /^\s*Code\s*:/i.test(line));
+  if (codeLine) return codeLine.replace(/^\s*Code\s*:/i, '').trim();
+  const urlMatch = text.match(/\/(?:passes\/view|api\/contact\/(?:pass|visitor))\/([a-zA-Z0-9-]+)/);
+  return urlMatch ? urlMatch[1] : text;
 }
 
 /**
@@ -357,12 +357,8 @@ async function getModel() {
     throw error;
   }
   if (!passTableReady) {
-    try {
-      await VisitorPassModel.sync();
-      if (ScanModel) await ScanModel.sync();
-    } catch (error) {
-      console.warn('Visitor pass tables already present:', error.message);
-    }
+    await VisitorPassModel.sync();
+    if (ScanModel) await ScanModel.sync();
     passTableReady = true;
   }
   return VisitorPassModel;
@@ -456,7 +452,7 @@ async function sendOtp({ countryCode, nationalNumber, channel, email }) {
   }
 
   // In production, verify that external providers (Twilio/Meta/SendGrid) are configured
-  if (process.env.NODE_ENV === 'production' && channel !== 'email' && !messaging.isConfigured(channel)) {
+  if (process.env.NODE_ENV === 'production' && channel !== 'email' && !messaging.isConfigured(channel, 'otp')) {
     const error = new Error(`${channelLabel(channel)} delivery is not configured yet.`);
     error.status = 503;
     throw error;
@@ -503,7 +499,7 @@ async function sendOtp({ countryCode, nationalNumber, channel, email }) {
     });
 
   if (!delivery.success) {
-    if (previous.otp) otpStore.set(normalized.phone, previous);
+    if (previous.otp || previous.twilioVerify) otpStore.set(normalized.phone, previous);
     else otpStore.delete(normalized.phone);
     const error = new Error(delivery.error || 'Failed to send OTP');
     error.status = 502;
@@ -593,6 +589,10 @@ async function verifyOtp({ countryCode, nationalNumber, otp }) {
     where: { phone: normalized.phone },
     order: [['createdAt', 'DESC']]
   });
+
+  if (existing?.status === 'cancelled') {
+    throw Object.assign(new Error('This pass has been cancelled. Please contact the organizer.'), { status: 403 });
+  }
 
   // Store verification session for form completion
   verifyStore.set(verificationToken, {
@@ -727,6 +727,9 @@ async function completeRegistration({ verificationToken, payload }) {
  * @returns {Promise<Object>} Resend delivery status
  */
 async function resendPass({ verificationToken, publicCode, channel }) {
+  if (channel && !['sms', 'whatsapp', 'email'].includes(channel)) {
+    throw Object.assign(new Error('Choose SMS, WhatsApp, or Email'), { status: 400 });
+  }
   pruneStore(verifyStore);
   const VisitorPass = await getModel();
   let pass = null;
@@ -756,6 +759,9 @@ async function resendPass({ verificationToken, publicCode, channel }) {
     throw error;
   }
 
+  if (pass.status === 'cancelled') {
+    throw Object.assign(new Error('This pass has been cancelled.'), { status: 403 });
+  }
   const delivery = await deliverPass(pass, sendChannel || pass.channel);
   return {
     success: true,
@@ -807,26 +813,29 @@ async function deliverPass(pass, channel) {
     }
   }
 
-  const result = sendChannel === 'email'
-    ? await sendEmailPass(pass, passUrl)
-    : await messaging.sendPass({
-      phone: pass.phone,
-      channel: sendChannel,
-      name: pass.name,
-      registrationNumber: pass.registrationNumber,
-      passUrl,
-      mediaUrl
-    });
+  let result;
+  try {
+    result = sendChannel === 'email'
+      ? await sendEmailPass(pass, passUrl)
+      : await messaging.sendPass({
+        phone: pass.phone, channel: sendChannel, name: pass.name,
+        registrationNumber: pass.registrationNumber, passUrl, mediaUrl
+      });
+  } catch (error) {
+    result = { success: false, error: error.message || 'Pass delivery failed' };
+  }
 
   pass.sentAt = new Date();
   pass.sentVia = sendChannel;
-  pass.sentStatus = result.success ? (result.simulated ? 'simulated' : 'sent') : 'failed';
+  pass.sentStatus = result.success ? (result.simulated ? 'simulated' : (result.status || 'accepted')) : 'failed';
   await pass.save();
 
   return {
     success: result.success,
     simulated: Boolean(result.simulated),
     provider: result.provider,
+    messageSid: result.messageSid || null,
+    status: result.status || null,
     channel: sendChannel,
     whatsappUrl: result.whatsappUrl,
     passUrl,
@@ -874,15 +883,89 @@ async function findPassByCode(code) {
   const VisitorPass = await getModel();
   const lookup = extractPassCode(code);
   if (!lookup) return null;
-
-  return VisitorPass.findOne({
-    where: {
-      [Op.or]: [
-        { publicCode: lookup },
-        { registrationNumber: lookup }
-      ]
-    }
+  const pass = await VisitorPass.findOne({
+    where: { [Op.or]: [{ publicCode: lookup }, { registrationNumber: lookup }] }
   });
+  if (pass || !/^diemex-[a-zA-Z0-9-]+$/.test(lookup)) return pass;
+
+  // Older emailed passes live in contact_submissions. Import only a persisted registration.
+  const models = await modelFactory.init();
+  const Contact = models.ContactSubmission;
+  if (!Contact) return null;
+  const sql = Contact.sequelize;
+  const registration = await Contact.findOne({
+    where: {
+      formType: { [Op.in]: ['visitor-registration', 'delegate-registration'] },
+      [Op.and]: sql.where(
+        sql.fn('JSON_UNQUOTE', sql.fn('JSON_EXTRACT', sql.col('payload'), '$.visitorCode')),
+        lookup
+      )
+    },
+    order: [['createdAt', 'DESC']]
+  });
+  if (!registration) return null;
+  const data = typeof registration.payload === 'string'
+    ? JSON.parse(registration.payload) : registration.payload;
+  return createContactPassRecord(lookup, data || {}, registration.formType);
+}
+
+function registrationPhone(data) {
+  const raw = String(data.mobile || data.phone || '').trim();
+  const digits = raw.replace(/\D/g, '');
+  if (raw.startsWith('+')) {
+    if (!/^\d{7,15}$/.test(digits)) throw Object.assign(new Error('Enter a valid mobile number'), { status: 400 });
+    const known = ['971', '91', '44', '65', '60', '49', '86', '1'];
+    const cc = known.find((prefix) => digits.startsWith(prefix));
+    return { phone: '+' + digits, countryCode: cc ? '+' + cc : '', nationalNumber: cc ? digits.slice(cc.length) : digits };
+  }
+  const normalized = normalizePhone(data.countryCode || '+91', digits);
+  if (!isValidMobile(normalized.countryCode, normalized.nationalNumber)) {
+    throw Object.assign(new Error('Enter a valid mobile number, including the country code for international numbers'), { status: 400 });
+  }
+  return normalized;
+}
+
+async function createContactPassRecord(code, data, formType) {
+  const VisitorPass = await getModel();
+  const phone = registrationPhone(data);
+  const name = String(data.contactPerson || data.name ||
+    [data.firstName, data.lastName].filter(Boolean).join(' ')).trim();
+  const defaults = {
+    ...phone, registrationNumber: code, publicCode: generatePublicCode(),
+    channel: 'email', name: name || 'Visitor',
+    company: data.companyName || data.company || '',
+    email: data.email || null, designation: data.jobTitle || data.designation || null,
+    area: data.address || null, city: data.city || null, state: data.state || null,
+    country: data.country || null, pinCode: data.pincode || data.pinCode || null,
+    interests: data.profile ? [data.profile] : [],
+    source: 'contact:' + formType, status: 'issued',
+    issuedAt: new Date(), verifiedAt: null
+  };
+  defaults.qrPayload = buildQrPayload(defaults);
+  const [pass] = await VisitorPass.findOrCreate({
+    where: { registrationNumber: code }, defaults
+  });
+  return pass;
+}
+
+async function issueContactPass({ formType, data, verificationToken }) {
+  if (verificationToken) {
+    return completeRegistration({
+      verificationToken,
+      payload: {
+        name: data.contactPerson || [data.firstName, data.lastName].filter(Boolean).join(' '),
+        company: data.companyName || data.company, email: data.email,
+        designation: data.jobTitle || data.designation, area: data.address,
+        city: data.city, state: data.state, country: data.country,
+        pinCode: data.pincode || data.pinCode,
+        interests: data.profile ? [data.profile] : ['Visitor'],
+        source: 'contact:' + formType
+      }
+    });
+  }
+  const code = 'diemex-' + crypto.randomBytes(8).toString('hex');
+  const pass = await createContactPassRecord(code, data, formType);
+  return { success: true, pass: await serializePass(pass), delivery: null };
 }
 
 /**
@@ -901,64 +984,50 @@ async function findPassByCode(code) {
  * @returns {Promise<Object>} Scan validation outcome and visitor summary
  */
 async function recordScan({ code, scannerId }) {
-  const pass = await findPassByCode(code);
-  if (!pass || pass.status === 'cancelled') {
-    const error = new Error('Invalid Pass');
-    error.status = 404;
-    throw error;
+  const found = await findPassByCode(code);
+  if (!found || found.status === 'cancelled') {
+    throw Object.assign(new Error('Invalid Pass'), { status: 404 });
   }
-
+  const VisitorPass = await getModel();
   const Scan = await getScanModel();
   const deviceId = String(scannerId || '').trim().slice(0, 64) || null;
-  const now = new Date();
-
-  // Check 15-second debounce cooldown to ignore accidental rapid double scans
-  const recentScan = await Scan.findOne({
-    where: {
-      visitorPassId: pass.id,
-      ...(deviceId ? { scannerId: deviceId } : {}),
-      scannedAt: { [Op.gte]: new Date(now.getTime() - SCAN_COOLDOWN_MS) }
-    },
-    order: [['scannedAt', 'DESC']]
-  });
-
-  if (recentScan) {
-    return {
-      success: true,
-      duplicate: true,
-      message: 'Pass was just scanned',
-      visitor: scanVisitor(pass),
-      scannedAt: recentScan.scannedAt
-    };
-  }
-
-  // Create gate scan entry log
-  const scan = await Scan.create({
-    visitorPassId: pass.id,
-    scannerId: deviceId,
-    scannedAt: now
-  });
-
-  const todayStart = startOfEventDay(now);
-  const [todayVisit, eventVisits] = await Promise.all([
-    Scan.count({
+  return VisitorPass.sequelize.transaction(async (transaction) => {
+    // Serialize check-and-insert for this pass across all server processes.
+    const pass = await VisitorPass.findByPk(found.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!pass || pass.status === 'cancelled') {
+      throw Object.assign(new Error('Invalid Pass'), { status: 404 });
+    }
+    const now = new Date();
+    const recentScan = await Scan.findOne({
       where: {
         visitorPassId: pass.id,
-        scannedAt: { [Op.gte]: todayStart }
-      }
-    }),
-    Scan.count({ where: { visitorPassId: pass.id } })
-  ]);
-
-  return {
-    success: true,
-    duplicate: false,
-    message: 'Scan recorded',
-    visitor: scanVisitor(pass),
-    scannedAt: scan.scannedAt,
-    todayVisit,
-    eventVisits
-  };
+        ...(deviceId ? { scannerId: deviceId } : {}),
+        scannedAt: { [Op.gte]: new Date(now.getTime() - SCAN_COOLDOWN_MS) }
+      },
+      order: [['scannedAt', 'DESC']], transaction
+    });
+    if (recentScan) {
+      return {
+        success: true, duplicate: true, message: 'Pass was just scanned',
+        visitor: scanVisitor(pass), scannedAt: recentScan.scannedAt
+      };
+    }
+    const scan = await Scan.create({
+      visitorPassId: pass.id, scannerId: deviceId, scannedAt: now
+    }, { transaction });
+    await pass.update({
+      status: 'checked_in', checkedInAt: pass.checkedInAt || now
+    }, { transaction });
+    const todayVisit = await Scan.count({
+      where: { visitorPassId: pass.id, scannedAt: { [Op.gte]: startOfEventDay(now) } },
+      transaction
+    });
+    const eventVisits = await Scan.count({ where: { visitorPassId: pass.id }, transaction });
+    return {
+      success: true, duplicate: false, message: 'Scan recorded',
+      visitor: scanVisitor(pass), scannedAt: scan.scannedAt, todayVisit, eventVisits
+    };
+  });
 }
 
 /**
@@ -1162,6 +1231,7 @@ module.exports = {
   resendPass,
   getPassByCode,
   recordScan,
+  issueContactPass,
   scannerSummary,
   checkIn,
   normalizePhone,

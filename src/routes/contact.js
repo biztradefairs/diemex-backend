@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const emailService = require("../services/EmailService");
 const QRCode = require('qrcode');
+const passService = require('../services/PassService');
+const { authenticate, authorize } = require('../middleware/auth');
+const scannerAccess = [authenticate, authorize(['admin', 'editor'])];
 
 // Helper function to generate QR code as buffer
 async function generateQRCodeBuffer(data) {
@@ -286,128 +289,57 @@ router.get("/visitor/:code", async (req, res) => {
   }
 });
 
-router.get("/visitors/all", async (req, res) => {
+router.get("/visitors/all", ...scannerAccess, async (req, res) => {
   try {
-    let Visitor;
-    try {
-      Visitor = require("../models/Visitor");
-    } catch (e) {
-      return res.status(200).json({ success: true, total: 0, checkedIn: 0 });
-    }
-    
-    const allVisitors = await Visitor.find({});
-    const checkedInVisitors = await Visitor.find({ checkedIn: true });
-    
-    res.json({
-      success: true,
-      total: allVisitors.length,
-      checkedIn: checkedInVisitors.length
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
+    const models = await require('../models').init();
+    const [total, checkedIn] = await Promise.all([
+      models.VisitorPass.count(),
+      models.VisitorPass.count({ where: { status: 'checked_in' } })
+    ]);
+    res.json({ success: true, total, checkedIn });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Could not load visitor counts' });
   }
 });
 
 // Get recent check-ins
-router.get("/visitors/checked-in", async (req, res) => {
+router.get("/visitors/checked-in", ...scannerAccess, async (req, res) => {
   try {
-    let Visitor;
-    try {
-      Visitor = require("../models/Visitor");
-    } catch (e) {
-      return res.status(200).json({ success: true, visitors: [] });
-    }
-    
-    const checkedInVisitors = await Visitor.find({ checkedIn: true })
-      .sort({ checkInTime: -1 })
-      .limit(20);
-    
+    const summary = await passService.scannerSummary();
     res.json({
       success: true,
-      visitors: checkedInVisitors.map(v => ({
-        name: `${v.firstName || ''} ${v.lastName || ''}`.trim(),
-        company: v.company || 'N/A',
-        checkInTime: v.checkInTime,
-        visitorCode: v.visitorCode
+      visitors: summary.recent.map((row) => ({
+        name: row.name, company: row.company, visitorCode: row.registrationNumber,
+        checkInTime: row.scannedAt
       }))
     });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Could not load recent scans' });
   }
 });
 
 // Visitor check-in endpoint
-router.post("/visitor/checkin", async (req, res) => {
+router.post("/visitor/checkin", ...scannerAccess, async (req, res) => {
   try {
-    const { visitorCode } = req.body;
-    
-    if (!visitorCode) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Visitor code is required" 
-      });
-    }
-    
-    let Visitor;
-    try {
-      Visitor = require("../models/Visitor");
-    } catch (e) {
-      return res.status(500).json({ 
-        success: false, 
-        message: "Visitor model not found" 
-      });
-    }
-    
-    const visitor = await Visitor.findOne({ visitorCode });
-    
-    if (!visitor) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Visitor not found" 
-      });
-    }
-    
-    if (visitor.checkedIn) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Visitor already checked in",
-        alreadyCheckedIn: true,
-        checkInTime: visitor.checkInTime
-      });
-    }
-    
-    // Update visitor check-in status
-    visitor.checkedIn = true;
-    visitor.checkInTime = new Date();
-    await visitor.save();
-    
+    const result = await passService.recordScan({
+      code: req.body.visitorCode, scannerId: req.body.scannerId || 'legacy-' + req.user.id
+    });
     res.json({
-      success: true,
-      message: "Visitor checked in successfully",
+      ...result, alreadyCheckedIn: result.duplicate,
       visitor: {
-        firstName: visitor.firstName,
-        lastName: visitor.lastName,
-        company: visitor.company,
-        email: visitor.email,
-        visitorCode: visitor.visitorCode,
-        checkInTime: visitor.checkInTime
+        ...result.visitor, firstName: result.visitor.name, lastName: '',
+        visitorCode: result.visitor.registrationNumber, checkInTime: result.scannedAt
       }
     });
-    
-  } catch (err) {
-    console.error("Check-in error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: err.message 
-    });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
 });
 
 
 router.post("/", async (req, res) => {
   try {
-    const { formType, captchaToken, submittedAt, ...data } = req.body;
+    const { formType, captchaToken, submittedAt, verificationToken, ...data } = req.body;
 
     if (!formType) {
       return res.status(400).json({ success: false, message: "Form type missing" });
@@ -420,22 +352,32 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Return immediately so the thank-you page can appear at once.
+    let issued = null;
+    if (formType === 'visitor-registration' || formType === 'delegate-registration') {
+      issued = await passService.issueContactPass({ formType, data, verificationToken });
+      data.visitorCode = issued.pass.registrationNumber;
+      data.passUrl = issued.pass.passUrl;
+    }
+    // The website shows its thank-you page immediately while this request finishes.
+    const submission = await saveContactSubmission(formType, data, "pending");
+    await processContactSubmission(formType, data).catch(async (error) => {
+      await submission.update({ emailStatus: "failed" });
+      throw error;
+    });
+    await submission.update({ emailStatus: "sent" });
+
     res.status(202).json({
       success: true,
-      message: "Form received. Confirmation email will be sent shortly."
-    });
-
-    processContactSubmission(formType, data).catch((error) => {
-      console.error("❌ Background contact processing failed:", error);
+      message: "Registration saved. Confirmation email accepted for delivery.",
+      ...(issued ? { pass: issued.pass, delivery: issued.delivery } : {})
     });
   } catch (error) {
     console.error("❌ Contact API Error:", error);
     if (!res.headersSent) {
-      return res.status(500).json({ 
-        success: false, 
-        message: "Server error", 
-        error: error.message 
+      return res.status(error.status || 500).json({
+        success: false,
+        message: error.message || "Server error",
+        error: error.message
       });
     }
   }
@@ -448,7 +390,7 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
     const modelFactory = require("../models");
     const models = await modelFactory.init();
     const ContactSubmission = models.ContactSubmission;
-    if (!ContactSubmission) return;
+    if (!ContactSubmission) throw new Error("Contact submission storage is unavailable");
 
     if (!contactTableReady) {
       await ContactSubmission.sync();
@@ -461,7 +403,7 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
       [data.firstName, data.lastName].filter(Boolean).join(" ").trim() ||
       null;
 
-    await ContactSubmission.create({
+    const submission = await ContactSubmission.create({
       formType,
       email: data.email,
       name,
@@ -471,8 +413,10 @@ async function saveContactSubmission(formType, data, emailStatus = "pending") {
       emailStatus
     });
     console.log(`✅ Contact submission stored (${formType}) for ${data.email}`);
+    return submission;
   } catch (dbError) {
     console.error("Contact submission DB error:", dbError.message);
+    throw dbError;
   }
 }
 
@@ -492,7 +436,7 @@ async function processContactSubmission(formType, data) {
     let badgeDownloadUrl = "";
 
     if (formType === "visitor-registration" || formType === "delegate-registration") {
-      visitorCode = `diemex-${Date.now()}`;
+      visitorCode = data.visitorCode;
       data.visitorCode = visitorCode;
       const qrContent = passPageUrl(visitorCode);
       qrCodeBuffer = await generateQRCodeBuffer(qrContent);
@@ -500,29 +444,6 @@ async function processContactSubmission(formType, data) {
       badgeDownloadUrl = `${badgeUrl}?download=1`;
     }
 
-    await saveContactSubmission(formType, data, "pending");
-
-    if (formType === "visitor-registration" || formType === "delegate-registration") {
-      
-      try {
-        const Visitor = require("../models/Visitor");
-        await Visitor.create({
-          visitorCode,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.mobile || data.phone,
-          address: data.address,
-          company: data.company,
-          designation: data.designation,
-          formType: formType
-        });
-        console.log(`✅ Visitor saved with code: ${visitorCode}`);
-      } catch (dbError) {
-        console.error("Database save error:", dbError);
-        // Continue even if database save fails
-      }
-    }
 
     // Safely access data with fallbacks to prevent undefined errors
     switch (formType) {
@@ -1317,10 +1238,11 @@ async function processContactSubmission(formType, data) {
     // Send email to user with their submitted details
     console.log(`📧 Sending email to user: ${data.email}`);
     
+    let emailResult;
     // Prepare email options with attachments for QR code
     if ((formType === "visitor-registration" || formType === "delegate-registration") && qrCodeBuffer) {
       // Use the attachment method from EmailService
-      await emailService.sendEmailWithAttachment({
+      emailResult = await emailService.sendEmailWithAttachment({
         to: data.email,
         subject: subject,
         html: html,
@@ -1332,7 +1254,10 @@ async function processContactSubmission(formType, data) {
         }
       });
     } else {
-      await emailService.sendEmail(data.email, subject, html);
+      emailResult = await emailService.sendEmail(data.email, subject, html);
+    }
+    if (!emailResult?.success) {
+      throw new Error(emailResult?.error || "Confirmation email delivery failed");
     }
     console.log(`✅ User email sent successfully to ${data.email}`);
     
@@ -1423,6 +1348,7 @@ async function processContactSubmission(formType, data) {
       message: error.message,
       stack: error.stack
     });
+    throw error;
   }
 }
 
