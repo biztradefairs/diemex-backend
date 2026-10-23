@@ -147,3 +147,52 @@ test('Twilio errors are returned as delivery failures', async () => {
   axios.post.mockRejectedValueOnce({ response: { data: { message: 'Template not approved' } } });
   expect(await messaging.sendPass(visitor)).toMatchObject({ success: false, error: 'Template not approved' });
 });
+
+test.each([
+  ['TWILIO_SMS_FROM', 'DIEMEX'],
+  ['TWILIO_PHONE_NUMBER', '+15005550006']
+])('SMS passes use the configured %s sender and the full badge link', async (key, from) => {
+  account();
+  process.env[key] = from;
+  expect(messaging.isConfigured('sms', 'pass')).toBe(true);
+  const result = await messaging.sendPass({ ...visitor, channel: 'sms' });
+  expect(result).toMatchObject({ success: true, provider: 'twilio', messageSid: 'SM-test', status: 'queued' });
+  const params = axios.post.mock.calls[0][1];
+  expect(params.get('From')).toBe(from);
+  expect(params.get('To')).toBe(visitor.phone);
+  expect(params.get('Body')).toContain(visitor.registrationNumber);
+  expect(params.get('Body')).toContain(visitor.passUrl);
+  expect(params.has('MediaUrl')).toBe(false);
+  expect(params.has('ContentSid')).toBe(false);
+  expect(verify.verifications.create).not.toHaveBeenCalled();
+});
+
+test('an explicit SMS sender overrides the legacy numeric sender', async () => {
+  account();
+  process.env.TWILIO_SMS_FROM = ' DIEMEX ';
+  process.env.TWILIO_PHONE_NUMBER = '+15005550006';
+  await messaging.sendPass({ ...visitor, channel: 'sms' });
+  expect(axios.post.mock.calls[0][1].get('From')).toBe('DIEMEX');
+});
+
+test.each([false, true])('SMS Messaging Service routing works with a direct sender configured: %s', async (hasSender) => {
+  account();
+  const smsServiceSid = 'MG' + '2'.repeat(32);
+  process.env.TWILIO_SMS_MESSAGING_SERVICE_SID = ' ' + smsServiceSid + ' ';
+  if (hasSender) process.env.TWILIO_SMS_FROM = 'DIEMEX';
+  expect(messaging.isConfigured('sms', 'pass')).toBe(true);
+  expect(await messaging.sendPass({ ...visitor, channel: 'sms' })).toMatchObject({ success: true, provider: 'twilio' });
+  const params = axios.post.mock.calls[0][1];
+  expect(params.get('MessagingServiceSid')).toBe(smsServiceSid);
+  expect(params.has('From')).toBe(false);
+  expect(params.get('To')).toBe(visitor.phone);
+  expect(params.get('Body')).toContain(visitor.passUrl);
+});
+
+test('SMS sender failures are returned without reporting successful delivery', async () => {
+  account();
+  process.env.TWILIO_SMS_FROM = 'DIEMEX';
+  axios.post.mockRejectedValueOnce({ response: { data: { message: 'SMS sender is not approved' } } });
+  expect(await messaging.sendPass({ ...visitor, channel: 'sms' }))
+    .toMatchObject({ success: false, provider: 'twilio', error: 'SMS sender is not approved' });
+});

@@ -110,9 +110,9 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-async function verified() {
+async function verified(channel = phone.channel) {
   const suffix = String(++mockPhoneCounter).padStart(7, '0');
-  const input = { ...phone, mobile: '987' + suffix };
+  const input = { ...phone, channel, mobile: '987' + suffix };
   expect((await request(app).post('/api/passes/send-otp').send(input)).status).toBe(200);
   const response = await request(app).post('/api/passes/verify-otp').send({ ...input, otp: '123456' });
   expect(response.status).toBe(200);
@@ -323,4 +323,32 @@ test('registration acknowledgement waits for the email provider while the contac
   acceptEmail({ success: true });
   expect((await pending).status).toBe(202);
   expect(mockContacts[0].emailStatus).toBe('sent');
+});
+
+test.each([
+  [undefined, 'https://www.diemex.in'],
+  ['https://www.diemex.in/', 'https://www.diemex.in'],
+  ['http://localhost:3000', 'http://localhost:3000']
+])('SMS registration saves a pass and delivers its badge link with FRONTEND_URL=%s', async (configured, origin) => {
+  const previous = process.env.FRONTEND_URL;
+  if (configured === undefined) delete process.env.FRONTEND_URL;
+  else process.env.FRONTEND_URL = configured;
+  try {
+    const session = await verified('sms');
+    const response = await request(app).post('/api/passes/register').send({
+      verificationToken: session.verificationToken, name: 'SMS Visitor', company: 'Company', interests: ['Automotive']
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.pass.channel).toBe('sms');
+    const passUrl = origin + '/passes/view/' + response.body.pass.publicCode;
+    expect(response.body.pass.passUrl).toBe(passUrl);
+    expect(response.body.delivery).toMatchObject({ success: true, channel: 'sms', passUrl, status: 'queued' });
+    expect(mockMessaging.sendPass).toHaveBeenCalledWith(expect.objectContaining({
+      phone: '+91' + session.input.mobile, channel: 'sms', passUrl, mediaUrl: null
+    }));
+    expect(mockPasses[0]).toMatchObject({ channel: 'sms', sentVia: 'sms', sentStatus: 'queued', status: 'issued' });
+  } finally {
+    if (previous === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = previous;
+  }
 });

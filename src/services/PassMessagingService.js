@@ -26,7 +26,12 @@ class PassMessagingService {
   }
 
   smsFrom() {
-    return String(process.env.TWILIO_PHONE_NUMBER || '').trim();
+    return String(process.env.TWILIO_SMS_FROM || '').trim() ||
+      String(process.env.TWILIO_PHONE_NUMBER || '').trim();
+  }
+
+  smsMessagingServiceSid() {
+    return String(process.env.TWILIO_SMS_MESSAGING_SERVICE_SID || '').trim();
   }
 
   whatsAppFrom() {
@@ -35,7 +40,7 @@ class PassMessagingService {
   }
 
   getSmsProvider() {
-    if (this.twilioClient() && this.smsFrom()) return 'twilio';
+    if (this.twilioClient() && (this.smsMessagingServiceSid() || this.smsFrom())) return 'twilio';
     if (process.env.MSG91_AUTH_KEY) return 'msg91';
     return process.env.NODE_ENV === 'production' ? null : 'dev';
   }
@@ -177,7 +182,11 @@ class PassMessagingService {
   }
 
   async sendTwilioSms(phone, body) {
-    const params = new URLSearchParams({ To: phone, From: this.smsFrom(), Body: body });
+    const serviceSid = this.smsMessagingServiceSid();
+    const params = new URLSearchParams({
+      To: phone, Body: body,
+      ...(serviceSid ? { MessagingServiceSid: serviceSid } : { From: this.smsFrom() })
+    });
     const result = await axios.post(this.twilioMessagesUrl(), params, {
       auth: this.twilioAuth(), timeout: 15000
     });

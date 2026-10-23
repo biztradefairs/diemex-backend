@@ -206,7 +206,7 @@ function generateRegistrationNumber() {
  * @returns {string} Base URL (e.g., "https://diemex.in" or "http://localhost:3001")
  */
 function frontendBase() {
-  return (process.env.FRONTEND_URL || 'http://localhost:3001').replace(/\/$/, '');
+  return (process.env.FRONTEND_URL || 'https://www.diemex.in').replace(/\/$/, '');
 }
 
 /**
