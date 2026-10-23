@@ -184,6 +184,18 @@ class PassMessagingService {
     return result.data;
   }
 
+  cloudinaryMediaPath(mediaUrl) {
+    const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+    const prefix = '/' + cloudName + '/image/upload/';
+    let url;
+    try { url = new URL(mediaUrl); } catch (_) { /* Validated below. */ }
+    if (!cloudName || !url || url.protocol !== 'https:' || url.hostname !== 'res.cloudinary.com' ||
+        url.username || url.password || url.port || !url.pathname.startsWith(prefix) || url.pathname === prefix) {
+      throw new Error('WhatsApp mediaPath requires a public Cloudinary image URL for the configured cloud.');
+    }
+    return url.pathname.slice(prefix.length) + url.search;
+  }
+
   templateVariables(kind, values = {}) {
     const raw = kind === 'otp'
       ? process.env.TWILIO_WHATSAPP_OTP_VARIABLES
@@ -193,12 +205,16 @@ class PassMessagingService {
     if (!mapping || Array.isArray(mapping) || typeof mapping !== 'object') {
       throw new Error('WhatsApp template variable mapping must be a JSON object.');
     }
+    const templateValues = Object.values(mapping).includes('mediaPath')
+      ? { ...values, mediaPath: this.cloudinaryMediaPath(values.mediaUrl) }
+      : values;
     const result = {};
     for (const [placeholder, field] of Object.entries(mapping)) {
-      if (!Object.prototype.hasOwnProperty.call(values, field) || values[field] == null) {
+      if (!Object.prototype.hasOwnProperty.call(templateValues, field) ||
+          templateValues[field] == null || String(templateValues[field]).trim() === '') {
         throw new Error('Missing WhatsApp template value: ' + field);
       }
-      result[placeholder] = String(values[field]);
+      result[placeholder] = String(templateValues[field]);
     }
     return result;
   }

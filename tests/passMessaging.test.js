@@ -96,6 +96,42 @@ test('template mappings support public URL suffixes and media placeholders', asy
     .toEqual({ 1: 'abc123', 2: visitor.mediaUrl });
 });
 
+test('Cloudinary media templates send all three variables with the versioned image path', async () => {
+  sender();
+  process.env.CLOUDINARY_CLOUD_NAME = 'test-cloud';
+  process.env.TWILIO_WHATSAPP_PASS_CONTENT_SID = 'HX-pass';
+  process.env.TWILIO_WHATSAPP_PASS_VARIABLES = '{"1":"name","2":"registrationNumber","3":"mediaPath"}';
+  const mediaUrl = 'https://res.cloudinary.com/test-cloud/image/upload/v123/visitor-passes/qr-REG-TEST.png';
+  expect(await messaging.sendPass({ ...visitor, mediaUrl })).toMatchObject({ success: true });
+  const params = axios.post.mock.calls[0][1];
+  const variables = JSON.parse(params.get('ContentVariables'));
+  expect(variables).toEqual({ 1: visitor.name, 2: visitor.registrationNumber,
+    3: 'v123/visitor-passes/qr-REG-TEST.png' });
+  expect('https://res.cloudinary.com/test-cloud/image/upload/' + variables[3]).toBe(mediaUrl);
+  expect(params.has('MediaUrl')).toBe(false);
+});
+
+test.each([undefined, '', 'https://example.test/qr.png',
+  'https://res.cloudinary.com/another-cloud/image/upload/qr.png',
+  'http://res.cloudinary.com/test-cloud/image/upload/qr.png'])
+('Cloudinary media templates fail before sending with an unavailable or mismatched image: %s', async (mediaUrl) => {
+  sender();
+  process.env.CLOUDINARY_CLOUD_NAME = 'test-cloud';
+  process.env.TWILIO_WHATSAPP_PASS_CONTENT_SID = 'HX-pass';
+  process.env.TWILIO_WHATSAPP_PASS_VARIABLES = '{"1":"name","2":"registrationNumber","3":"mediaPath"}';
+  expect(await messaging.sendPass({ ...visitor, mediaUrl }))
+    .toMatchObject({ success: false, error: expect.stringContaining('public Cloudinary image URL') });
+  expect(axios.post).not.toHaveBeenCalled();
+});
+
+test('empty template values fail before sending', async () => {
+  sender();
+  process.env.TWILIO_WHATSAPP_PASS_CONTENT_SID = 'HX-pass';
+  expect(await messaging.sendPass({ ...visitor, name: '   ' }))
+    .toMatchObject({ success: false, error: 'Missing WhatsApp template value: name' });
+  expect(axios.post).not.toHaveBeenCalled();
+});
+
 test('missing templates and invalid variable mappings do not send messages', async () => {
   sender();
   expect((await messaging.sendPass(visitor)).success).toBe(false);

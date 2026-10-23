@@ -13,8 +13,15 @@ The example contains no account credentials.
   The default mapping is 1=name, 2=registrationNumber, 3=passUrl.
   Available fields also include publicCode, mediaUrl, eventName, eventDates and venue.
   Use publicCode for a template URL button with a fixed /passes/view/ prefix.
-  To include a QR image, configure an approved media template and map its media placeholder to mediaUrl.
-  Cloudinary must be configured for a public QR image URL.
+  For a Cloudinary QR image, use a media URL of
+  https://res.cloudinary.com/<cloud-name>/image/upload/{{3}} and set
+  TWILIO_WHATSAPP_PASS_VARIABLES={"1":"name","2":"registrationNumber","3":"mediaPath"}.
+  mediaPath is the image URL suffix after /image/upload/, including its version, folders and extension.
+  Do not append .png to the template URL because mediaPath already contains it.
+  Define sample values for all three placeholders, including a publicly accessible PNG path for 3.
+  The old diemex_visitor_pass_2027 template was rejected because sample variable 3 was missing;
+  use the corrected diemex_visitor_pass_2027_v2 template after WhatsApp approval.
+  Cloudinary must be configured for a public QR image URL. Missing images fail before sending.
 - Set TWILIO_PHONE_NUMBER only if sending ordinary SMS pass notifications.
   Verify OTPs use the configured Verify Service and do not require this sender.
 - Set FRONTEND_URL to the public HTTPS website origin.
@@ -23,6 +30,24 @@ The example contains no account credentials.
 
 Twilio template documentation:
 https://www.twilio.com/docs/content/send-templates-created-with-the-content-template-builder
+
+## Twilio WhatsApp sender endpoints
+
+The registered sender uses the Twilio Functions service diemex-whatsapp-webhooks.
+Its live URLs and resource identifiers are recorded in ../twilio/endpoints.json.
+All three functions use protected visibility, so Twilio validates request signatures.
+The source is in ../twilio/functions and the runtime is Node.js 22.
+
+- Incoming messages: POST /whatsapp/incoming returns empty TwiML and records message metadata.
+- Fallback: POST /whatsapp/fallback acknowledges the request and records its error code.
+- Delivery status: POST /whatsapp/status records the message SID, status and error code in Twilio logs.
+
+WhatsApp status callbacks always use POST; Twilio may return an empty status_callback_method field.
+
+These handlers send no automatic reply and do not store message bodies or phone numbers in function logs.
+Delivery callbacks are recorded in Twilio; they do not update visitor_passes.sentStatus in the CRM database.
+This setup runs in Twilio and does not depend on a Render backend deployment.
+The visitor-pass template still requires separate WhatsApp approval before it can be sent.
 
 ## Registration and older passes
 

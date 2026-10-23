@@ -1,0 +1,69 @@
+{
+  "senderSid": "XE24e1282fa61fff4d8033430d988cdf18",
+  "serviceSid": "ZSd7bd099432074d65f78f42228e25ca4e",
+  "serviceName": "diemex-whatsapp-webhooks",
+  "environmentSid": "ZE8d3644baa2803d28ce09ef3c82617f34",
+  "domain": "diemex-whatsapp-webhooks-9299-prod.twil.io",
+  "buildSid": "ZB0950f9f39a82badb492db1eb13dc3960",
+  "buildStatus": "completed",
+  "previousWebhook": {
+    "callback_method": null,
+    "callback_url": "",
+    "fallback_method": null,
+    "fallback_url": "",
+    "status_callback_method": "",
+    "status_callback_url": ""
+  },
+  "functions": [
+    {
+      "name": "incoming",
+      "path": "/whatsapp/incoming",
+      "functionSid": "ZH50a3d4df80eff30fd7125e45c9c55844",
+      "versionSid": "ZN2ca08a412d16ae8665bea59d75c7b353",
+      "visibility": "protected"
+    },
+    {
+      "name": "fallback",
+      "path": "/whatsapp/fallback",
+      "functionSid": "ZHb550efa725aaad03eb50adb92cfdbe58",
+      "versionSid": "ZN18e22810edeaf1b9ef8567336068a1b3",
+      "visibility": "protected"
+    },
+    {
+      "name": "status",
+      "path": "/whatsapp/status",
+      "functionSid": "ZH151890fd336afd57d71bc29854d92248",
+      "versionSid": "ZNabaab7019c7fd895db08f6ab8dd22677",
+      "visibility": "protected"
+    }
+  ],
+  "deploymentSid": "ZD44c7d4db6b58f3b3b5ee48d397c2dea1",
+  "senderStatus": "ONLINE",
+  "webhook": {
+    "callback_method": "POST",
+    "callback_url": "https://diemex-whatsapp-webhooks-9299-prod.twil.io/whatsapp/incoming",
+    "fallback_method": "POST",
+    "fallback_url": "https://diemex-whatsapp-webhooks-9299-prod.twil.io/whatsapp/fallback",
+    "status_callback_method": "",
+    "status_callback_url": "https://diemex-whatsapp-webhooks-9299-prod.twil.io/whatsapp/status"
+  },
+  "effectiveStatusCallbackMethod": "POST",
+  "statusCallbackMethodNote": "WhatsApp status callbacks support POST only. The sender API may return an empty status_callback_method.",
+  "verification": {
+    "incoming": {
+      "signedStatus": 200,
+      "unsignedStatus": 403
+    },
+    "fallback": {
+      "signedStatus": 200,
+      "unsignedStatus": 403
+    },
+    "status": {
+      "signedStatus": 204,
+      "unsignedStatus": 403
+    },
+    "functionLogsConfirmed": true,
+    "testMessageSid": "SM00000000000000000000000000000000"
+  },
+  "verifiedAt": "2026-10-23T06:08:07.792Z"
+}
