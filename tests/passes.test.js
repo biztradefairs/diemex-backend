@@ -16,9 +16,15 @@ const mockMessaging = {
   sendPass: jest.fn(async () => ({ success: true, provider: 'twilio', status: 'queued' }))
 };
 const mockCloudinary = {
-  uploadImage: jest.fn(async () => ({ secure_url: 'https://res.cloudinary.com/test/image/upload/v1/visitor-passes/badge-REG-DMX-TEST.png' }))
+  uploadImage: jest.fn(async (buffer, options) => ({ secure_url: 'https://res.cloudinary.com/test/image/upload/v1/visitor-passes/' + options.public_id + '.png' }))
 };
 const mockBadgeRenderer = { renderVisitorBadge: jest.fn(async () => Buffer.from('full-badge-png')) };
+let mockBadgeSetting = null;
+const mockBadgeSettingModel = {
+  sync: jest.fn(async () => {}),
+  findByPk: jest.fn(async () => mockBadgeSetting),
+  upsert: jest.fn(async (value) => { mockBadgeSetting = { ...value, updatedAt: new Date() }; })
+};
 function mockMatches(row, where = {}) {
   if (where[Op.or] && !where[Op.or].some((clause) => mockMatches(row, clause))) return false;
   for (const field of ['id', 'phone', 'publicCode', 'registrationNumber', 'visitorPassId', 'scannerId', 'status']) {
@@ -82,7 +88,7 @@ const mockContactModel = {
   })
 };
 jest.mock('../src/models', () => ({
-  init: async () => ({ VisitorPass: mockPassModel, VisitorPassScan: mockScanModel, ContactSubmission: mockContactModel }),
+  init: async () => ({ VisitorPass: mockPassModel, VisitorPassScan: mockScanModel, ContactSubmission: mockContactModel, VisitorBadgeSetting: mockBadgeSettingModel }),
   getModel: () => ({
     findByPk: async (role) => role === 'missing' ? null : { id: role, role, status: role === 'inactive' ? 'inactive' : 'active' }
   })
@@ -109,7 +115,7 @@ const scan = (code, scannerId = 'phone-A') => request(app).post('/api/passes/sca
 const service = require('../src/services/PassService');
 
 beforeEach(() => {
-  mockPasses = []; mockScans = []; mockContacts = [];
+  mockPasses = []; mockScans = []; mockContacts = []; mockBadgeSetting = null;
   mockTransactionTail = Promise.resolve();
   jest.clearAllMocks();
 });
@@ -374,12 +380,13 @@ describe('WhatsApp portrait badge delivery', () => {
     expect(result.status).toBe(200);
     expect(result.body.delivery).toMatchObject({ success: true, channel: 'whatsapp', status: 'queued' });
     expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenCalledWith({
+      design: 'design1', designation: undefined, country: undefined,
       name: row.name, company: row.company, registrationNumber: row.registrationNumber,
       qrPayload: row.qrPayload,
       event: { name: 'DIEMEX 2027', dates: '24\u201326 Mar 2027', venue: 'Auto Cluster Exhibition Centre, Pune' }
     });
     expect(mockCloudinary.uploadImage).toHaveBeenCalledWith(Buffer.from('full-badge-png'), {
-      folder: 'visitor-passes', public_id: 'badge-REG-DMX-TEST', overwrite: true, format: 'png'
+      folder: 'visitor-passes', public_id: 'badge-design1-REG-DMX-TEST', overwrite: true, format: 'png'
     });
     expect(mockMessaging.sendPass).toHaveBeenCalledWith(expect.objectContaining({
       name: row.name, registrationNumber: row.registrationNumber,
@@ -388,8 +395,9 @@ describe('WhatsApp portrait badge delivery', () => {
     expect(row).toMatchObject({ status: 'issued', sentStatus: 'queued', sentVia: 'whatsapp' });
   });
 
-  test.each(['render', 'upload', 'missing URL'])('%s failure preserves the registration for retry', async (failure) => {
+  test.each(['render', 'upload', 'missing URL', 'settings'])('%s failure preserves the registration for retry', async (failure) => {
     const row = await pass();
+    if (failure === 'settings') mockBadgeSettingModel.findByPk.mockRejectedValueOnce(new Error('Settings unavailable'));
     if (failure === 'render') mockBadgeRenderer.renderVisitorBadge.mockRejectedValueOnce(new Error('Render unavailable'));
     if (failure === 'upload') mockCloudinary.uploadImage.mockRejectedValueOnce(new Error('Upload unavailable'));
     if (failure === 'missing URL') mockCloudinary.uploadImage.mockResolvedValueOnce({});
@@ -407,5 +415,79 @@ describe('WhatsApp portrait badge delivery', () => {
     expect(retry.body.delivery.success).toBe(true);
     expect(row.sentStatus).toBe('queued');
     expect(mockPasses).toHaveLength(1);
+  });
+});
+
+
+describe('admin badge design selection', () => {
+  test('settings and previews require an active admin', async () => {
+    expect((await request(app).get('/api/passes/badge-design')).status).toBe(401);
+    expect((await request(app).put('/api/passes/badge-design').send({ design: 'design2' })).status).toBe(401);
+    expect((await request(app).get('/api/passes/badge-designs/design2/preview')).status).toBe(401);
+    for (const role of ['viewer', 'editor', 'exhibitor', 'inactive']) {
+      expect((await request(app).put('/api/passes/badge-design').set('Authorization', token(role)).send({ design: 'design2' })).status).toBe(403);
+    }
+    expect(mockBadgeSettingModel.upsert).not.toHaveBeenCalled();
+  });
+
+  test('defaults to Design 1 and persists a selection for subsequent reads', async () => {
+    const initial = await request(app).get('/api/passes/badge-design').set('Authorization', token());
+    expect(initial.status).toBe(200);
+    expect(initial.body.design).toBe('design1');
+    expect(initial.body.designs.map((item) => item.id)).toEqual(['design1', 'design2']);
+    const saved = await request(app).put('/api/passes/badge-design').set('Authorization', token()).send({ design: 'design2' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.design).toBe('design2');
+    expect(mockBadgeSettingModel.upsert).toHaveBeenCalledWith({ id: 'visitor', design: 'design2', updatedBy: 'admin' });
+    expect((await request(app).get('/api/passes/badge-design').set('Authorization', token())).body.design).toBe('design2');
+    expect(mockMessaging.sendPass).not.toHaveBeenCalled();
+  });
+
+  test.each(['design3', '__proto__', null])('rejects invalid design %s without changing the saved setting', async (design) => {
+    const response = await request(app).put('/api/passes/badge-design').set('Authorization', token()).send({ design });
+    expect(response.status).toBe(400);
+    expect(mockBadgeSettingModel.upsert).not.toHaveBeenCalled();
+  });
+
+  test('does not acknowledge a design that failed to save', async () => {
+    mockBadgeSettingModel.upsert.mockRejectedValueOnce(new Error('Database unavailable'));
+    const response = await request(app).put('/api/passes/badge-design').set('Authorization', token()).send({ design: 'design2' });
+    expect(response.status).toBe(500);
+    expect(response.body.success).toBe(false);
+    expect((await request(app).get('/api/passes/badge-design').set('Authorization', token())).body.design).toBe('design1');
+  });
+
+  test('previews render the requested sample design without sending a message or changing the active selection', async () => {
+    const response = await request(app).get('/api/passes/badge-designs/design2/preview').set('Authorization', token());
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toMatch(/^image\/png/);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenCalledWith(expect.objectContaining({
+      design: 'design2', registrationNumber: 'DEMO-DMX-2027', designation: 'Engineer', country: 'India'
+    }));
+    expect(mockBadgeSettingModel.upsert).not.toHaveBeenCalled();
+    expect(mockMessaging.sendPass).not.toHaveBeenCalled();
+    expect((await request(app).get('/api/passes/badge-designs/unknown/preview').set('Authorization', token())).status).toBe(400);
+  });
+
+  test('switching either way changes the next WhatsApp image while reusing the saved registration and QR', async () => {
+    jest.replaceProperty(process, 'env', { ...process.env, CLOUDINARY_CLOUD_NAME: 'test', CLOUDINARY_API_KEY: 'key' });
+    const row = await pass();
+    row.designation = 'Engineer'; row.country = 'India'; row.qrPayload = 'Code: REG-DMX-TEST';
+    for (const design of ['design2', 'design1']) {
+      await request(app).put('/api/passes/badge-design').set('Authorization', token()).send({ design });
+      const response = await request(app).post('/api/passes/resend-pass').send({ publicCode: row.publicCode, channel: 'whatsapp' });
+      expect(response.body.delivery).toMatchObject({ success: true, badgeDesign: design });
+      expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenLastCalledWith(expect.objectContaining({
+        design, designation: row.designation, country: row.country, qrPayload: row.qrPayload
+      }));
+      expect(mockCloudinary.uploadImage).toHaveBeenLastCalledWith(expect.any(Buffer), expect.objectContaining({
+        public_id: 'badge-' + design + '-REG-DMX-TEST'
+      }));
+      expect(mockMessaging.sendPass).toHaveBeenLastCalledWith(expect.objectContaining({ mediaUrl: response.body.delivery.mediaUrl }));
+    }
+    expect(mockPasses).toHaveLength(1);
+    expect(row.registrationNumber).toBe('REG-DMX-TEST');
+    expect(row.qrPayload).toBe('Code: REG-DMX-TEST');
   });
 });

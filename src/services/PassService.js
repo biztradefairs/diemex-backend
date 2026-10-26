@@ -24,6 +24,7 @@ const messaging = require('./PassMessagingService');
 const emailService = require('./EmailService');
 const cloudinaryService = require('./CloudinaryService');
 const { renderVisitorBadge } = require('./VisitorBadgeRenderer');
+const { getActiveBadgeDesign } = require('./VisitorBadgeSettingsService');
 
 // ============================================================================
 // CONFIGURATION CONSTANTS & TIMEOUTS
@@ -788,10 +789,15 @@ async function deliverPass(pass, channel) {
   const passUrl = passViewUrl(pass.publicCode);
 
   let mediaUrl = null;
+  let badgeDesign = null;
   let result;
   try {
     if (sendChannel === 'whatsapp' && process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+      badgeDesign = await getActiveBadgeDesign();
       const badgeBuffer = await renderVisitorBadge({
+        design: badgeDesign,
+        designation: pass.designation,
+        country: pass.country,
         name: pass.name,
         company: pass.company,
         registrationNumber: pass.registrationNumber,
@@ -800,7 +806,7 @@ async function deliverPass(pass, channel) {
       });
       const uploadRes = await cloudinaryService.uploadImage(badgeBuffer, {
         folder: 'visitor-passes',
-        public_id: `badge-${pass.registrationNumber}`,
+        public_id: `badge-${badgeDesign}-${pass.registrationNumber}`,
         overwrite: true,
         format: 'png'
       });
@@ -833,6 +839,7 @@ async function deliverPass(pass, channel) {
     whatsappUrl: result.whatsappUrl,
     passUrl,
     mediaUrl: result.mediaUrl || mediaUrl,
+    badgeDesign,
     error: result.error || null
   };
 }

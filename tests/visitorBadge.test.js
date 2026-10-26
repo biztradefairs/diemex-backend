@@ -3,16 +3,17 @@ const { BinaryBitmap, HybridBinarizer, RGBLuminanceSource, MultiFormatReader,
   DecodeHintType, BarcodeFormat } = require('@zxing/library');
 const { renderVisitorBadge, WIDTH, HEIGHT } = require('../src/services/VisitorBadgeRenderer');
 
+describe.each(['design1', 'design2'])('%s badge', (design) => {
 const event = {
   name: 'DIEMEX 2027', dates: '24\u201326 Mar 2027', venue: 'Auto Cluster Exhibition Centre, Pune'
 };
 function visitor(overrides = {}) {
   const details = {
-    name: 'Ananya Sharma', company: 'Precision Engineering Pvt. Ltd.',
+    name: 'Ananya Sharma', company: 'Precision Engineering Pvt. Ltd.', designation: 'Engineer', country: 'India',
     registrationNumber: 'REG-DMX-28082026-750281', ...overrides
   };
   return {
-    ...details, event,
+    ...details, event, design,
     qrPayload: [event.name, 'Visitor', `Name: ${details.name}`, `Company: ${details.company}`,
       `Code: ${details.registrationNumber}`, `Date: ${event.dates}`].join('\n')
   };
@@ -61,4 +62,10 @@ test('missing optional company details still produce a scannable badge', async (
 test('rejects a missing QR and an oversized payload instead of producing an unusable badge', async () => {
   await expect(renderVisitorBadge({ ...visitor(), qrPayload: '' })).rejects.toThrow('QR payload are required');
   await expect(renderVisitorBadge({ ...visitor(), qrPayload: 'X'.repeat(5000) })).rejects.toThrow();
+});
+
+});
+
+test('rejects unknown badge designs', async () => {
+  await expect(renderVisitorBadge({ design: 'design3' })).rejects.toThrow('Choose Design 1 or Design 2');
 });

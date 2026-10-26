@@ -35,31 +35,30 @@ https://www.twilio.com/docs/content/send-templates-created-with-the-content-temp
 ## WhatsApp badge artwork
 
 WhatsApp deliveries attach a full 900 x 1428 portrait PNG instead of a standalone QR image.
-The badge includes the bundled DIEMEX logo, event dates and venue, visitor name, company,
-registration number, a QR and a VISITOR footer. The artwork follows the supplied reference:
-a white portrait badge with centred logo, bold uppercase name, company, a flat blue top band
-and V-shaped blue lower section with DIEMEX red accent stripes. The WhatsApp message text and approved
-media template stay the same; template variable 3 still receives the Cloudinary mediaPath.
-Existing passes get the new artwork when resent after deploying this backend.
+Two designs are available through **Badge Designs** at `/admin/badge-designs` after deployment.
+Design 1 preserves the existing blue/red angled layout and remains the default.
+Design 2 uses green, removes the profile image and follows this order:
+logo, name, designation, company, country, centred QR, user ID, VISITOR.
+The user ID is the existing registration number. The supplied DIEMEX logo keeps its original artwork.
 
-VisitorBadgeRenderer draws the badge locally using @napi-rs/canvas. The original QR payload
-is preserved, with integer-sized modules and a four-module white margin for scanning.
-Names and companies wrap and shrink within fixed areas; unusually long text is shortened
-visually while the saved visitor details and QR payload remain intact.
+An active admin can preview either design and save the global choice. The selection is stored in
+visitor_badge_settings and applies to the next WhatsApp badge delivery/resend, without changing
+visitor records or QR payloads. Each design uses a separate Cloudinary asset path. Switching the
+setting does not send messages. Rendering/upload/settings errors preserve the registration for retry.
+The approved WhatsApp template and its message text remain unchanged; variable 3 still receives mediaPath.
 
-Upload uses visitor-passes/badge-<registrationNumber>.png, distinct from the old qr- assets.
-Rendering or upload errors are reported as a failed delivery and keep the registration for retry.
-Deploy package.json, package-lock.json and src/assets/badge together, then install production
-dependencies with npm ci. The renderer loads its native dependency only when needed. Bundled
-Inter font and logo assets avoid network or system-font dependencies at rendering time;
-the font license and asset sources are included in src/assets/badge.
+Install production dependencies with npm ci and deploy src/assets/badge with the backend. The bundled
+logo/font avoid network or system-font dependencies when rendering. The settings service creates
+its new table if absent without altering existing tables. The deployment database user needs permission
+to create that table, or it must be provisioned from the model beforehand.
 
-Generate an offline design preview from the backend directory:
+Generate sample PNGs from the backend directory:
 
-    npm run preview:badge
+    npm run preview:badge -- --all
 
-The output is docs/previews/visitor-badge.png. Its QR is marked as a design preview and is
-not valid for entry. The website badge card and email attachment keep their existing layouts.
+For the full file inventory, design editing locations, API details and switching instructions,
+see [BADGE_DESIGNS.md](BADGE_DESIGNS.md). Website cards/downloads and email attachments keep their
+separate existing generators; this selector controls WhatsApp attachments.
 
 ## Verify OTP configuration
 

@@ -5,6 +5,10 @@ const { authenticate, authorize } = require('../middleware/auth');
 const scannerAccess = [authenticate, authorize(['admin', 'editor'])];
 
 const router = express.Router();
+const badgeSettings = require('../services/VisitorBadgeSettingsService');
+const { renderBadgePreview } = require('../services/VisitorBadgePreview');
+const { isBadgeDesign } = require('../services/badges/designs');
+const badgeAdmin = [authenticate, authorize(['admin'])];
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
@@ -28,6 +32,24 @@ function handleError(res, error) {
     ...(error.resendIn ? { resendIn: error.resendIn } : {})
   });
 }
+
+router.get('/badge-design', ...badgeAdmin, async (req, res) => {
+  try { res.json({ success: true, ...await badgeSettings.getBadgeDesignSetting() }); }
+  catch (error) { handleError(res, error); }
+});
+
+router.put('/badge-design', ...badgeAdmin, async (req, res) => {
+  try { res.json({ success: true, ...await badgeSettings.setBadgeDesign(req.body.design, req.user.id) }); }
+  catch (error) { handleError(res, error); }
+});
+
+router.get('/badge-designs/:design/preview', ...badgeAdmin, async (req, res) => {
+  try {
+    if (!isBadgeDesign(req.params.design)) return res.status(400).json({ success: false, error: 'Choose Design 1 or Design 2.' });
+    const png = await renderBadgePreview(req.params.design);
+    res.set('Cache-Control', 'no-store').type('png').send(png);
+  } catch (error) { handleError(res, error); }
+});
 
 router.post(
   '/send-otp',
