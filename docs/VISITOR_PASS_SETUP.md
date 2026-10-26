@@ -41,7 +41,12 @@ The registered WhatsApp sender is +919880585504; set TWILIO_WHATSAPP_FROM=whatsa
 Local .env changes are not copied to Render because .env is intentionally excluded from Git.
 
 For WhatsApp OTP delivery, the Verify service uses the DIEMEX Verify WhatsApp Messaging Service.
-The registered WhatsApp sender is assigned to that Messaging Service, and Verify's WhatsApp From matches it.
+The registered WhatsApp sender is assigned to that Messaging Service. Leave Verify's optional
+Whatsapp.From override empty (null), so Verify selects the sender from the Messaging Service.
+On 26 October 2026, the explicit override caused the Console enablement save to fail with
+Invalid parameter: Whatsapp.From. Clearing only that override allowed the channel to be saved
+and remain enabled after reloading. Keep the backend TWILIO_WHATSAPP_FROM=whatsapp:+919880585504
+for visitor-badge messages; it is separate from the Verify service override.
 The Messaging Service retains the sender's incoming-message webhooks.
 Verify OTPs use authentication templates managed by Verify; the visitor-pass media template is separate.
 A successful service configuration check does not confirm real OTP delivery.
@@ -86,12 +91,13 @@ WhatsApp status callbacks always use POST; Twilio may return an empty status_cal
 These handlers send no automatic reply and do not store message bodies or phone numbers in function logs.
 Delivery callbacks are recorded in Twilio; they do not update visitor_passes.sentStatus in the CRM database.
 This setup runs in Twilio and does not depend on a Render backend deployment.
-The visitor-pass template still requires separate WhatsApp approval before it can be sent.
+The visitor-pass template diemex_visitor_pass_2027_v2 is approved for WhatsApp, verified on 26 October 2026.
 
 ## Registration and older passes
 
-The existing main visitor form now verifies the selected SMS/WhatsApp number before issuing a digital pass.
-Registration must be saved before the success screen appears. CMS submission and branded email remain supported.
+The dedicated /passes/register flow verifies the selected SMS/WhatsApp number before issuing a digital pass.
+The main /register?t=visitor form currently uses background registration and email confirmation; it does not
+request a phone OTP or trigger the WhatsApp pass flow. CMS submission and branded email remain supported.
 Existing contact registration clients without an OTP token continue to issue email passes; they cannot trigger
 SMS/WhatsApp delivery through this path.
 
@@ -127,3 +133,13 @@ node node_modules/typescript/bin/tsc --noEmit --incremental false
 The regression suite mocks Twilio, email, Cloudinary and database models.
 Before production use, verify a real OTP, the approved WhatsApp pass template, an HTTPS mobile camera scan,
 a saved attendance row, a repeat visit and rejection of a cancelled pass against the deployment database.
+
+### Live validation on 26 October 2026
+
+The Indian WhatsApp test recipient received and verified a real six-digit Verify OTP through the deployed
+/api/passes endpoints. The existing registration was reused, and the application's badge message was
+confirmed read by Twilio with one PNG attachment and no delivery error. The attachment decoded to the
+saved pass QR payload; the public pass API and badge page both returned HTTP 200. A separate labelled
+test QR message was also received, and the recipient confirmed that its image opened correctly.
+No new registration or attendance scan was created during the live test. Other countries were not tested.
+The 41 pass/messaging regression tests and the frontend TypeScript check passed.
