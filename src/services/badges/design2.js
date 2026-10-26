@@ -15,7 +15,7 @@ module.exports = function drawDesign2(ctx, logo, pass) {
   ctx.fillRect(32, 358, WIDTH - 64, 6);
 
   textBlock(ctx, cleanText(name).toUpperCase(), {
-    top: 428, height: 100, width: 816, size: 58, minSize: 32, maxLines: 2, weight: 800, color: GREEN,
+    top: 428, height: 100, width: 816, size: 58, minSize: 32, maxLines: 2, weight: 800, color: '#000000',
   });
   let detailsTop = 546;
   if (cleanText(designation)) {
@@ -35,7 +35,8 @@ module.exports = function drawDesign2(ctx, logo, pass) {
 
   // There is no profile image; the QR is centred across the full badge width.
   drawQr(ctx, qrPayload, { x: 243, y: 728, size: 414 }, DARK_GREEN, 'H');
-  textBlock(ctx, 'User ID: ' + cleanText(registrationNumber), {
+  const visitorId = 'DMX-' + cleanText(registrationNumber).replace(/\D/g, '').slice(-6);
+  textBlock(ctx, 'Visitor ID: ' + visitorId, {
     top: 1148, height: 44, width: 820, size: 26, minSize: 17, maxLines: 1, weight: 450,
   });
   ctx.fillStyle = GREEN;

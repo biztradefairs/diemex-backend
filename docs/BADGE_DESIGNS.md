@@ -11,12 +11,13 @@ record and QR payload. Previously delivered WhatsApp messages retain their attac
 
 - **Design 1:** the existing white badge with blue top band, red accents and angled blue footer.
 - **Design 2:** green layout in this exact order: logo, name, designation, company, country,
-  centred QR, user ID, VISITOR. There is no profile photo, avatar, date line, venue or footer note.
+  centred QR, visitor ID, VISITOR. There is no profile photo, avatar, date line, venue or footer note.
   The provided DIEMEX logo retains its original artwork. Layout colours are green `#00A651`
-  and dark green `#064E3B`; no DIEMEX blue/red is used for the layout or QR in Design 2.
+  and dark green `#064E3B`, with the name in black `#000000`; no DIEMEX blue/red is used for the layout or QR in Design 2.
 
-Both designs are 900 x 1428 PNGs. Design 2's **User ID** displays the existing registrationNumber
-(e.g. REG-DMX-28082026-750281), not an internal database UUID or a new ID. Missing designation
+Both designs are 900 x 1428 PNGs. Design 2's **Visitor ID** displays `DMX-` followed by the last six digits of the registration number
+(e.g. REG-DMX-28082026-750281 displays as **DMX-750281**). This is a display label only; the full
+registration number and QR payload remain unchanged. Missing designation
 or country values are omitted; details are never invented. The renderer fits long text into
 fixed regions and leaves a white margin around the QR.
 
@@ -27,7 +28,7 @@ Paths in this table are relative to `diemex-backend`.
 | File | Responsibility |
 | --- | --- |
 | `src/services/badges/design1.js` | Design 1 layout: logo position, name/company, dates/venue, angled footer and VISITOR text. Edit only this file to change Design 1's arrangement. |
-| `src/services/badges/design2.js` | Design 2 layout: green colours, logo, name/designation/company/country, centred QR, user ID and final VISITOR band. Edit this file to change Design 2's arrangement. |
+| `src/services/badges/design2.js` | Design 2 layout: green colours, logo, name/designation/company/country, centred QR, visitor ID and final VISITOR band. Edit this file to change Design 2's arrangement. |
 | `src/services/badges/artwork.js` | Shared image dimensions, logo/font loading, text wrapping/shrinking, letter spacing and QR drawing. Default blue/red colours used by Design 1 live here; Design 2 declares its green palette in design2.js. |
 | `src/services/VisitorBadgeRenderer.js` | Validates badge inputs, selects the requested design, creates the canvas and returns the final PNG buffer. It defaults to Design 1 when called without a design. |
 | `src/services/badges/designs.js` | Allowed design IDs, display names/descriptions and default design. |

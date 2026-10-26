@@ -38,8 +38,8 @@ WhatsApp deliveries attach a full 900 x 1428 portrait PNG instead of a standalon
 Two designs are available through **Badge Designs** at `/admin/badge-designs` after deployment.
 Design 1 preserves the existing blue/red angled layout and remains the default.
 Design 2 uses green, removes the profile image and follows this order:
-logo, name, designation, company, country, centred QR, user ID, VISITOR.
-The user ID is the existing registration number. The supplied DIEMEX logo keeps its original artwork.
+logo, name, designation, company, country, centred QR, visitor ID, VISITOR.
+The name is black. The visitor ID displays DMX- followed by the last six registration-number digits; the full ID and QR data stay unchanged. The supplied DIEMEX logo keeps its original artwork.
 
 An active admin can preview either design and save the global choice. The selection is stored in
 visitor_badge_settings and applies to the next WhatsApp badge delivery/resend, without changing

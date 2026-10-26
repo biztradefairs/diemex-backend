@@ -463,7 +463,7 @@ describe('admin badge design selection', () => {
     expect(response.headers['content-type']).toMatch(/^image\/png/);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenCalledWith(expect.objectContaining({
-      design: 'design2', registrationNumber: 'DEMO-DMX-2027', designation: 'Engineer', country: 'India'
+      design: 'design2', registrationNumber: 'DEMO-DMX-2027-123456', designation: 'Engineer', country: 'India'
     }));
     expect(mockBadgeSettingModel.upsert).not.toHaveBeenCalled();
     expect(mockMessaging.sendPass).not.toHaveBeenCalled();
