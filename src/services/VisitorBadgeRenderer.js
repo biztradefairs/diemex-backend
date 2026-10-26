@@ -2,9 +2,11 @@ const path = require('path');
 const QRCode = require('qrcode');
 
 const WIDTH = 900;
-const HEIGHT = 1500;
+const HEIGHT = 1428;
 const FONT = '"Diemex Inter"';
-const INK = '#102D50';
+const INK = '#003875';
+const BLUE = '#004A96';
+const RED = '#E0161D';
 const ASSETS = path.join(__dirname, '..', 'assets', 'badge');
 let artwork;
 
@@ -24,11 +26,6 @@ function loadArtwork() {
 
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/gu, ' ').trim();
-}
-
-function roundedRect(ctx, x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
 }
 
 function wrapLines(ctx, text, width) {
@@ -57,7 +54,7 @@ function wrapLines(ctx, text, width) {
 
 function textBlock(ctx, text, {
   top, height, width = 724, size = 30, minSize = 20, maxLines = 2,
-  weight = 500, color = INK,
+  weight = 500, color = INK, lineSpacing = 1.2,
 }) {
   const value = cleanText(text);
   if (!value) return;
@@ -66,7 +63,7 @@ function textBlock(ctx, text, {
   for (; fontSize >= minSize; fontSize -= 1) {
     ctx.font = `${weight} ${fontSize}px ${FONT}`;
     lines = wrapLines(ctx, value, width);
-    if (lines.length <= maxLines && lines.length * fontSize * 1.2 <= height) break;
+    if (lines.length <= maxLines && lines.length * fontSize * lineSpacing <= height) break;
   }
   fontSize = Math.max(fontSize, minSize);
   ctx.font = `${weight} ${fontSize}px ${FONT}`;
@@ -79,7 +76,7 @@ function textBlock(ctx, text, {
     }
     lines[maxLines - 1] = `${last}…`;
   }
-  const lineHeight = fontSize * 1.2;
+  const lineHeight = fontSize * lineSpacing;
   const firstY = top + height / 2 - (lines.length - 1) * lineHeight / 2;
   ctx.save();
   ctx.beginPath();
@@ -107,12 +104,13 @@ function trackedText(ctx, text, centerX, y, size, tracking, color, weight = 600)
 }
 
 function drawQr(ctx, payload) {
-  const qr = QRCode.create(payload, { errorCorrectionLevel: 'H' });
+  // Keep the full registration payload readable in the reference's compact QR frame.
+  const qr = QRCode.create(payload, { errorCorrectionLevel: 'Q' });
   const quietZone = 4;
-  const area = { x: 165, y: 708, size: 570 };
+  const area = { x: 294, y: 888, size: 312 };
   const fittedModuleSize = Math.floor(area.size / (qr.modules.size + quietZone * 2));
-  // Multiples of three also stay crisp at common 600px and 450px viewing widths.
-  const moduleSize = fittedModuleSize >= 6 ? Math.floor(fittedModuleSize / 3) * 3 : fittedModuleSize;
+  // Prefer even modules so half-width phone previews retain whole pixels.
+  const moduleSize = fittedModuleSize >= 4 ? fittedModuleSize - fittedModuleSize % 2 : fittedModuleSize;
   if (moduleSize < 2) throw new Error('The visitor QR payload is too large for a scannable badge.');
   const totalSize = moduleSize * (qr.modules.size + quietZone * 2);
   const left = area.x + Math.floor((area.size - totalSize) / 2);
@@ -143,87 +141,63 @@ async function renderVisitorBadge({ name, company, registrationNumber, qrPayload
   const ctx = canvas.getContext('2d');
   ctx.textBaseline = 'middle';
 
-  const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-  background.addColorStop(0, '#081C36');
-  background.addColorStop(0.6, '#123D6D');
-  background.addColorStop(1, '#0758A6');
-  ctx.fillStyle = background;
+  ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // Subtle tooling-inspired geometry stays outside the visitor details and QR.
-  ctx.strokeStyle = '#FFFFFF14';
-  ctx.lineWidth = 1.5;
-  [220, 280, 340].forEach((radius) => {
-    ctx.beginPath();
-    ctx.arc(WIDTH + 45, -30, radius, 0, Math.PI * 2);
-    ctx.stroke();
-  });
-  [42, WIDTH - 42].forEach((x) => {
-    ctx.strokeStyle = '#FFFFFF45';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, 33, 10, 0, Math.PI * 2);
-    ctx.stroke();
-  });
+  // Match the reference's flat top band and narrow accent stripe.
+  ctx.fillStyle = BLUE;
+  ctx.fillRect(0, 0, WIDTH, 79);
+  ctx.fillStyle = RED;
+  ctx.fillRect(0, 79, WIDTH, 18);
 
-  // Preserve the full-colour third-edition logo, including its exhibition title.
-  roundedRect(ctx, 36, 44, 828, 220, 20);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fill();
-  const logoWidth = 445;
+  // Keep the supplied logo's colours, aspect ratio and included exhibition title.
+  const logoWidth = 490;
   const logoHeight = logoWidth * logo.height / logo.width;
-  ctx.drawImage(logo, 68, 52, logoWidth, logoHeight);
+  ctx.drawImage(logo, (WIDTH - logoWidth) / 2, 316 - logoHeight / 2, logoWidth, logoHeight);
 
-  roundedRect(ctx, 654, 90, 168, 120, 18);
-  ctx.fillStyle = '#F0F5FB';
-  ctx.fill();
-  ctx.strokeStyle = '#D8E3EF';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  trackedText(ctx, 'EVENT YEAR', 738, 118, 13, 1.8, '#52657B');
-  ctx.font = `750 51px ${FONT}`;
-  ctx.textAlign = 'center';
-  ctx.fillStyle = INK;
-  ctx.fillText(cleanText(event.name).match(/20\d{2}/)?.[0] || 'DIEMEX', 738, 164);
-
-  ctx.fillStyle = '#0B4B97';
-  ctx.fillRect(0, 274, WIDTH, 112);
-  textBlock(ctx, cleanText(event.dates).toUpperCase(), {
-    top: 284, height: 44, size: 32, minSize: 24, maxLines: 1, weight: 750, color: '#FFFFFF',
+  textBlock(ctx, cleanText(name).toUpperCase(), {
+    top: 544, height: 184, width: 720, size: 82, minSize: 38,
+    maxLines: 2, weight: 800, color: BLUE, lineSpacing: 1.05,
+  });
+  textBlock(ctx, company, {
+    top: 734, height: 68, width: 790, size: 42, minSize: 25, maxLines: 2, weight: 400,
+  });
+  textBlock(ctx, `${cleanText(event.name)} | ${cleanText(event.dates)}`, {
+    top: 807, height: 28, width: 800, size: 22, minSize: 16,
+    maxLines: 1, weight: 650, color: BLUE,
   });
   textBlock(ctx, event.venue, {
-    top: 334, height: 32, width: 820, size: 22, minSize: 17, maxLines: 1, color: '#E5EFFB',
+    top: 844, height: 26, width: 800, size: 20, minSize: 16, maxLines: 1, weight: 400,
   });
-  ctx.fillStyle = '#F43F4C';
-  ctx.fillRect(0, 380, WIDTH, 6);
 
-  roundedRect(ctx, 36, 416, 828, 954, 30);
-  ctx.fillStyle = '#FFFFFF';
+  // The V-shaped colour block and its accent follow the reference silhouette.
+  ctx.beginPath();
+  ctx.moveTo(0, 901);
+  ctx.lineTo(WIDTH / 2, 1076);
+  ctx.lineTo(WIDTH, 901);
+  ctx.lineTo(WIDTH, HEIGHT);
+  ctx.lineTo(0, HEIGHT);
+  ctx.closePath();
+  ctx.fillStyle = RED;
   ctx.fill();
-  ctx.strokeStyle = '#DCE6F0';
-  ctx.lineWidth = 1;
-  ctx.stroke();
 
-  trackedText(ctx, 'DIGITAL VISITOR BADGE', WIDTH / 2, 460, 16, 3, '#E53846', 700);
-  textBlock(ctx, name, { top: 488, height: 112, size: 54, minSize: 28, weight: 750 });
-  textBlock(ctx, company, {
-    top: 608, height: 68, size: 30, minSize: 20, weight: 500, color: '#52657B',
-  });
-  ctx.fillStyle = '#F43F4C';
-  ctx.fillRect(396, 690, 108, 4);
+  ctx.beginPath();
+  ctx.moveTo(0, 919);
+  ctx.lineTo(WIDTH / 2, 1094);
+  ctx.lineTo(WIDTH, 919);
+  ctx.lineTo(WIDTH, HEIGHT);
+  ctx.lineTo(0, HEIGHT);
+  ctx.closePath();
+  ctx.fillStyle = BLUE;
+  ctx.fill();
 
+  // The white QR square overlaps the V, just as it does in the supplied design.
   drawQr(ctx, qrPayload);
-  trackedText(ctx, 'SCAN AT ENTRY', WIDTH / 2, 1303, 15, 2.5, '#65788D');
   textBlock(ctx, registrationNumber, {
-    top: 1322, height: 30, size: 23, minSize: 15, maxLines: 1, weight: 650,
+    top: 1222, height: 28, width: 760, size: 20, minSize: 14,
+    maxLines: 1, weight: 600, color: '#FFFFFF',
   });
-
-  const footer = ctx.createLinearGradient(0, 1402, WIDTH, HEIGHT);
-  footer.addColorStop(0, '#D92739');
-  footer.addColorStop(1, '#F14B50');
-  ctx.fillStyle = footer;
-  ctx.fillRect(0, 1402, WIDTH, HEIGHT - 1402);
-  trackedText(ctx, 'VISITOR', WIDTH / 2, 1452, 65, 10, '#FFFFFF', 800);
+  trackedText(ctx, 'VISITOR', WIDTH / 2, 1332, 124, 6, '#FFFFFF', 800);
 
   return canvas.encode('png');
 }

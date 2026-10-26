@@ -34,9 +34,11 @@ https://www.twilio.com/docs/content/send-templates-created-with-the-content-temp
 
 ## WhatsApp badge artwork
 
-WhatsApp deliveries attach a full 900 x 1500 portrait PNG instead of a standalone QR image.
+WhatsApp deliveries attach a full 900 x 1428 portrait PNG instead of a standalone QR image.
 The badge includes the bundled DIEMEX logo, event dates and venue, visitor name, company,
-registration number, a large QR and a VISITOR footer. The WhatsApp message text and approved
+registration number, a QR and a VISITOR footer. The artwork follows the supplied reference:
+a white portrait badge with centred logo, bold uppercase name, company, a flat blue top band
+and V-shaped blue lower section with DIEMEX red accent stripes. The WhatsApp message text and approved
 media template stay the same; template variable 3 still receives the Cloudinary mediaPath.
 Existing passes get the new artwork when resent after deploying this backend.
 

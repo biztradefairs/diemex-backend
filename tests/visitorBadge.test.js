@@ -37,7 +37,7 @@ test('renders a WhatsApp-sized portrait PNG whose complete image scans to the or
   const details = visitor();
   const png = await renderVisitorBadge(details);
   const image = await loadImage(png);
-  expect([image.width, image.height]).toEqual([900, 1500]);
+  expect([image.width, image.height]).toEqual([900, 1428]);
   expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   expect(png.length).toBeLessThan(5 * 1024 * 1024);
   expect(await decodeBadge(png)).toBe(details.qrPayload);
