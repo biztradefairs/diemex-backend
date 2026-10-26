@@ -12,8 +12,8 @@ record and QR payload. Previously delivered WhatsApp messages retain their attac
 - **Design 1:** the existing white badge with blue top band, red accents and angled blue footer.
 - **Design 2:** green layout in this exact order: logo, name, designation, company, country,
   centred QR, visitor ID, VISITOR. There is no profile photo, avatar, date line, venue or footer note.
-  The provided DIEMEX logo retains its original artwork. Layout colours are green `#00A651`
-  and dark green `#064E3B`, with the name in black `#000000`; no DIEMEX blue/red is used for the layout or QR in Design 2.
+  The provided DIEMEX logo retains its original artwork. The divider and band are green `#00A651`.
+  All text, including VISITOR, and the QR use black `#000000`.
 
 Both designs are 900 x 1428 PNGs. Design 2's **Visitor ID** displays `DMX-` followed by the last six digits of the registration number
 (e.g. REG-DMX-28082026-750281 displays as **DMX-750281**). This is a display label only; the full

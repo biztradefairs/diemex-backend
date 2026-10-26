@@ -39,7 +39,7 @@ Two designs are available through **Badge Designs** at `/admin/badge-designs` af
 Design 1 preserves the existing blue/red angled layout and remains the default.
 Design 2 uses green, removes the profile image and follows this order:
 logo, name, designation, company, country, centred QR, visitor ID, VISITOR.
-The name is black. The visitor ID displays DMX- followed by the last six registration-number digits; the full ID and QR data stay unchanged. The supplied DIEMEX logo keeps its original artwork.
+All text, including VISITOR, and the QR are black; the divider and band remain green. The visitor ID displays DMX- followed by the last six registration-number digits; the full ID and QR data stay unchanged. The supplied DIEMEX logo keeps its original artwork.
 
 An active admin can preview either design and save the global choice. The selection is stored in
 visitor_badge_settings and applies to the next WhatsApp badge delivery/resend, without changing

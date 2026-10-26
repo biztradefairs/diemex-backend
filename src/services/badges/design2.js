@@ -1,7 +1,7 @@
 const { WIDTH, HEIGHT, cleanText, textBlock: drawText, trackedText, drawQr } = require('./artwork');
 const GREEN = '#00A651';
-const DARK_GREEN = '#064E3B';
-const textBlock = (ctx, text, options) => drawText(ctx, text, { color: DARK_GREEN, ...options });
+const BLACK = '#000000';
+const textBlock = (ctx, text, options) => drawText(ctx, text, { color: BLACK, ...options });
 
 module.exports = function drawDesign2(ctx, logo, pass) {
   const { name, designation, company, country, registrationNumber, qrPayload } = pass;
@@ -15,7 +15,7 @@ module.exports = function drawDesign2(ctx, logo, pass) {
   ctx.fillRect(32, 358, WIDTH - 64, 6);
 
   textBlock(ctx, cleanText(name).toUpperCase(), {
-    top: 428, height: 100, width: 816, size: 58, minSize: 32, maxLines: 2, weight: 800, color: '#000000',
+    top: 428, height: 100, width: 816, size: 58, minSize: 32, maxLines: 2, weight: 800, color: BLACK,
   });
   let detailsTop = 546;
   if (cleanText(designation)) {
@@ -34,12 +34,12 @@ module.exports = function drawDesign2(ctx, logo, pass) {
   }
 
   // There is no profile image; the QR is centred across the full badge width.
-  drawQr(ctx, qrPayload, { x: 243, y: 728, size: 414 }, DARK_GREEN, 'H');
+  drawQr(ctx, qrPayload, { x: 243, y: 728, size: 414 }, BLACK, 'H');
   const visitorId = 'DMX-' + cleanText(registrationNumber).replace(/\D/g, '').slice(-6);
   textBlock(ctx, 'Visitor ID: ' + visitorId, {
     top: 1148, height: 44, width: 820, size: 26, minSize: 17, maxLines: 1, weight: 450,
   });
   ctx.fillStyle = GREEN;
   ctx.fillRect(32, 1236, WIDTH - 64, 128);
-  trackedText(ctx, 'VISITOR', WIDTH / 2, 1300, 84, 3, '#FFFFFF', 700);
+  trackedText(ctx, 'VISITOR', WIDTH / 2, 1300, 84, 3, BLACK, 700);
 };
