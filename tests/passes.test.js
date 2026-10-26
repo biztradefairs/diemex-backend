@@ -15,6 +15,10 @@ const mockMessaging = {
   checkVerification: jest.fn(async ({ code }) => ({ approved: code === '123456' })),
   sendPass: jest.fn(async () => ({ success: true, provider: 'twilio', status: 'queued' }))
 };
+const mockCloudinary = {
+  uploadImage: jest.fn(async () => ({ secure_url: 'https://res.cloudinary.com/test/image/upload/v1/visitor-passes/badge-REG-DMX-TEST.png' }))
+};
+const mockBadgeRenderer = { renderVisitorBadge: jest.fn(async () => Buffer.from('full-badge-png')) };
 function mockMatches(row, where = {}) {
   if (where[Op.or] && !where[Op.or].some((clause) => mockMatches(row, clause))) return false;
   for (const field of ['id', 'phone', 'publicCode', 'registrationNumber', 'visitorPassId', 'scannerId', 'status']) {
@@ -89,7 +93,8 @@ jest.mock('../src/services/EmailService', () => ({
   sendEmailWithAttachment: jest.fn(async () => ({ success: true })),
   sendVisitorOTP: jest.fn(async () => ({ success: true }))
 }));
-jest.mock('../src/services/CloudinaryService', () => ({}));
+jest.mock('../src/services/CloudinaryService', () => mockCloudinary);
+jest.mock('../src/services/VisitorBadgeRenderer', () => mockBadgeRenderer);
 jest.mock('qrcode', () => ({ toDataURL: async () => 'data:image/png;base64,test', toBuffer: async () => Buffer.from('test') }));
 
 process.env.JWT_SECRET = 'visitor-pass-regression-tests';
@@ -351,4 +356,56 @@ test.each([
     if (previous === undefined) delete process.env.FRONTEND_URL;
     else process.env.FRONTEND_URL = previous;
   }
+});
+
+
+describe('WhatsApp portrait badge delivery', () => {
+  beforeEach(() => {
+    jest.replaceProperty(process, 'env', {
+      ...process.env, CLOUDINARY_CLOUD_NAME: 'test', CLOUDINARY_API_KEY: 'test-key'
+    });
+  });
+
+  test('uploads the full badge and sends it with the original pass QR payload', async () => {
+    const row = await pass();
+    row.qrPayload = 'DIEMEX 2027\nVisitor\nCode: REG-DMX-TEST';
+    const result = await request(app).post('/api/passes/resend-pass')
+      .send({ publicCode: row.publicCode, channel: 'whatsapp' });
+    expect(result.status).toBe(200);
+    expect(result.body.delivery).toMatchObject({ success: true, channel: 'whatsapp', status: 'queued' });
+    expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenCalledWith({
+      name: row.name, company: row.company, registrationNumber: row.registrationNumber,
+      qrPayload: row.qrPayload,
+      event: { name: 'DIEMEX 2027', dates: '24\u201326 Mar 2027', venue: 'Auto Cluster Exhibition Centre, Pune' }
+    });
+    expect(mockCloudinary.uploadImage).toHaveBeenCalledWith(Buffer.from('full-badge-png'), {
+      folder: 'visitor-passes', public_id: 'badge-REG-DMX-TEST', overwrite: true, format: 'png'
+    });
+    expect(mockMessaging.sendPass).toHaveBeenCalledWith(expect.objectContaining({
+      name: row.name, registrationNumber: row.registrationNumber,
+      mediaUrl: result.body.delivery.mediaUrl
+    }));
+    expect(row).toMatchObject({ status: 'issued', sentStatus: 'queued', sentVia: 'whatsapp' });
+  });
+
+  test.each(['render', 'upload', 'missing URL'])('%s failure preserves the registration for retry', async (failure) => {
+    const row = await pass();
+    if (failure === 'render') mockBadgeRenderer.renderVisitorBadge.mockRejectedValueOnce(new Error('Render unavailable'));
+    if (failure === 'upload') mockCloudinary.uploadImage.mockRejectedValueOnce(new Error('Upload unavailable'));
+    if (failure === 'missing URL') mockCloudinary.uploadImage.mockResolvedValueOnce({});
+    const result = await request(app).post('/api/passes/resend-pass')
+      .send({ publicCode: row.publicCode, channel: 'whatsapp' });
+    expect(result.status).toBe(200);
+    expect(result.body.delivery).toMatchObject({ success: false, mediaUrl: null });
+    expect(result.body.delivery.error).toEqual(expect.any(String));
+    expect(mockMessaging.sendPass).not.toHaveBeenCalled();
+    expect(row).toMatchObject({ status: 'issued', sentStatus: 'failed', sentVia: 'whatsapp' });
+    expect(mockPasses).toHaveLength(1);
+    expect(row.save).toHaveBeenCalled();
+    const retry = await request(app).post('/api/passes/resend-pass')
+      .send({ publicCode: row.publicCode, channel: 'whatsapp' });
+    expect(retry.body.delivery.success).toBe(true);
+    expect(row.sentStatus).toBe('queued');
+    expect(mockPasses).toHaveLength(1);
+  });
 });

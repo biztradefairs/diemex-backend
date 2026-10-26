@@ -23,6 +23,7 @@ const modelFactory = require('../models');
 const messaging = require('./PassMessagingService');
 const emailService = require('./EmailService');
 const cloudinaryService = require('./CloudinaryService');
+const { renderVisitorBadge } = require('./VisitorBadgeRenderer');
 
 // ============================================================================
 // CONFIGURATION CONSTANTS & TIMEOUTS
@@ -787,34 +788,26 @@ async function deliverPass(pass, channel) {
   const passUrl = passViewUrl(pass.publicCode);
 
   let mediaUrl = null;
-  // If delivering via WhatsApp and Cloudinary is configured, generate and upload QR image
-  if (sendChannel === 'whatsapp' && process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-    try {
-      const qrPayload = pass.qrPayload || buildQrPayload(pass);
-      const qrBuffer = await QRCode.toBuffer(qrPayload, {
-        errorCorrectionLevel: 'H',
-        margin: 2,
-        width: 500,
-        color: {
-          dark: '#0F2F5C',
-          light: '#FFFFFF'
-        }
-      });
-      const uploadRes = await cloudinaryService.uploadImage(qrBuffer, {
-        folder: 'visitor-passes',
-        public_id: `qr-${pass.registrationNumber}`,
-        overwrite: true
-      });
-      if (uploadRes?.secure_url) {
-        mediaUrl = uploadRes.secure_url;
-      }
-    } catch (err) {
-      console.warn('[PassService] Cloudinary QR upload skipped:', err.message);
-    }
-  }
-
   let result;
   try {
+    if (sendChannel === 'whatsapp' && process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+      const badgeBuffer = await renderVisitorBadge({
+        name: pass.name,
+        company: pass.company,
+        registrationNumber: pass.registrationNumber,
+        qrPayload: pass.qrPayload || buildQrPayload(pass),
+        event: EVENT
+      });
+      const uploadRes = await cloudinaryService.uploadImage(badgeBuffer, {
+        folder: 'visitor-passes',
+        public_id: `badge-${pass.registrationNumber}`,
+        overwrite: true,
+        format: 'png'
+      });
+      if (!uploadRes?.secure_url) throw new Error('The visitor badge image could not be uploaded.');
+      mediaUrl = uploadRes.secure_url;
+    }
+
     result = sendChannel === 'email'
       ? await sendEmailPass(pass, passUrl)
       : await messaging.sendPass({

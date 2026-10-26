@@ -13,7 +13,7 @@ The example contains no account credentials.
   The default mapping is 1=name, 2=registrationNumber, 3=passUrl.
   Available fields also include publicCode, mediaUrl, eventName, eventDates and venue.
   Use publicCode for a template URL button with a fixed /passes/view/ prefix.
-  For a Cloudinary QR image, use a media URL of
+  For a Cloudinary badge image, use a media URL of
   https://res.cloudinary.com/<cloud-name>/image/upload/{{3}} and set
   TWILIO_WHATSAPP_PASS_VARIABLES={"1":"name","2":"registrationNumber","3":"mediaPath"}.
   mediaPath is the image URL suffix after /image/upload/, including its version, folders and extension.
@@ -21,7 +21,7 @@ The example contains no account credentials.
   Define sample values for all three placeholders, including a publicly accessible PNG path for 3.
   The old diemex_visitor_pass_2027 template was rejected because sample variable 3 was missing;
   use the corrected diemex_visitor_pass_2027_v2 template after WhatsApp approval.
-  Cloudinary must be configured for a public QR image URL. Missing images fail before sending.
+  Cloudinary must be configured for a public badge image URL. Missing images fail before sending.
 - Set TWILIO_SMS_MESSAGING_SERVICE_SID or TWILIO_SMS_FROM for ordinary SMS pass notifications.
   TWILIO_PHONE_NUMBER remains a legacy sender fallback.
   Verify OTPs use the configured Verify Service and do not require this sender.
@@ -31,6 +31,33 @@ The example contains no account credentials.
 
 Twilio template documentation:
 https://www.twilio.com/docs/content/send-templates-created-with-the-content-template-builder
+
+## WhatsApp badge artwork
+
+WhatsApp deliveries attach a full 900 x 1500 portrait PNG instead of a standalone QR image.
+The badge includes the bundled DIEMEX logo, event dates and venue, visitor name, company,
+registration number, a large QR and a VISITOR footer. The WhatsApp message text and approved
+media template stay the same; template variable 3 still receives the Cloudinary mediaPath.
+Existing passes get the new artwork when resent after deploying this backend.
+
+VisitorBadgeRenderer draws the badge locally using @napi-rs/canvas. The original QR payload
+is preserved, with integer-sized modules and a four-module white margin for scanning.
+Names and companies wrap and shrink within fixed areas; unusually long text is shortened
+visually while the saved visitor details and QR payload remain intact.
+
+Upload uses visitor-passes/badge-<registrationNumber>.png, distinct from the old qr- assets.
+Rendering or upload errors are reported as a failed delivery and keep the registration for retry.
+Deploy package.json, package-lock.json and src/assets/badge together, then install production
+dependencies with npm ci. The renderer loads its native dependency only when needed. Bundled
+Inter font and logo assets avoid network or system-font dependencies at rendering time;
+the font license and asset sources are included in src/assets/badge.
+
+Generate an offline design preview from the backend directory:
+
+    npm run preview:badge
+
+The output is docs/previews/visitor-badge.png. Its QR is marked as a design preview and is
+not valid for entry. The website badge card and email attachment keep their existing layouts.
 
 ## Verify OTP configuration
 
@@ -125,12 +152,12 @@ multi-instance deployment requires a shared session store before scaling this pa
 ## Validation
 
 Run from diemex-backend:
-node node_modules/jest/bin/jest.js --runInBand --no-cache --coverage=false tests/passMessaging.test.js tests/passes.test.js
+node node_modules/jest/bin/jest.js --runInBand --no-cache --coverage=false tests/passMessaging.test.js tests/passes.test.js tests/visitorBadge.test.js
 
 Run from dimex:
 node node_modules/typescript/bin/tsc --noEmit --incremental false
 
-The regression suite mocks Twilio, email, Cloudinary and database models.
+The pass regression suite mocks Twilio, email, Cloudinary and database models. The badge suite renders real PNGs and decodes the full image at original and phone-sized resolutions.
 Before production use, verify a real OTP, the approved WhatsApp pass template, an HTTPS mobile camera scan,
 a saved attendance row, a repeat visit and rejection of a cancelled pass against the deployment database.
 
