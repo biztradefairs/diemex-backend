@@ -133,7 +133,7 @@ class ExhibitorController {
   // GET ALL EXHIBITORS
   async getAllExhibitors(req, res) {
     try {
-      const { page = 1, limit = 10, search = '', sector = '', status = '' } = req.query;
+      const { page = 1, limit = 10, search = '', sector = '', status = '', letter = '' } = req.query;
       const modelFactory = require('../models');
       const { Op } = require('sequelize');
       const Exhibitor = modelFactory.getModel('Exhibitor');
@@ -147,9 +147,14 @@ class ExhibitorController {
         ];
       }
       if (sector) where.sector = sector;
+      if (letter) {
+        if (!/^[a-z]$/i.test(letter)) return res.status(400).json({ success: false, error: 'Invalid company initial.' });
+        where.company = { [Op.like]: letter.toUpperCase() + '%' };
+      }
       if (status && status !== 'all') {
-        const dbStatus = status === 'active' ? 'approved' : status;
-        where.status = dbStatus;
+        where.status = ['active', 'approved'].includes(status)
+          ? { [Op.in]: ['active', 'approved'] }
+          : status;
       }
       
       const pageNum = parseInt(page);
@@ -169,12 +174,14 @@ class ExhibitorController {
         
         // Get original password from metadata
         let originalPassword = null;
+        let logoUrl = '';
         if (data.metadata) {
           try {
             const metadata = typeof data.metadata === 'string' 
               ? JSON.parse(data.metadata) 
               : data.metadata;
             originalPassword = metadata.originalPassword || null;
+            logoUrl = metadata.logoUrl || '';
           } catch (e) {
             console.warn('Failed to parse metadata for:', data.email);
           }
@@ -213,6 +220,7 @@ class ExhibitorController {
           email: data.email,
           phone: data.phone,
           company: data.company,
+          logoUrl,
           sector: data.sector,
           booth: data.boothNumber,
           boothNumber: data.boothNumber,
@@ -482,8 +490,8 @@ class ExhibitorController {
         console.log('🔑 Password will be updated');
         
         // Also update metadata with new password if provided
-        if (!updateData.metadata) {
-          let metadata = exhibitor.metadata || {};
+        {
+          let metadata = updateData.metadata || exhibitor.metadata || {};
           if (typeof metadata === 'string') {
             try {
               metadata = JSON.parse(metadata);

@@ -140,6 +140,7 @@ router.put('/:id/application-form', authenticate, authorize(['admin']), applicat
 router.post('/:id/application-form/send', authenticate, authorize(['admin']), applicationFormController.sendAdminForm);
 router.get('/:id/application-form/pdf', authenticate, authorize(['admin']), applicationFormController.downloadAdminPdf);
 
+router.use('/:id/logo', require('./exhibitorLogo'));
 router.post('/', authenticate, authorize(['admin']), exhibitorController.createExhibitor);
 router.put('/:id', authenticate, authorize(['admin']), exhibitorController.updateExhibitor);
 router.delete('/:id', authenticate, authorize(['admin']), exhibitorController.deleteExhibitor);
