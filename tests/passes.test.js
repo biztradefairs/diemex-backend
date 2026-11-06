@@ -15,6 +15,7 @@ const mockMessaging = {
   checkVerification: jest.fn(async ({ code }) => ({ approved: code === '123456' })),
   sendPass: jest.fn(async () => ({ success: true, provider: 'twilio', status: 'queued' }))
 };
+const mockCmsSync = { enqueue: jest.fn(async () => ({})) };
 const mockCloudinary = {
   uploadImage: jest.fn(async (buffer, options) => ({ secure_url: 'https://res.cloudinary.com/test/image/upload/v1/visitor-passes/' + options.public_id + '.png' }))
 };
@@ -94,6 +95,7 @@ jest.mock('../src/models', () => ({
   })
 }));
 jest.mock('../src/services/PassMessagingService', () => mockMessaging);
+jest.mock('../src/services/VisitorPassCmsSyncService', () => mockCmsSync);
 jest.mock('../src/services/EmailService', () => ({
   sendEmail: jest.fn(async () => ({ success: true })),
   sendEmailWithAttachment: jest.fn(async () => ({ success: true })),
@@ -490,4 +492,34 @@ describe('admin badge design selection', () => {
     expect(row.registrationNumber).toBe('REG-DMX-TEST');
     expect(row.qrPayload).toBe('Code: REG-DMX-TEST');
   });
+});
+
+test('pass registration queues profile, badge delivery and check-in updates for CMS', async () => {
+  const session = await verified();
+  const response = await request(app).post('/api/passes/register').send({
+    verificationToken: session.verificationToken, name: 'CMS Visitor', company: 'CMS Company',
+    designation: 'Director', interests: ['Tooling'], tracking: { utm_source: 'google' },
+  });
+  expect(response.status).toBe(200);
+  expect(response.body.pass.designation).toBe('Director');
+  expect(mockCmsSync.enqueue).toHaveBeenCalledWith(
+    expect.objectContaining({ name: 'CMS Visitor', designation: 'Director' }),
+    { tracking: { utm_source: 'google' } },
+  );
+  expect(mockCmsSync.enqueue).toHaveBeenCalledWith(expect.anything(), { delivery: expect.any(Object) });
+  expect((await scan(response.body.pass.publicCode)).status).toBe(200);
+  expect(mockCmsSync.enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'checked_in' }));
+});
+
+test('badge preview and download use the visitor pass and selected badge design', async () => {
+  const row = await pass();
+  const response = await request(app).get('/api/passes/' + row.publicCode + '/badge?design=design1&download=1');
+  expect(response.status).toBe(200);
+  expect(response.headers['content-type']).toMatch(/image\/png/);
+  expect(response.headers['content-disposition']).toContain('attachment');
+  expect(mockBadgeRenderer.renderVisitorBadge).toHaveBeenCalledWith(expect.objectContaining({
+    design: 'design1', name: row.name, registrationNumber: row.registrationNumber,
+  }));
+  expect((await request(app).get('/api/passes/missing/badge')).status).toBe(404);
+  expect((await request(app).get('/api/passes/' + row.publicCode + '/badge?design=unknown')).status).toBe(400);
 });

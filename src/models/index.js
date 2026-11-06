@@ -130,6 +130,8 @@ const modelFactories = {
     return factory(database.getConnection('mysql'));
   },
 
+  VisitorPassCmsSync: () => require('./mysql/VisitorPassCmsSync')(database.getConnection('mysql')),
+
   VisitorBadgeSetting: () => require('./mysql/VisitorBadgeSetting')(database.getConnection('mysql')),
 
   VisitorPassScan: () => {

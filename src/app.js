@@ -1034,6 +1034,7 @@ setupRoutes() {
 
         // Check/create default admin user
         await this.checkDefaultAdmin();
+        require('./services/VisitorPassCmsSyncService').startWorker();
 
         resolve();
       });
@@ -1135,6 +1136,7 @@ async checkDefaultAdmin() {
   }
 
   async stop() {
+    require('./services/VisitorPassCmsSyncService').stopWorker();
     if (this.isShuttingDown) return;
 
     this.isShuttingDown = true;

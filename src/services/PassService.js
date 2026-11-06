@@ -21,6 +21,7 @@ const QRCode = require('qrcode');
 const { Op } = require('sequelize');
 const modelFactory = require('../models');
 const messaging = require('./PassMessagingService');
+const cmsSync = require('./VisitorPassCmsSyncService');
 const emailService = require('./EmailService');
 const cloudinaryService = require('./CloudinaryService');
 const { renderVisitorBadge } = require('./VisitorBadgeRenderer');
@@ -702,6 +703,9 @@ async function completeRegistration({ verificationToken, payload }) {
   pass.qrPayload = buildQrPayload(pass);
   await pass.save();
 
+  // Keep a durable CMS snapshot even when the browser leaves or CMS is offline.
+  await cmsSync.enqueue(pass, { tracking: payload.tracking });
+
   // Consume verification session token
   verifyStore.delete(verificationToken);
 
@@ -828,6 +832,7 @@ async function deliverPass(pass, channel) {
   pass.sentVia = sendChannel;
   pass.sentStatus = result.success ? (result.simulated ? 'simulated' : (result.status || 'accepted')) : 'failed';
   await pass.save();
+  await cmsSync.enqueue(pass, { delivery: { badgeDesign } });
 
   return {
     success: result.success,
@@ -991,7 +996,7 @@ async function recordScan({ code, scannerId }) {
   const VisitorPass = await getModel();
   const Scan = await getScanModel();
   const deviceId = String(scannerId || '').trim().slice(0, 64) || null;
-  return VisitorPass.sequelize.transaction(async (transaction) => {
+  const result = await VisitorPass.sequelize.transaction(async (transaction) => {
     // Serialize check-and-insert for this pass across all server processes.
     const pass = await VisitorPass.findByPk(found.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!pass || pass.status === 'cancelled') {
@@ -1028,6 +1033,11 @@ async function recordScan({ code, scannerId }) {
       visitor: scanVisitor(pass), scannedAt: scan.scannedAt, todayVisit, eventVisits
     };
   });
+  if (!result.duplicate) {
+    const updated = await VisitorPass.findByPk(found.id);
+    if (updated) await cmsSync.enqueue(updated);
+  }
+  return result;
 }
 
 /**
@@ -1224,7 +1234,19 @@ async function serializePass(pass) {
 // MODULE EXPORTS
 // ============================================================================
 
+async function getBadgeImage(code, design) {
+  const pass = await findPassByCode(code);
+  if (!pass) throw Object.assign(new Error('Visitor pass not found'), { status: 404 });
+  return renderVisitorBadge({
+    design: design || await getActiveBadgeDesign(),
+    name: pass.name, company: pass.company, designation: pass.designation,
+    country: pass.country, registrationNumber: pass.registrationNumber,
+    qrPayload: pass.qrPayload || buildQrPayload(pass), event: EVENT,
+  });
+}
+
 module.exports = {
+  getBadgeImage,
   sendOtp,
   verifyOtp,
   completeRegistration,

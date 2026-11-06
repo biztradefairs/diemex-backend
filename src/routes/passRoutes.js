@@ -33,6 +33,18 @@ function handleError(res, error) {
   });
 }
 
+router.get('/:code/badge', async (req, res) => {
+  try {
+    if (req.query.design && !isBadgeDesign(req.query.design)) {
+      return res.status(400).json({ success: false, error: 'Choose Design 1 or Design 2.' });
+    }
+    const png = await passService.getBadgeImage(req.params.code, req.query.design);
+    res.set('Cache-Control', 'no-store');
+    if (req.query.download === '1') res.set('Content-Disposition', 'attachment; filename="diemex-visitor-badge.png"');
+    return res.type('png').send(png);
+  } catch (error) { handleError(res, error); }
+});
+
 router.get('/badge-design', ...badgeAdmin, async (req, res) => {
   try { res.json({ success: true, ...await badgeSettings.getBadgeDesignSetting() }); }
   catch (error) { handleError(res, error); }
@@ -125,6 +137,7 @@ router.post(
   [
     body('verificationToken').notEmpty().withMessage('Verification token is required'),
     body('name').trim().notEmpty().withMessage('Full name is required'),
+    body('email').optional({ checkFalsy: true }).isEmail().withMessage('Enter a valid email address'),
     body('company').trim().notEmpty().withMessage('Company name is required'),
     body('interests').isArray({ min: 1 }).withMessage('Select at least one interest')
   ],
