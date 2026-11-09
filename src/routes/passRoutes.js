@@ -1,5 +1,5 @@
 const express = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const passService = require('../services/PassService');
 const { authenticate, authorize } = require('../middleware/auth');
 const scannerAccess = [authenticate, authorize(['admin', 'editor'])];
@@ -9,6 +9,23 @@ const badgeSettings = require('../services/VisitorBadgeSettingsService');
 const { renderBadgePreview } = require('../services/VisitorBadgePreview');
 const { isBadgeDesign } = require('../services/badges/designs');
 const badgeAdmin = [authenticate, authorize(['admin'])];
+const registrationAdmin = require('../services/PassRegistrationAdminService');
+
+router.get('/admin/registrations', ...badgeAdmin, [
+  query('page').optional().isString().bail().isInt({ min: 1, max: 1000000 }).toInt(),
+  query('limit').optional().isString().bail().isInt({ min: 1, max: 100 }).toInt(),
+  query('search').optional().isString().bail().trim().isLength({ max: 120 }),
+  query('status').optional().isString().bail().isIn(['', 'issued', 'checked_in', 'cancelled']),
+], async (req, res) => {
+  if (handleValidation(req, res)) return;
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await registrationAdmin.listRegistrations({
+      page: req.query.page || 1, limit: req.query.limit || 25,
+      search: req.query.search || '', status: req.query.status || '',
+    }));
+  } catch (error) { handleError(res, error); }
+});
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
